@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UMLS 2.0</title>
+  <link rel="stylesheet" href="/search_quality_server.css">
+</head>
+<body>
+  <main class="wrap">
+    <section class="panel">
+      <h2>Find Concepts</h2>
+      <div class="grid query-grid">
+        <div>
+          <label for="query">Text, CUI, or code</label>
+          <input id="query" type="text" value="heart failure with reduced ejection fraction">
+        </div>
+        <div>
+          <label for="topK">Search pool</label>
+          <input id="topK" type="number" min="18" max="100" value="60">
+        </div>
+        <div>
+          <label for="semanticGroupFilter">Semantic groups</label>
+          <select id="semanticGroupFilter" multiple size="4" aria-label="Semantic group filter"></select>
+          <div class="filter-help">No selection searches all groups.</div>
+        </div>
+        <div>
+          <label for="includeRelated">Related</label>
+          <label class="check-row">
+            <input id="includeRelated" type="checkbox">
+            Include
+          </label>
+        </div>
+        <div>
+          <button id="searchBtn" class="primary">Search</button>
+        </div>
+      </div>
+      <div id="searchProgress" class="search-progress" role="status" aria-live="polite" hidden>
+        <div class="search-progress-label">Searching</div>
+        <div class="search-progress-track" aria-hidden="true">
+          <div class="search-progress-bar"></div>
+        </div>
+      </div>
+      <div id="searchFeedback" class="search-feedback" role="alert" hidden></div>
+      <div class="suggestion-pickers">
+        <div class="suggestion-picker">
+          <label for="clinicalSuggestionSelect">Clinical note suggestions</label>
+          <select id="clinicalSuggestionSelect"></select>
+        </div>
+        <div class="suggestion-picker">
+          <label for="paragraphTestSelect">Paragraph tests</label>
+          <select id="paragraphTestSelect"></select>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Returned CUIs</h2>
+      <div id="results" class="muted">Run a query to see candidate CUIs.</div>
+    </section>
+
+    <details class="panel utility-panel">
+      <summary>Evaluation tools and system details</summary>
+      <div class="grid two-col">
+        <div>
+          <h3>Query Set</h3>
+          <label for="querySet">One query per line. Add expected CUI(s) after a tab or final comma when known.</label>
+          <textarea id="querySet">heart failure with reduced ejection fraction
+pseudomonas aeruginosa wound abscess
+high troponin after myocardial infarction
+poorly controlled type 2 diabetes hba1c
+brca1 breast cancer risk
+appendectomy surgical procedure</textarea>
+          <div class="actions">
+            <button id="runSetBtn">Run query set</button>
+            <button id="saveJudgmentsBtn">Save judgments</button>
+            <button id="clearJudgmentsBtn">Clear judgments</button>
+            <button id="exportBtn">Export judgments CSV</button>
+          </div>
+          <div id="querySetFeedback" class="search-feedback" role="status" aria-live="polite" hidden></div>
+        </div>
+        <div>
+          <h3>System Metrics</h3>
+          <div id="metrics" class="metric-grid"></div>
+        </div>
+      </div>
+      <div style="margin-top: 12px;">
+        <h3>Query Set Results</h3>
+      </div>
+      <div id="setResults" class="table-wrap">
+        <table><tbody><tr><td class="muted">No query set has been run.</td></tr></tbody></table>
+      </div>
+    </details>
+  </main>
+
+  <script src="/search_quality_app.js"></script>
+</body>
+</html>

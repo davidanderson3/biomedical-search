@@ -1,0 +1,13 @@
+topic	term	retmax
+adverse_drug_reactions	adverse drug reaction OR drug-induced liver injury OR drug hypersensitivity OR medication adverse event	150
+anticoagulation_safety	warfarin OR direct oral anticoagulant OR apixaban OR rivaroxaban OR bleeding risk	150
+diabetes_therapeutics	insulin therapy OR metformin OR SGLT2 inhibitor OR GLP-1 receptor agonist OR hypoglycemia	150
+cardiovascular_drugs	statin therapy OR beta blocker OR ACE inhibitor OR angiotensin receptor blocker OR antiarrhythmic drug	150
+oncology_therapeutics	immune checkpoint inhibitor OR chemotherapy toxicity OR targeted therapy OR CAR T-cell therapy OR tyrosine kinase inhibitor	150
+antimicrobial_therapy	antibiotic therapy OR antimicrobial stewardship OR vancomycin OR carbapenem OR antifungal therapy	150
+immunosuppression	immunosuppressive therapy OR tacrolimus OR methotrexate OR biologic therapy OR corticosteroid toxicity	150
+neurology_drugs	antiepileptic drug OR levetiracetam OR valproate OR migraine prophylaxis OR dementia medication	150
+psychiatric_drugs	SSRI OR antipsychotic medication OR lithium toxicity OR benzodiazepine OR antidepressant adverse effect	150
+pain_anesthesia	opioid therapy OR opioid use disorder OR NSAID toxicity OR regional anesthesia OR postoperative pain	150
+renal_dosing	renal dose adjustment OR drug dosing chronic kidney disease OR nephrotoxicity OR contrast induced nephropathy	150
+pregnancy_lactation_drugs	medication pregnancy OR teratogenicity OR breastfeeding medication OR prenatal drug exposure	150

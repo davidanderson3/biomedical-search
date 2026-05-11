@@ -1,0 +1,1118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Search Quality Assessment</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #5b6673;
+      --line: #d7dde5;
+      --blue: #2563eb;
+      --green: #166534;
+      --amber: #b45309;
+      --red: #b91c1c;
+      --teal: #0f766e;
+      --code: #eef2f7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    header {
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .wrap {
+      width: min(1440px, calc(100vw - 32px));
+      margin: 0 auto;
+    }
+
+    .topbar {
+      padding: 20px 0;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      font-weight: 750;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 22px;
+    }
+
+    h2 {
+      font-size: 16px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    main {
+      padding: 18px 0 40px;
+    }
+
+    .subhead,
+    .muted {
+      color: var(--muted);
+    }
+
+    .small {
+      font-size: 12px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .load-grid {
+      grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) 140px 160px;
+      align-items: end;
+    }
+
+    .query-grid {
+      grid-template-columns: minmax(320px, 1fr) 120px 140px;
+      align-items: end;
+    }
+
+    .two-col {
+      grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 9px 10px;
+      min-height: 38px;
+      font: inherit;
+    }
+
+    input[type="file"] {
+      padding: 7px 8px;
+      color: var(--muted);
+    }
+
+    textarea {
+      min-height: 128px;
+      resize: vertical;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 9px 12px;
+      min-height: 38px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.55;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 12px;
+    }
+
+    .progress {
+      height: 8px;
+      background: #e8edf4;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .progress > div {
+      width: 0;
+      height: 100%;
+      background: var(--teal);
+      transition: width 120ms linear;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+      min-height: 84px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .metric .value {
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.15;
+    }
+
+    .result {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+
+    .result-head {
+      display: grid;
+      grid-template-columns: 46px minmax(0, 1fr) 86px;
+      gap: 10px;
+      align-items: start;
+      margin-bottom: 8px;
+    }
+
+    .rank {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: var(--blue);
+      font-weight: 800;
+    }
+
+    .score {
+      text-align: right;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      color: var(--muted);
+    }
+
+    .title {
+      font-weight: 750;
+      overflow-wrap: anywhere;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 8px 0;
+    }
+
+    .chip {
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: #eef2f7;
+      color: #334155;
+      font-size: 12px;
+    }
+
+    .snippet {
+      white-space: pre-wrap;
+      color: #24313f;
+      max-height: 210px;
+      overflow: auto;
+      border-top: 1px solid #edf0f4;
+      padding-top: 8px;
+    }
+
+    .judgments {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .judgments button {
+      min-height: 32px;
+      padding: 6px 9px;
+      font-size: 12px;
+    }
+
+    .judgments button.active[data-grade="relevant"] {
+      color: #fff;
+      background: var(--green);
+      border-color: var(--green);
+    }
+
+    .judgments button.active[data-grade="partial"] {
+      color: #fff;
+      background: var(--amber);
+      border-color: var(--amber);
+    }
+
+    .judgments button.active[data-grade="wrong"] {
+      color: #fff;
+      background: var(--red);
+      border-color: var(--red);
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      min-width: 720px;
+      border-collapse: collapse;
+      background: #fff;
+    }
+
+    th,
+    td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #edf0f4;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      color: var(--muted);
+      background: #f8fafc;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    code,
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      background: var(--code);
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+
+    .callout {
+      border: 1px solid #bfdbfe;
+      background: #eff6ff;
+      color: #1e3a8a;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+
+    @media (max-width: 1100px) {
+      .load-grid,
+      .query-grid,
+      .two-col,
+      .metric-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .wrap {
+        width: min(100vw - 20px, 1440px);
+      }
+
+      .topbar,
+      .load-grid,
+      .query-grid,
+      .two-col,
+      .metric-grid,
+      .result-head {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar {
+        display: block;
+      }
+
+      .score {
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap topbar">
+      <div>
+        <h1>Search Quality Assessment</h1>
+        <div class="subhead">Run local vector searches, judge relevance, and build a lightweight query benchmark.</div>
+      </div>
+      <div class="small muted" id="selfTest">Hash self-test pending</div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel">
+      <h2>1. Load Search Artifacts</h2>
+      <div class="grid load-grid">
+        <div>
+          <label for="vectorsFile">Lean hashing vector JSONL</label>
+          <input id="vectorsFile" type="file" accept=".jsonl,.json,.txt">
+        </div>
+        <div>
+          <label for="docsFile">Concept document JSONL</label>
+          <input id="docsFile" type="file" accept=".jsonl,.json,.txt">
+        </div>
+        <div>
+          <label for="dim">Hash dimension</label>
+          <input id="dim" type="number" min="1" value="384">
+        </div>
+        <div>
+          <button id="loadBtn" class="primary">Load files</button>
+        </div>
+      </div>
+      <div class="callout small">
+        Select <code>build/biomedicine_expanded_literature_mimic_structured_top12_concept_vectors.lean.hashing.jsonl</code>
+        and <code>build/biomedicine_expanded_literature_mimic_structured_top12_concept_documents.jsonl</code>.
+        The docs file is optional for ranking, but it gives you evidence snippets to judge.
+      </div>
+      <div class="progress"><div id="progressBar"></div></div>
+      <div class="actions">
+        <span id="status" class="muted small">No files loaded.</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>2. Try Queries</h2>
+      <div class="grid query-grid">
+        <div>
+          <label for="query">Query</label>
+          <input id="query" type="text" value="heart failure with reduced ejection fraction">
+        </div>
+        <div>
+          <label for="topK">Top K</label>
+          <input id="topK" type="number" min="1" max="100" value="10">
+        </div>
+        <div>
+          <button id="searchBtn" class="primary">Search</button>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="example" data-query="pseudomonas aeruginosa wound abscess">Pseudomonas wound</button>
+        <button class="example" data-query="heart failure with reduced ejection fraction">HFrEF</button>
+        <button class="example" data-query="high troponin after myocardial infarction">Troponin MI</button>
+        <button class="example" data-query="poorly controlled type 2 diabetes hba1c">Type 2 diabetes HbA1c</button>
+        <button class="example" data-query="brca1 breast cancer risk">BRCA1 breast cancer</button>
+        <button class="example" data-query="appendectomy surgical procedure">Appendectomy</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>3. Score a Query Set</h2>
+      <div class="grid two-col">
+        <div>
+          <label for="querySet">Queries, optionally followed by expected CUI after a tab or comma</label>
+          <textarea id="querySet">heart failure with reduced ejection fraction
+pseudomonas aeruginosa wound abscess
+high troponin after myocardial infarction
+poorly controlled type 2 diabetes hba1c
+brca1 breast cancer risk
+appendectomy surgical procedure</textarea>
+          <div class="actions">
+            <button id="runSetBtn">Run query set</button>
+            <button id="clearJudgmentsBtn">Clear saved judgments</button>
+            <button id="exportBtn">Export judgments CSV</button>
+          </div>
+        </div>
+        <div>
+          <h3>Current Metrics</h3>
+          <div id="metrics" class="metric-grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Results</h2>
+      <div id="results" class="muted">Load vectors, run a query, then mark each result as relevant, partial, or wrong.</div>
+    </section>
+
+    <section class="panel">
+      <h2>Query Set Results</h2>
+      <div id="setResults" class="table-wrap">
+        <table><tbody><tr><td class="muted">No query set has been run.</td></tr></tbody></table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const MASK64 = (1n << 64n) - 1n;
+    const IV = [
+      0x6a09e667f3bcc908n, 0xbb67ae8584caa73bn,
+      0x3c6ef372fe94f82bn, 0xa54ff53a5f1d36f1n,
+      0x510e527fade682d1n, 0x9b05688c2b3e6c1fn,
+      0x1f83d9abfb41bd6bn, 0x5be0cd19137e2179n
+    ];
+    const SIGMA = [
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
+      [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4],
+      [7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8],
+      [9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13],
+      [2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9],
+      [12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11],
+      [13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10],
+      [6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5],
+      [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0],
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3]
+    ];
+
+    const state = {
+      vectors: [],
+      docs: new Map(),
+      judgments: loadJudgments(),
+      lastResults: [],
+      lastQuery: "",
+      setRows: []
+    };
+
+    const els = {};
+    for (const id of [
+      "vectorsFile", "docsFile", "dim", "loadBtn", "progressBar", "status",
+      "query", "topK", "searchBtn", "querySet", "runSetBtn", "clearJudgmentsBtn",
+      "exportBtn", "metrics", "results", "setResults", "selfTest"
+    ]) {
+      els[id] = document.getElementById(id);
+    }
+
+    function add64(a, b) {
+      return (a + b) & MASK64;
+    }
+
+    function rotr64(x, n) {
+      const shift = BigInt(n);
+      return ((x >> shift) | (x << (64n - shift))) & MASK64;
+    }
+
+    function read64le(bytes, offset) {
+      let value = 0n;
+      for (let i = 0; i < 8; i += 1) {
+        value |= BigInt(bytes[offset + i] || 0) << BigInt(8 * i);
+      }
+      return value;
+    }
+
+    function write64le(value, out, offset) {
+      for (let i = 0; i < 8; i += 1) {
+        out[offset + i] = Number((value >> BigInt(8 * i)) & 0xffn);
+      }
+    }
+
+    function G(v, a, b, c, d, x, y) {
+      v[a] = add64(add64(v[a], v[b]), x);
+      v[d] = rotr64(v[d] ^ v[a], 32);
+      v[c] = add64(v[c], v[d]);
+      v[b] = rotr64(v[b] ^ v[c], 24);
+      v[a] = add64(add64(v[a], v[b]), y);
+      v[d] = rotr64(v[d] ^ v[a], 16);
+      v[c] = add64(v[c], v[d]);
+      v[b] = rotr64(v[b] ^ v[c], 63);
+    }
+
+    function blake2bDigest(bytes, outLen) {
+      let h = IV.slice();
+      h[0] = h[0] ^ (0x01010000n ^ BigInt(outLen));
+      let offset = 0;
+      let count = 0n;
+
+      function compress(block, last) {
+        const m = [];
+        for (let i = 0; i < 16; i += 1) m.push(read64le(block, i * 8));
+        const v = h.concat(IV);
+        v[12] ^= count & MASK64;
+        v[13] ^= count >> 64n;
+        if (last) v[14] ^= MASK64;
+        for (let round = 0; round < 12; round += 1) {
+          const s = SIGMA[round];
+          G(v, 0, 4, 8, 12, m[s[0]], m[s[1]]);
+          G(v, 1, 5, 9, 13, m[s[2]], m[s[3]]);
+          G(v, 2, 6, 10, 14, m[s[4]], m[s[5]]);
+          G(v, 3, 7, 11, 15, m[s[6]], m[s[7]]);
+          G(v, 0, 5, 10, 15, m[s[8]], m[s[9]]);
+          G(v, 1, 6, 11, 12, m[s[10]], m[s[11]]);
+          G(v, 2, 7, 8, 13, m[s[12]], m[s[13]]);
+          G(v, 3, 4, 9, 14, m[s[14]], m[s[15]]);
+        }
+        for (let i = 0; i < 8; i += 1) h[i] = h[i] ^ v[i] ^ v[i + 8];
+      }
+
+      while (bytes.length - offset > 128) {
+        const block = bytes.slice(offset, offset + 128);
+        count += 128n;
+        compress(block, false);
+        offset += 128;
+      }
+
+      const last = new Uint8Array(128);
+      const remaining = bytes.slice(offset);
+      last.set(remaining);
+      count += BigInt(remaining.length);
+      compress(last, true);
+
+      const full = new Uint8Array(64);
+      for (let i = 0; i < 8; i += 1) write64le(h[i], full, i * 8);
+      return full.slice(0, outLen);
+    }
+
+    function hex(bytes) {
+      return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    function digestNumberBigEndian(bytes) {
+      let value = 0n;
+      for (const byte of bytes) value = (value << 8n) | BigInt(byte);
+      return value;
+    }
+
+    function normalizedKey(text) {
+      return String(text || "")
+        .normalize("NFKD")
+        .replace(/[^\x00-\x7F]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function featureTokens(text) {
+      const normalized = normalizedKey(text);
+      if (!normalized) return [];
+      const tokens = normalized.split(" ");
+      const features = tokens.slice();
+      const compact = tokens.join("");
+      for (const size of [3, 4]) {
+        if (compact.length >= size) {
+          for (let i = 0; i <= compact.length - size; i += 1) {
+            features.push(compact.slice(i, i + size));
+          }
+        }
+      }
+      return features;
+    }
+
+    function embedHashing(text, dim) {
+      const vector = new Float32Array(dim);
+      const encoder = new TextEncoder();
+      for (const feature of featureTokens(text)) {
+        const digest = blake2bDigest(encoder.encode(feature), 8);
+        const number = digestNumberBigEndian(digest);
+        const index = Number(number % BigInt(dim));
+        const sign = (number >> 63n) === 0n ? 1 : -1;
+        vector[index] += sign;
+      }
+      return normalize(vector);
+    }
+
+    function normalize(vector) {
+      let sum = 0;
+      for (const value of vector) sum += value * value;
+      const norm = Math.sqrt(sum);
+      if (!norm) return vector;
+      const out = new Float32Array(vector.length);
+      for (let i = 0; i < vector.length; i += 1) out[i] = vector[i] / norm;
+      return out;
+    }
+
+    function dot(a, b) {
+      let total = 0;
+      const n = Math.min(a.length, b.length);
+      for (let i = 0; i < n; i += 1) total += a[i] * b[i];
+      return total;
+    }
+
+    function setStatus(text, progress) {
+      els.status.textContent = text;
+      if (Number.isFinite(progress)) {
+        els.progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+      }
+    }
+
+    function fmtNum(value) {
+      return Math.round(Number(value) || 0).toLocaleString();
+    }
+
+    function fmtPct(value) {
+      if (!Number.isFinite(value)) return "0%";
+      return `${(value * 100).toFixed(1)}%`;
+    }
+
+    function esc(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    async function parseJsonlFile(file, handler) {
+      const reader = file.stream().getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let count = 0;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          handler(JSON.parse(line));
+          count += 1;
+          if (count % 5000 === 0) {
+            setStatus(`Parsed ${fmtNum(count)} rows from ${file.name}`);
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+          }
+        }
+      }
+      buffer += decoder.decode();
+      if (buffer.trim()) {
+        handler(JSON.parse(buffer));
+        count += 1;
+      }
+      return count;
+    }
+
+    async function loadFiles() {
+      const vectorFile = els.vectorsFile.files[0];
+      const docsFile = els.docsFile.files[0];
+      if (!vectorFile) {
+        setStatus("Choose the vector JSONL first.", 0);
+        return;
+      }
+      state.vectors = [];
+      state.docs = new Map();
+      state.lastResults = [];
+      els.loadBtn.disabled = true;
+      els.searchBtn.disabled = true;
+      els.runSetBtn.disabled = true;
+      setStatus("Loading vectors", 5);
+      try {
+        const dim = Number(els.dim.value) || 384;
+        let badDims = 0;
+        const vectorCount = await parseJsonlFile(vectorFile, (record) => {
+          const metadata = record.metadata || {};
+          const vector = new Float32Array(record.vector.map(Number));
+          if (vector.length !== dim) badDims += 1;
+          state.vectors.push({
+            doc_id: record.doc_id,
+            cui: record.cui,
+            view: record.view,
+            vector: normalize(vector),
+            labels: record.labels || metadata.labels || [],
+            sources: record.sources || metadata.sources || [],
+            evidence_count: record.evidence_count || metadata.evidence_count || 0
+          });
+        });
+        setStatus(`Loaded ${fmtNum(vectorCount)} vectors`, 55);
+        if (docsFile) {
+          await parseJsonlFile(docsFile, (record) => {
+            state.docs.set(record.doc_id, record);
+          });
+        }
+        setStatus(`Ready: ${fmtNum(state.vectors.length)} vectors, ${fmtNum(state.docs.size)} docs, ${fmtNum(badDims)} bad dimensions`, 100);
+        renderMetrics();
+      } catch (err) {
+        console.error(err);
+        setStatus(`Load failed: ${err.message}`, 100);
+      } finally {
+        els.loadBtn.disabled = false;
+        els.searchBtn.disabled = false;
+        els.runSetBtn.disabled = false;
+      }
+    }
+
+    function search(query, topK) {
+      const dim = Number(els.dim.value) || 384;
+      const queryVector = embedHashing(query, dim);
+      const bestByCui = new Map();
+      for (const record of state.vectors) {
+        const score = dot(queryVector, record.vector);
+        const current = bestByCui.get(record.cui);
+        if (!current || score > current.score) {
+          bestByCui.set(record.cui, { ...record, score });
+        }
+      }
+      return [...bestByCui.values()]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topK);
+    }
+
+    function runSearch() {
+      if (!state.vectors.length) {
+        setStatus("Load vectors before searching.", 0);
+        return;
+      }
+      const query = els.query.value.trim();
+      const topK = Number(els.topK.value) || 10;
+      if (!query) return;
+      const started = performance.now();
+      state.lastQuery = query;
+      state.lastResults = search(query, topK);
+      setStatus(`Search finished in ${(performance.now() - started).toFixed(0)} ms`, 100);
+      renderResults();
+      renderMetrics();
+    }
+
+    function judgmentKey(query, docId) {
+      return `${query}\t${docId}`;
+    }
+
+    function loadJudgments() {
+      try {
+        return JSON.parse(localStorage.getItem("qe_search_judgments") || "{}");
+      } catch (err) {
+        return {};
+      }
+    }
+
+    function saveJudgments() {
+      localStorage.setItem("qe_search_judgments", JSON.stringify(state.judgments));
+    }
+
+    function setJudgment(query, hit, grade) {
+      const key = judgmentKey(query, hit.doc_id);
+      if (grade) {
+        state.judgments[key] = {
+          query,
+          doc_id: hit.doc_id,
+          cui: hit.cui,
+          view: hit.view,
+          score: hit.score,
+          grade,
+          labels: hit.labels || []
+        };
+      } else {
+        delete state.judgments[key];
+      }
+      saveJudgments();
+      renderResults();
+      renderMetrics();
+    }
+
+    function gradeWeight(grade) {
+      if (grade === "relevant") return 1;
+      if (grade === "partial") return 0.5;
+      return 0;
+    }
+
+    function resultDoc(hit) {
+      return state.docs.get(hit.doc_id) || {};
+    }
+
+    function resultLabels(hit, doc) {
+      return hit.labels && hit.labels.length ? hit.labels : (doc.labels || []);
+    }
+
+    function renderResults() {
+      if (!state.lastResults.length) {
+        els.results.innerHTML = '<span class="muted">No results yet.</span>';
+        return;
+      }
+      els.results.innerHTML = state.lastResults.map((hit, idx) => {
+        const doc = resultDoc(hit);
+        const labels = resultLabels(hit, doc);
+        const sources = hit.sources && hit.sources.length ? hit.sources : (doc.sources || []);
+        const key = judgmentKey(state.lastQuery, hit.doc_id);
+        const grade = state.judgments[key] && state.judgments[key].grade;
+        const text = doc.text || "";
+        return `
+          <div class="result">
+            <div class="result-head">
+              <div class="rank">${idx + 1}</div>
+              <div>
+                <div class="title">${esc(labels[0] || hit.cui)}</div>
+                <div class="meta">
+                  <span class="mono">${esc(hit.cui)}</span>
+                  <span class="mono">${esc(hit.doc_id)}</span>
+                  ${esc(hit.view || "")}
+                </div>
+              </div>
+              <div class="score">${hit.score.toFixed(4)}</div>
+            </div>
+            <div class="chips">
+              ${labels.slice(0, 8).map((label) => `<span class="chip">${esc(label)}</span>`).join("")}
+              ${sources.map((source) => `<span class="chip">${esc(source)}</span>`).join("")}
+              <span class="chip">${fmtNum(hit.evidence_count || doc.evidence_count || 0)} evidence</span>
+            </div>
+            <div class="snippet">${esc(text ? compactEvidence(text) : "No concept-document text loaded. Load the docs file to inspect evidence.")}</div>
+            <div class="judgments">
+              ${judgmentButton(hit.doc_id, "relevant", "Relevant", grade)}
+              ${judgmentButton(hit.doc_id, "partial", "Partial", grade)}
+              ${judgmentButton(hit.doc_id, "wrong", "Wrong", grade)}
+              <button data-grade="" data-doc="${esc(hit.doc_id)}">Clear</button>
+            </div>
+          </div>`;
+      }).join("");
+
+      els.results.querySelectorAll(".judgments button").forEach((button) => {
+        button.addEventListener("click", () => {
+          const docId = button.getAttribute("data-doc");
+          const hit = state.lastResults.find((item) => item.doc_id === docId);
+          setJudgment(state.lastQuery, hit, button.getAttribute("data-grade"));
+        });
+      });
+    }
+
+    function judgmentButton(docId, grade, label, current) {
+      const active = current === grade ? " active" : "";
+      return `<button class="${active}" data-grade="${grade}" data-doc="${esc(docId)}">${label}</button>`;
+    }
+
+    function compactEvidence(text) {
+      const lines = String(text).split(/\n/);
+      const labelsIndex = lines.findIndex((line) => line.startsWith("Real-world evidence:"));
+      if (labelsIndex >= 0) {
+        return lines.slice(0, 12).join("\n") + "\n" + lines.slice(labelsIndex, labelsIndex + 5).join("\n");
+      }
+      return String(text).slice(0, 1400);
+    }
+
+    function renderMetrics() {
+      const judged = Object.values(state.judgments);
+      const relevant = judged.filter((row) => row.grade === "relevant").length;
+      const partial = judged.filter((row) => row.grade === "partial").length;
+      const wrong = judged.filter((row) => row.grade === "wrong").length;
+      const current = currentQueryMetrics();
+      els.metrics.innerHTML = [
+        metric("Vectors loaded", fmtNum(state.vectors.length), `${fmtNum(state.docs.size)} docs loaded`),
+        metric("Judged results", fmtNum(judged.length), `${relevant} relevant, ${partial} partial, ${wrong} wrong`),
+        metric("Current P@5", current.p5, "Relevant=1, partial=0.5"),
+        metric("Current MRR", current.mrr, "First relevant or partial result")
+      ].join("");
+    }
+
+    function metric(label, value, detail) {
+      return `
+        <div class="metric">
+          <div class="label">${esc(label)}</div>
+          <div class="value">${esc(value)}</div>
+          <div class="muted small">${esc(detail)}</div>
+        </div>`;
+    }
+
+    function currentQueryMetrics() {
+      if (!state.lastResults.length) return { p5: "n/a", mrr: "n/a" };
+      let score5 = 0;
+      let judged5 = 0;
+      let reciprocal = 0;
+      state.lastResults.forEach((hit, idx) => {
+        const grade = state.judgments[judgmentKey(state.lastQuery, hit.doc_id)]?.grade;
+        const weight = gradeWeight(grade);
+        if (idx < 5 && grade) {
+          score5 += weight;
+          judged5 += 1;
+        }
+        if (!reciprocal && weight > 0) reciprocal = 1 / (idx + 1);
+      });
+      return {
+        p5: judged5 ? fmtPct(score5 / 5) : "unjudged",
+        mrr: reciprocal ? reciprocal.toFixed(3) : "unjudged"
+      };
+    }
+
+    function parseQuerySet() {
+      return els.querySet.value
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const parts = line.includes("\t") ? line.split("\t") : line.split(",");
+          return {
+            query: parts[0].trim(),
+            expected: (parts[1] || "").trim()
+          };
+        });
+    }
+
+    async function runQuerySet() {
+      if (!state.vectors.length) {
+        setStatus("Load vectors before running a query set.", 0);
+        return;
+      }
+      const queries = parseQuerySet();
+      const topK = Number(els.topK.value) || 10;
+      state.setRows = [];
+      els.runSetBtn.disabled = true;
+      for (let i = 0; i < queries.length; i += 1) {
+        const item = queries[i];
+        setStatus(`Running ${i + 1}/${queries.length}: ${item.query}`, (i / Math.max(1, queries.length)) * 100);
+        const hits = search(item.query, topK);
+        let expectedRank = "";
+        if (item.expected) {
+          const found = hits.findIndex((hit) => hit.cui === item.expected);
+          expectedRank = found >= 0 ? found + 1 : `>${topK}`;
+        }
+        state.setRows.push({
+          query: item.query,
+          expected: item.expected,
+          expectedRank,
+          topCui: hits[0]?.cui || "",
+          topLabel: resultLabels(hits[0] || {}, resultDoc(hits[0] || {}))[0] || "",
+          topScore: hits[0]?.score || 0,
+          hits
+        });
+        if (i % 2 === 0) await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
+      els.runSetBtn.disabled = false;
+      setStatus(`Ran ${fmtNum(queries.length)} queries`, 100);
+      renderSetResults();
+    }
+
+    function renderSetResults() {
+      if (!state.setRows.length) {
+        els.setResults.innerHTML = '<table><tbody><tr><td class="muted">No query set has been run.</td></tr></tbody></table>';
+        return;
+      }
+      els.setResults.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Query</th>
+              <th>Expected CUI</th>
+              <th>Expected rank</th>
+              <th>Top result</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.setRows.map((row) => `
+              <tr>
+                <td>${esc(row.query)}</td>
+                <td class="mono">${esc(row.expected || "")}</td>
+                <td>${esc(row.expectedRank || "")}</td>
+                <td><span class="mono">${esc(row.topCui)}</span> ${esc(row.topLabel)}</td>
+                <td class="mono">${row.topScore ? row.topScore.toFixed(4) : ""}</td>
+              </tr>`).join("")}
+          </tbody>
+        </table>`;
+    }
+
+    function exportJudgments() {
+      const rows = [["query", "doc_id", "cui", "view", "score", "grade", "labels"]];
+      for (const row of Object.values(state.judgments)) {
+        rows.push([
+          row.query,
+          row.doc_id,
+          row.cui,
+          row.view,
+          row.score,
+          row.grade,
+          (row.labels || []).join("; ")
+        ]);
+      }
+      const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "search_quality_judgments.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function csvCell(value) {
+      return `"${String(value ?? "").replaceAll('"', '""')}"`;
+    }
+
+    function runSelfTest() {
+      const encoder = new TextEncoder();
+      const abc = hex(blake2bDigest(encoder.encode("abc"), 8));
+      const heart = hex(blake2bDigest(encoder.encode("heart"), 8));
+      const ok = abc === "d8bb14d833d59559" && heart === "daef0eae5183fbe2";
+      els.selfTest.textContent = ok ? "Hash self-test passed" : `Hash self-test failed: ${abc} ${heart}`;
+      els.selfTest.style.color = ok ? "var(--green)" : "var(--red)";
+    }
+
+    els.loadBtn.addEventListener("click", loadFiles);
+    els.searchBtn.addEventListener("click", runSearch);
+    els.query.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") runSearch();
+    });
+    document.querySelectorAll(".example").forEach((button) => {
+      button.addEventListener("click", () => {
+        els.query.value = button.getAttribute("data-query");
+        runSearch();
+      });
+    });
+    els.runSetBtn.addEventListener("click", runQuerySet);
+    els.clearJudgmentsBtn.addEventListener("click", () => {
+      state.judgments = {};
+      saveJudgments();
+      renderResults();
+      renderMetrics();
+    });
+    els.exportBtn.addEventListener("click", exportJudgments);
+
+    renderMetrics();
+    runSelfTest();
+  </script>
+</body>
+</html>

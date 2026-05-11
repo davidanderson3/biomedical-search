@@ -1,0 +1,31 @@
+# Seed targets for open-license image enrichment.
+# The builder can also derive targets from concept document shards with --docs and --limit.
+C0018801  heart failure|congestive heart failure
+C0149931  migraine|migraine disorders
+C0075632  sumatriptan|sumatriptan succinate|Imitrex
+C0025598  metformin|Glucophage
+C0011860  type 2 diabetes mellitus|diabetes mellitus type 2
+C0028754  obesity
+C0004238  atrial fibrillation
+C0040053  thrombosis
+C0002871  anemia
+C0001339  acute pancreatitis
+C0032285  pneumonia
+C0038454  stroke|cerebrovascular accident
+C0011849  diabetes mellitus
+C0015967  fever
+C0027497  nausea
+C0004096  asthma
+C0006277  bronchitis
+C0019080  bleeding|hemorrhage
+C0027051  myocardial infarction
+C0007787  transient ischemic attack
+C0009088  cluster headache
+C0013404  dyspnea
+C0085636  photophobia
+C0202691  head CT|computed tomography of head
+C0016860  furosemide|Lasix
+C0042313  vancomycin
+C0286651  atorvastatin|Lipitor
+C0043031  warfarin|Coumadin
+C3885068  semaglutide|Ozempic|Wegovy

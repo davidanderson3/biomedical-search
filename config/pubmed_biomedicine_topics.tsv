@@ -1,0 +1,27 @@
+topic	term	retmax
+cardiovascular	heart failure OR myocardial infarction OR hypertension OR atrial fibrillation OR stroke	500
+oncology	breast cancer OR lung cancer OR colorectal cancer OR lymphoma OR leukemia	500
+endocrinology_metabolism	diabetes mellitus OR obesity OR thyroid disease OR adrenal insufficiency OR osteoporosis	500
+infectious_disease	pneumonia OR sepsis OR tuberculosis OR HIV OR influenza OR COVID-19	500
+neurology	epilepsy OR dementia OR migraine OR Parkinson disease OR multiple sclerosis	500
+psychiatry	depression OR anxiety OR schizophrenia OR bipolar disorder OR substance use disorder	500
+respiratory	asthma OR chronic obstructive pulmonary disease OR pulmonary embolism OR acute respiratory distress syndrome	500
+gastroenterology_hepatology	inflammatory bowel disease OR cirrhosis OR pancreatitis OR hepatitis OR gastrointestinal bleeding	500
+nephrology_urology	chronic kidney disease OR acute kidney injury OR urinary tract infection OR nephrolithiasis OR renal failure	500
+rheumatology_autoimmune	rheumatoid arthritis OR systemic lupus erythematosus OR psoriasis OR gout OR vasculitis	500
+dermatology	melanoma OR eczema OR dermatitis OR acne OR skin ulcer	500
+obstetrics_gynecology	pregnancy OR preeclampsia OR endometriosis OR ovarian cancer OR infertility	500
+pediatrics	childhood asthma OR neonatal sepsis OR congenital heart disease OR autism OR developmental delay	500
+hematology	anemia OR thrombosis OR bleeding OR hemophilia OR sickle cell disease	500
+immunology_allergy	allergy OR anaphylaxis OR immunodeficiency OR vaccine OR transplant rejection	500
+pharmacology_toxicology	adverse drug reaction OR drug interaction OR overdose OR poisoning OR pharmacokinetics	500
+surgery_procedures	appendectomy OR transplant surgery OR catheter ablation OR endoscopy OR biopsy	500
+imaging_diagnostics	magnetic resonance imaging OR computed tomography OR ultrasound OR echocardiography OR radiography	500
+lab_medicine	blood glucose OR troponin OR creatinine OR hemoglobin OR C-reactive protein	500
+microbiology	Staphylococcus aureus OR Escherichia coli OR Pseudomonas aeruginosa OR Candida OR Clostridioides difficile	500
+genetics_genomics	BRCA1 OR cystic fibrosis OR genome sequencing OR polymorphism OR mutation	500
+anatomy_pathology	inflammation OR necrosis OR fibrosis OR edema OR ischemia	500
+nutrition_public_health	diet OR smoking OR alcohol OR exercise OR epidemiology	500
+pain_palliative	chronic pain OR opioid OR palliative care OR analgesia OR hospice	500
+emergency_critical	cardiac arrest OR shock OR trauma OR intensive care OR mechanical ventilation	500
+ophthalmology_ent	glaucoma OR cataract OR hearing loss OR sinusitis OR otitis media	500

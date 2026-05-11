@@ -1,0 +1,4 @@
+query	cui	count	baseline_rank	clicked	note
+a fib	C0004238	12	99	Y	User selected atrial fibrillation after lexical search missed it
+heart flutter	C0004238	3	42	Y	Reviewed query-log mapping
+sugar disease	C0011849	4	35	Y	Patient phrasing mapped to diabetes mellitus

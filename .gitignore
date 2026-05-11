@@ -1,0 +1,28 @@
+.DS_Store
+.zsh_history
+.pytest_cache/
+.pycache_local/
+__pycache__/
+*.py[cod]
+*.sqlite-shm
+*.sqlite-wal
+
+# Generated indexes, evidence corpora, and local source vocabulary drops.
+build/
+data/
+Loinc_2.82/
+SnomedCT_*.zip
+
+# Public rebuild outputs when --out-dir is outside build/.
+pubmed_topics_corpus.jsonl
+europepmc_topics_corpus.jsonl
+pmc_oa_topics_corpus.jsonl
+public_corpus_evidence.jsonl
+public_concept_documents.jsonl
+public_concept_vectors.*.jsonl
+public_docs.sqlite
+reproducibility_manifest*.json
+rebuild_commands.json
+server_command.txt
+paragraph_quality_eval/
+indexes/

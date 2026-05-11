@@ -1,0 +1,91 @@
+{
+  "chunk_id": "pubmed_bulk_recent_baseline",
+  "title": "PubMed bulk recent baseline pilot",
+  "max_minutes_per_step": 10,
+  "scope": "Bulk PubMed baseline ingest. Starts with high-numbered 2026 baseline files, which are generally newer PMID ranges, then moves to full baseline plus ordered daily updates.",
+  "steps": [
+    {
+      "id": "download_recent_baseline",
+      "label": "Download high-numbered PubMed 2026 baseline shard",
+      "artifacts": [
+        {
+          "path": "data/pubmed/baseline/pubmed26n1334.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "data/pubmed/baseline/pubmed26n1334.xml.gz.md5",
+          "kind": "file"
+        },
+        {
+          "path": "build/pubmed_bulk_recent_baseline_manifest.json",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "parse_recent_baseline",
+      "label": "Stream-parse baseline XML into corpus JSONL",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_baseline_corpus.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "link_profiles",
+      "label": "Link bulk corpus through UMLS profile shards",
+      "artifacts": [
+        {
+          "glob": "build/profile_evidence_pubmed_bulk_recent_baseline/*.jsonl",
+          "kind": "jsonl",
+          "min_files": 7,
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "build_docs",
+      "label": "Aggregate bulk evidence into CUI/view documents",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_baseline_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "embed_vectors",
+      "label": "Embed bulk CUI/view documents with SapBERT CLS vectors",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_baseline_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "export_load_elastic",
+      "label": "Export and load bulk pilot vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_pubmed_bulk_recent_baseline_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "quality_review",
+      "label": "Review bulk-pilot search quality before wider baseline ingest",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/pubmed_bulk_recent_baseline/search_quality_judgments.csv",
+          "kind": "file"
+        }
+      ]
+    }
+  ]
+}

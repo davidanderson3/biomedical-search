@@ -1,0 +1,29 @@
+# Ingredient and precise-ingredient CUIs for local drug enrichment.
+# Keep this high-confidence at first; add rows as we identify weak drug concepts.
+C4508938  oliceridine
+C5398276  oliceridine fumarate
+C0025598  metformin|Glucophage
+C0016860  furosemide|frusemide|Lasix
+C0042313  vancomycin|Vancocin
+C0286651  atorvastatin|atorvastatin calcium|Lipitor
+C0043031  warfarin|Coumadin|Jantoven
+C3885068  semaglutide|Ozempic|Wegovy|Rybelsus
+C0075632  sumatriptan|sumatriptan succinate|Imitrex
+C1831808  apixaban|Eliquis
+C0529793  sildenafil|Viagra|Revatio
+C0065374  lisinopril|Prinivil|Zestril
+C0023570  levodopa|L-DOPA|carbidopa levodopa|Sinemet
+C0024002  lorazepam|Ativan
+C0004057  aspirin|acetylsalicylic acid
+C0039286  tamoxifen|Nolvadex
+C0377265  levetiracetam|Keppra
+C0020268  hydrocortisone
+C0002645  amoxicillin|Amoxil
+C0007716  cephalexin|Keflex
+C0007561  ceftriaxone|Rocephin
+C0013090  doxycycline
+C0001927  albuterol|salbutamol|Ventolin|ProAir
+C0025677  methotrexate
+C0081876  pantoprazole|Protonix
+C0040233  timolol
+C0874161  oseltamivir|Tamiflu

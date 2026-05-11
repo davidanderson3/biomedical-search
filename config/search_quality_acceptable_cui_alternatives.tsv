@@ -1,0 +1,55 @@
+expected_cui	acceptable_cui	label	why
+C0086252	C1879316	Transfusion (procedure)	Paragraph says transfusion without specifying red blood cell transfusion; generic transfusion procedure is clinically acceptable.
+C0086252	C0005841	Blood Transfusion	Paragraph says transfusion without specifying red blood cell transfusion; blood transfusion is clinically acceptable.
+C0004096	C0349790	Exacerbation of asthma	For asthma exacerbation paragraphs, the exacerbation concept is more specific and should satisfy the base asthma target.
+C0035473	C0276447	Rhinovirus infection	Paragraph says asthma exacerbation triggered by rhinovirus; rhinovirus infection is clinically acceptable for the organism/trigger target.
+C0035473	C0318467	Human rhinovirus	Human rhinovirus is clinically acceptable for the rhinovirus target.
+C0205758	C0014563	Epinephrine	The paragraph says nebulized epinephrine; base epinephrine is clinically acceptable for racepinephrine/epinephrine expectation.
+C0202691	C0040405	X-Ray Computed Tomography	Generic CT is acceptable when the paragraph says computed tomography of head and no separate head-specific CUI is returned.
+C0032821	C0860866	Potassium low	The DKA paragraph says low potassium; low potassium finding is clinically acceptable for the potassium target.
+C1623258	C0429104	Electrocardiogram T wave	Electrocardiogram T-wave observable is acceptable for ECG wording in hyperkalemia context.
+C1623258	C0239242	T Wave Peaked by ECG Finding	Peaked T waves by ECG is clinically acceptable for ECG wording in hyperkalemia context.
+C0037473	C0337443	Sodium measurement	The hyponatremia paragraph says sodium was monitored; sodium measurement is acceptable for the sodium target.
+C0202230	C0586553	Raised TSH level	Raised TSH level is clinically acceptable when the paragraph says elevated thyroid stimulating hormone.
+C0312452	C5543404	Low free thyroxine	Low free thyroxine is clinically acceptable when the paragraph says low free thyroxine.
+C0002792	C4316895	Anaphylactic shock	Anaphylactic shock is clinically acceptable for anaphylaxis in an acute reaction paragraph.
+C0007642	C0343024	Cellulitis of leg	Cellulitis of leg is more specific and acceptable for a lower-leg cellulitis paragraph.
+C0007642	C0745961	Cellulitis of lower leg	Cellulitis of lower leg is more specific and acceptable for a lower-leg cellulitis paragraph.
+C0000833	C0344096	Drainage of abscess	Drainage of abscess is acceptable when the paragraph has a fluctuant abscess and incision/drainage.
+C0005437	C0311468	Increased bilirubin level	Increased bilirubin level is clinically acceptable when the paragraph says elevated bilirubin.
+C0373670	C0023764	Lipase	Base lipase concept is acceptable when the paragraph says elevated lipase.
+C0016169	C0267561	Perianal fistula	Perianal fistula is more specific and acceptable for Crohn disease with perianal fistula.
+C0018099	C0149896	Primary gout	Primary gout is clinically acceptable for gout flare wording.
+C0018099	C1619733	Gout flare	Gout flare is clinically acceptable for gout flare wording.
+C0018099	C0221168	Podagra	Podagra is clinically acceptable for gout affecting the first metatarsophalangeal joint.
+C0085639	C1561668	History of fall	History of fall is acceptable when the hip-fracture paragraph says after a fall.
+C1297885	C0016642	Fracture Fixation, Internal	Internal fracture fixation is clinically acceptable for ORIF wording.
+C0751295	C0002622	Amnesia	Amnesia/memory loss is acceptable for progressive memory loss wording.
+C0040822	C0234379	Resting Tremor	Resting tremor is more specific and acceptable for Parkinson tremor wording.
+C0010200	C1277295	Cough with fever	Cough with fever is acceptable when influenza wording contains both cough and fever.
+C0015967	C1277295	Cough with fever	Cough with fever is acceptable when influenza wording contains both cough and fever.
+C0578503	C2979982	Vaginal Hemorrhage	Vaginal hemorrhage is clinically acceptable for vaginal bleeding wording.
+C0441510	C0023694	Light Coagulation	Light coagulation is acceptable for laser photocoagulation wording.
+C3805910	C0852952	Optic nerve cupping	Alternate optic nerve cupping CUI is acceptable for the same phrase.
+C0282545	C1276060	Phacoemulsification of lens and insertion of intraocular lens	The combined cataract procedure is acceptable for phacoemulsification wording.
+C0041445	C0423502	Bulging tympanic membrane	Bulging tympanic membrane is acceptable when the paragraph targets tympanic membrane findings.
+C0020461	C5979967	Hyperkalemia (disorder)	Alternate hyperkalemia disorder CUI is acceptable for hyperkalemia wording.
+C0030193	C0278140	Severe pain	Severe pain is acceptable for sickle-cell vaso-occlusive crisis pain wording.
+C0011991	C0401151	Chronic diarrhea	Chronic diarrhea is acceptable when the paragraph says chronic diarrhea.
+C0202239	C0041981	Uric acid level above reference range	Elevated uric acid is clinically acceptable for uric acid measurement wording in the gout paragraph.
+C0039985	C0436503	Standard chest X-ray abnormal	Abnormal chest X-ray finding is clinically acceptable when the paragraph explicitly says abnormal chest X-ray.
+C0430888	C0234708	Raised intraocular pressure	Raised intraocular pressure is clinically acceptable when the paragraph says elevated intraocular pressure.
+C0202230	C0040160	Thyrotropin	The analyte thyrotropin is clinically acceptable when the paragraph says thyroid stimulating hormone and the measurement CUI is also retrieved.
+C0035222	C2887484	Acute respiratory distress syndrome	Alternate acute respiratory distress syndrome CUI is clinically acceptable for ARDS wording.
+C2609414	C0022660	Kidney Failure, Acute	Acute kidney injury can resolve to the older UMLS acute kidney failure concept when that result carries acute kidney injury as a preferred or source label.
+C0022671	C1407119	Transplant present	Transplant recipient/status is clinically acceptable when the paragraph says kidney transplant recipient and the procedure CUI is outside the first page.
+C1541923	C0014121	Bacterial Endocarditis	Bacterial endocarditis is clinically acceptable when it is returned from the explicit infective endocarditis phrase.
+C1285498	C0577871	Mitral valve vegetations	Specific mitral valve vegetation is clinically acceptable for a generic vegetation target in an endocarditis paragraph.
+C0919679	C0312612	Double stranded anti DNA antibody	Antibody concept is clinically acceptable for double stranded DNA antibody wording when the assay CUI is lower ranked.
+C0038891	C0034085	Pulmonary Surfactants	Pulmonary surfactants is clinically acceptable when neonatal respiratory distress wording says surfactant was given.
+C0523807	C0746961	Oxygen saturation below reference range	Low oxygen saturation is clinically acceptable when neonatal respiratory distress wording says low oxygen saturation.
+C0158915	C0015938	Fetal Macrosomia	Fetal macrosomia is the explicit condition named in the gestational diabetes paragraph.
+C0006405	C1169989	buprenorphine / naloxone	The combination product is clinically acceptable when buprenorphine-naloxone is initiated.
+C0027358	C1169989	buprenorphine / naloxone	The combination product is clinically acceptable when buprenorphine-naloxone is initiated.
+C2825032	C0087169	Withdrawal Symptoms	Withdrawal symptoms is clinically acceptable for opioid withdrawal symptoms wording.
+C0019740	C2046362	HLA-B27 Antigen Measurement	HLA-B27 antigen measurement is clinically acceptable when the paragraph says positive HLA-B27.

@@ -1,0 +1,222 @@
+{
+  "concepts": [
+    {
+      "cui": "C4508938",
+      "title": "Oliceridine",
+      "url": "https://en.wikipedia.org/wiki/Oliceridine",
+      "accessed": "2026-05-07",
+      "labels": ["oliceridine", "Oliceridine", "Olinvyk", "TRV-130", "TRV130"],
+      "semantic_type": "Pharmacologic Substance",
+      "summary": "Oliceridine is an intravenous opioid analgesic for adult moderate to severe acute pain in hospital or controlled clinical settings. It is described as a mu-opioid receptor biased agonist. The Wikipedia article summarizes opioid-like adverse effects, respiratory depression risk, gastrointestinal obstruction and severe unmonitored bronchial asthma contraindication contexts, QT interval concerns, and United States Schedule II status.",
+      "evidence": [
+        "Oliceridine is sold as Olinvyk and is used for adult moderate to severe acute pain by intravenous injection.",
+        "The source describes short-term intravenous use in hospitals or other controlled clinical settings rather than home use.",
+        "The pharmacology section describes oliceridine as a mu-opioid receptor biased agonist with G protein signaling and beta-arrestin context.",
+        "The source lists common opioid-like adverse effects including nausea, vomiting, dizziness, headache, constipation, pruritus, and low blood oxygen.",
+        "The source lists contraindication or warning contexts including significant respiratory depression, acute or severe bronchial asthma without monitoring or resuscitation equipment, gastrointestinal obstruction, hypersensitivity, QT interval concerns, and opioid withdrawal risk."
+      ],
+      "relations": [
+        {
+          "cui": "C0184567",
+          "label": "Acute onset pain",
+          "category": "condition",
+          "relation_group": "treatment",
+          "relation": "indicated_for",
+          "rela": "used for adult moderate to severe acute pain"
+        },
+        {
+          "cui": "C0002772",
+          "label": "Analgesics, Opioid",
+          "category": "drug_chemical",
+          "relation_group": "associated",
+          "relation": "has_drug_class",
+          "rela": "opioid analgesic"
+        },
+        {
+          "cui": "C0021494",
+          "label": "Intravenous Injections",
+          "category": "procedure_test",
+          "relation_group": "procedure_or_test",
+          "relation": "route_of_administration",
+          "rela": "intravenous injection"
+        },
+        {
+          "cui": "C0066908",
+          "label": "Receptors, Opioid, mu",
+          "category": "gene_protein",
+          "relation_group": "associated",
+          "relation": "acts_on",
+          "rela": "mu-opioid receptor agonist"
+        },
+        {
+          "cui": "C0287638",
+          "label": "beta-arrestin 2",
+          "category": "gene_protein",
+          "relation_group": "associated",
+          "relation": "pharmacology_context",
+          "rela": "beta-arrestin recruitment context"
+        },
+        {
+          "cui": "C0026549",
+          "label": "morphine",
+          "category": "drug_chemical",
+          "relation_group": "associated",
+          "relation": "clinical_comparator",
+          "rela": "compared with morphine"
+        },
+        {
+          "cui": "C0235063",
+          "label": "Respiratory depression",
+          "category": "phenotype",
+          "relation_group": "safety_or_cause",
+          "relation": "has_warning",
+          "rela": "respiratory depression risk"
+        },
+        {
+          "cui": "C0236124",
+          "label": "Gastrointestinal obstruction",
+          "category": "condition",
+          "relation_group": "safety_or_cause",
+          "relation": "contraindicated_with",
+          "rela": "known or suspected gastrointestinal obstruction"
+        },
+        {
+          "cui": "C0004096",
+          "label": "Asthma",
+          "category": "condition",
+          "relation_group": "safety_or_cause",
+          "relation": "contraindicated_with",
+          "rela": "acute or severe bronchial asthma in unmonitored setting"
+        },
+        {
+          "cui": "C0020517",
+          "label": "Hypersensitivity",
+          "category": "phenotype",
+          "relation_group": "safety_or_cause",
+          "relation": "contraindicated_with",
+          "rela": "known hypersensitivity"
+        },
+        {
+          "cui": "C0151878",
+          "label": "Prolonged QT interval",
+          "category": "phenotype",
+          "relation_group": "safety_or_cause",
+          "relation": "has_warning",
+          "rela": "QT interval prolongation concern"
+        },
+        {
+          "cui": "C0700292",
+          "label": "Hypoxemia",
+          "category": "phenotype",
+          "relation_group": "safety_or_cause",
+          "relation": "has_adverse_effect",
+          "rela": "low blood oxygen"
+        },
+        {
+          "cui": "C0027497",
+          "label": "Nausea",
+          "category": "phenotype",
+          "relation_group": "safety_or_cause",
+          "relation": "has_adverse_effect",
+          "rela": "nausea"
+        },
+        {
+          "cui": "C0042963",
+          "label": "Vomiting",
+          "category": "phenotype",
+          "relation_group": "safety_or_cause",
+          "relation": "has_adverse_effect",
+          "rela": "vomiting"
+        },
+        {
+          "cui": "C0012833",
+          "label": "Dizziness",
+          "category": "phenotype",
+          "relation_group": "safety_or_cause",
+          "relation": "has_adverse_effect",
+          "rela": "dizziness"
+        },
+        {
+          "cui": "C0018681",
+          "label": "Headache",
+          "category": "phenotype",
+          "relation_group": "safety_or_cause",
+          "relation": "has_adverse_effect",
+          "rela": "headache"
+        },
+        {
+          "cui": "C0009806",
+          "label": "Constipation",
+          "category": "phenotype",
+          "relation_group": "safety_or_cause",
+          "relation": "has_adverse_effect",
+          "rela": "constipation"
+        },
+        {
+          "cui": "C0033774",
+          "label": "Pruritus",
+          "category": "phenotype",
+          "relation_group": "safety_or_cause",
+          "relation": "has_adverse_effect",
+          "rela": "pruritus"
+        },
+        {
+          "cui": "C0013146",
+          "label": "Drug abuse",
+          "category": "condition",
+          "relation_group": "safety_or_cause",
+          "relation": "has_warning",
+          "rela": "addiction abuse and misuse warning"
+        },
+        {
+          "cui": "C0029104",
+          "label": "Opioid withdrawal syndrome",
+          "category": "condition",
+          "relation_group": "safety_or_cause",
+          "relation": "has_warning",
+          "rela": "neonatal opioid withdrawal syndrome warning"
+        }
+      ]
+    },
+    {
+      "cui": "C5399358",
+      "title": "Olinvyk",
+      "url": "https://en.wikipedia.org/wiki/Oliceridine",
+      "accessed": "2026-05-07",
+      "labels": ["Olinvyk", "olinvyk", "oliceridine brand name"],
+      "semantic_type": "Pharmacologic Substance",
+      "summary": "Olinvyk is the brand name under which oliceridine is sold. The Wikipedia article ties the brand to intravenous treatment of adult moderate to severe acute pain and to the same opioid safety and pharmacology context.",
+      "evidence": [
+        "Olinvyk is the trade name for oliceridine.",
+        "The source ties Olinvyk to short-term intravenous use for adult moderate to severe acute pain in controlled clinical settings.",
+        "The source describes the same opioid warning and adverse-effect context for Olinvyk as for oliceridine."
+      ],
+      "relations": [
+        {
+          "cui": "C4508938",
+          "label": "oliceridine",
+          "category": "drug_chemical",
+          "relation_group": "associated",
+          "relation": "brand_of",
+          "rela": "brand name for oliceridine"
+        },
+        {
+          "cui": "C0184567",
+          "label": "Acute onset pain",
+          "category": "condition",
+          "relation_group": "treatment",
+          "relation": "indicated_for",
+          "rela": "used for adult moderate to severe acute pain"
+        },
+        {
+          "cui": "C0021494",
+          "label": "Intravenous Injections",
+          "category": "procedure_test",
+          "relation_group": "procedure_or_test",
+          "relation": "route_of_administration",
+          "rela": "intravenous injection"
+        }
+      ]
+    }
+  ]
+}

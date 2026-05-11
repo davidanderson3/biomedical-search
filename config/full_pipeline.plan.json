@@ -1,0 +1,1117 @@
+{
+  "chunk_id": "full_pipeline",
+  "title": "Full biomedical search pipeline",
+  "scope": "End-to-end readiness view. This is not percent coverage of all biomedicine; it tracks pipeline stages and major missing pieces.",
+  "max_minutes_per_step": null,
+  "steps": [
+    {
+      "id": "umls_profile_indexes",
+      "label": "Build UMLS semantic profile, search label, and CUI/code resolver indexes",
+      "why": "Builds the identity layer that lets user strings, CUIs, and source vocabulary codes resolve before semantic search.",
+      "artifacts": [
+        {
+          "glob": "build/profile_indexes/*.sqlite",
+          "kind": "file",
+          "min_files": 7
+        },
+        {
+          "path": "build/umls_biomedicine_search_label_index.sqlite",
+          "kind": "sqlite",
+          "count_table": "labels",
+          "min_rows": 1
+        },
+        {
+          "path": "build/cui_code_index.sqlite",
+          "kind": "sqlite",
+          "count_table": "code_mappings",
+          "min_rows": 1
+        },
+        {
+          "path": "build/umls_semantic_types.sqlite",
+          "kind": "sqlite",
+          "count_table": "semantic_types",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "expanded_literature_corpora",
+      "label": "Harvest expanded PubMed and Europe PMC topic corpora",
+      "artifacts": [
+        {
+          "path": "build/pubmed_biomedicine_expanded_corpus.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        },
+        {
+          "path": "build/europepmc_biomedicine_expanded_corpus.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "expanded_literature_evidence",
+      "label": "Link expanded literature through UMLS profile shards",
+      "artifacts": [
+        {
+          "glob": "build/profile_evidence_literature_expanded/*.jsonl",
+          "kind": "jsonl",
+          "min_files": 7,
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "current_concept_documents",
+      "label": "Build current baseline CUI/view concept documents",
+      "artifacts": [
+        {
+          "path": "build/biomedicine_expanded_literature_mimic_structured_top12_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "chunk_001_sapbert_vectors",
+      "label": "Build Chunk 001 SapBERT CLS vectors",
+      "artifacts": [
+        {
+          "path": "build/scaling_chunk_001_gap_topics_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "search_quality_ui",
+      "label": "Run local search quality and progress dashboards",
+      "artifacts": [
+        {
+          "path": "docs/search_quality_server.html",
+          "kind": "file"
+        },
+        {
+          "path": "docs/scaling_progress.html",
+          "kind": "file"
+        },
+        {
+          "path": "scripts/search_quality_server.py",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "chunk_001_literature_gap_vectors",
+      "label": "Add Chunk 001 literature gap docs and SapBERT vectors",
+      "artifacts": [
+        {
+          "path": "build/scaling_chunk_001_gap_topics_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        },
+        {
+          "path": "build/scaling_chunk_001_gap_topics_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "chunk_001_elastic_export",
+      "label": "Export Chunk 001 vectors to Elasticsearch bulk",
+      "artifacts": [
+        {
+          "path": "build/qe-scaling-chunk-001-gap-topics-sapbert-cls.elastic.mapping.json",
+          "kind": "file"
+        },
+        {
+          "glob": "build/qe-scaling-chunk-001-gap-topics-sapbert-cls.elastic.bulk.part-*.ndjson",
+          "kind": "jsonl",
+          "min_files": 1,
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "quality_judgments",
+      "label": "Collect cumulative search quality judgments",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/pubmed_bulk_recent_baseline/search_quality_judgments.csv",
+          "kind": "file"
+        },
+        {
+          "path": "build/scaling_runs/pubmed_bulk_recent_baseline/search_quality_summary.json",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "elasticsearch_loaded",
+      "label": "Load SapBERT vectors into Elasticsearch for ANN search",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "chunk_002_literature_common_clinical",
+      "label": "Add Chunk 002 common clinical docs and SapBERT vectors",
+      "artifacts": [
+        {
+          "path": "build/scaling_chunk_002_common_clinical_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        },
+        {
+          "path": "build/scaling_chunk_002_common_clinical_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "chunk_002_elastic_export",
+      "label": "Export and load Chunk 002 vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/qe-scaling-chunk-002-common-clinical-sapbert-cls.elastic.mapping.json",
+          "kind": "file"
+        },
+        {
+          "glob": "build/qe-scaling-chunk-002-common-clinical-sapbert-cls.elastic.bulk.part-*.ndjson",
+          "kind": "jsonl",
+          "min_files": 1,
+          "min_rows": 1
+        },
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_chunk_002_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "cumulative_elastic_alias",
+      "label": "Expose loaded SapBERT chunks through a cumulative Elasticsearch alias",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/elasticsearch_alias_scaling_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "mrrel_related_concepts_index",
+      "label": "Build MRREL related-concepts index",
+      "phase": "Search serving",
+      "why": "Adds graph neighbors for /api/related so related concepts come from UMLS relationships as well as evidence-vector similarity.",
+      "effort_weight": 2.0,
+      "artifacts": [
+        {
+          "path": "build/umls_related_concepts.sqlite",
+          "kind": "sqlite",
+          "count_table": "related_concepts",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "mined_relationship_edge_index",
+      "label": "Build mined universal relationship-edge index",
+      "phase": "Search serving",
+      "why": "Makes public aggregate/mined relationship JSONL, such as OHDSI cohort edges and procedure-bundle edges, visible in related semantic views and relationship reranking.",
+      "effort_weight": 1.0,
+      "artifacts": [
+        {
+          "path": "build/relationship_edges.sqlite",
+          "kind": "sqlite",
+          "count_table": "relationship_edges",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "chunk_003_literature_abbreviations",
+      "label": "Add Chunk 003 abbreviation-heavy docs and SapBERT vectors",
+      "artifacts": [
+        {
+          "path": "build/scaling_chunk_003_abbreviation_language_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        },
+        {
+          "path": "build/scaling_chunk_003_abbreviation_language_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "chunk_003_elastic_export",
+      "label": "Export and load Chunk 003 vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/qe-scaling-chunk-003-abbreviation-language-sapbert-cls.elastic.mapping.json",
+          "kind": "file"
+        },
+        {
+          "glob": "build/qe-scaling-chunk-003-abbreviation-language-sapbert-cls.elastic.bulk.part-*.ndjson",
+          "kind": "jsonl",
+          "min_files": 1,
+          "min_rows": 1
+        },
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_chunk_003_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "chunk_004_literature_drug_safety",
+      "label": "Add Chunk 004 drug safety docs and SapBERT vectors",
+      "artifacts": [
+        {
+          "path": "build/scaling_chunk_004_drug_safety_therapeutics_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        },
+        {
+          "path": "build/scaling_chunk_004_drug_safety_therapeutics_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "chunk_004_elastic_export",
+      "label": "Export and load Chunk 004 vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/qe-scaling-chunk-004-drug-safety-therapeutics-sapbert-cls.elastic.mapping.json",
+          "kind": "file"
+        },
+        {
+          "glob": "build/qe-scaling-chunk-004-drug-safety-therapeutics-sapbert-cls.elastic.bulk.part-*.ndjson",
+          "kind": "jsonl",
+          "min_files": 1,
+          "min_rows": 1
+        },
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_chunk_004_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "chunk_005_literature_diagnostics",
+      "label": "Add Chunk 005 diagnostics/procedures/devices docs and SapBERT vectors",
+      "artifacts": [
+        {
+          "path": "build/scaling_chunk_005_diagnostics_procedures_devices_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        },
+        {
+          "path": "build/scaling_chunk_005_diagnostics_procedures_devices_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "chunk_005_elastic_export",
+      "label": "Export and load Chunk 005 vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/qe-scaling-chunk-005-diagnostics-procedures-devices-sapbert-cls.elastic.mapping.json",
+          "kind": "file"
+        },
+        {
+          "glob": "build/qe-scaling-chunk-005-diagnostics-procedures-devices-sapbert-cls.elastic.bulk.part-*.ndjson",
+          "kind": "jsonl",
+          "min_files": 1,
+          "min_rows": 1
+        },
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_chunk_005_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_baseline_download",
+      "label": "Switch to PubMed bulk ingest: download recent 2026 baseline shard",
+      "artifacts": [
+        {
+          "path": "data/pubmed/baseline/pubmed26n1334.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "data/pubmed/baseline/pubmed26n1334.xml.gz.md5",
+          "kind": "file"
+        },
+        {
+          "path": "build/pubmed_bulk_recent_baseline_manifest.json",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_baseline_corpus",
+      "label": "Stream-parse recent 2026 baseline shard into corpus",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_baseline_corpus.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_baseline_evidence",
+      "label": "Link recent baseline shard through UMLS profile shards",
+      "artifacts": [
+        {
+          "glob": "build/profile_evidence_pubmed_bulk_recent_baseline/*.jsonl",
+          "kind": "jsonl",
+          "min_files": 7,
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_baseline_documents",
+      "label": "Aggregate recent baseline evidence into CUI/view documents",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_baseline_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_baseline_vectors",
+      "label": "Embed recent baseline CUI/view documents with SapBERT CLS",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_baseline_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_baseline_elastic",
+      "label": "Load recent baseline vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_pubmed_bulk_recent_baseline_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_baseline_quality_review",
+      "label": "Review recent baseline search quality before full ingest",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/pubmed_bulk_recent_baseline/search_quality_judgments.csv",
+          "kind": "file"
+        },
+        {
+          "path": "build/scaling_runs/pubmed_bulk_recent_baseline/search_quality_summary.json",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_next2_download",
+      "label": "Download PubMed 2026 baseline shards 1333 and 1332",
+      "artifacts": [
+        {
+          "path": "data/pubmed/baseline/pubmed26n1333.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "data/pubmed/baseline/pubmed26n1332.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "build/pubmed_bulk_recent_next2_manifest.json",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_next2_corpus",
+      "label": "Stream-parse shards 1333 and 1332 into corpus",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_next2_corpus.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_next2_evidence",
+      "label": "Link next-two baseline shards through UMLS profile shards",
+      "artifacts": [
+        {
+          "glob": "build/profile_evidence_pubmed_bulk_recent_next2/*.jsonl",
+          "kind": "jsonl",
+          "min_files": 7,
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_next2_documents",
+      "label": "Aggregate next-two evidence into CUI/view documents",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_next2_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_next2_vectors",
+      "label": "Embed next-two CUI/view documents with SapBERT CLS",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_next2_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_next2_elastic",
+      "label": "Load next-two vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_pubmed_bulk_recent_next2_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_next2_quality_review",
+      "label": "Review next-two search quality before more bulk ingest",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/pubmed_bulk_recent_next2/search_quality_judgments.csv",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1331_1330_download",
+      "label": "Download PubMed 2026 baseline shards 1331 and 1330",
+      "artifacts": [
+        {
+          "path": "data/pubmed/baseline/pubmed26n1331.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "data/pubmed/baseline/pubmed26n1330.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "build/pubmed_bulk_recent_1331_1330_manifest.json",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1331_1330_corpus",
+      "label": "Stream-parse shards 1331 and 1330 into corpus",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1331_1330_corpus.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1331_1330_evidence",
+      "label": "Link shards 1331 and 1330 through UMLS profile shards",
+      "artifacts": [
+        {
+          "glob": "build/profile_evidence_pubmed_bulk_recent_1331_1330/*.jsonl",
+          "kind": "jsonl",
+          "min_files": 7,
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1331_1330_documents",
+      "label": "Aggregate shards 1331 and 1330 evidence into CUI/view documents",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1331_1330_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1331_1330_vectors",
+      "label": "Embed shards 1331 and 1330 CUI/view documents with SapBERT CLS",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1331_1330_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1331_1330_elastic",
+      "label": "Load shards 1331 and 1330 vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_pubmed_bulk_recent_1331_1330_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1331_1330_quality_review",
+      "label": "Review shards 1331 and 1330 search quality before more bulk ingest",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/pubmed_bulk_recent_1331_1330/search_quality_judgments.csv",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "indexed_provenance_compact_storage",
+      "label": "Add indexed provenance lookup and compact vector storage before larger PubMed ingest",
+      "status_if_incomplete": "pending",
+      "effort_weight": 8.0,
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/indexed_provenance_compact_storage.marker",
+          "kind": "file"
+        },
+        {
+          "path": "build/search_quality_provenance.sqlite",
+          "kind": "sqlite",
+          "count_table": "provenance",
+          "min_rows": 1
+        },
+        {
+          "glob": "build/compact_vectors/*.manifest.json",
+          "kind": "file",
+          "min_files": 1
+        },
+        {
+          "glob": "build/compact_vectors/*.metadata.jsonl",
+          "kind": "jsonl",
+          "min_files": 1,
+          "min_rows": 1
+        },
+        {
+          "glob": "build/compact_vectors/*.vectors.f32",
+          "kind": "file",
+          "min_files": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1329_1328_download",
+      "label": "Download PubMed 2026 baseline shards 1329 and 1328",
+      "artifacts": [
+        {
+          "path": "data/pubmed/baseline/pubmed26n1329.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "data/pubmed/baseline/pubmed26n1328.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "build/pubmed_bulk_recent_1329_1328_manifest.json",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1329_1328_corpus",
+      "label": "Stream-parse shards 1329 and 1328 into corpus",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1329_1328_corpus.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1329_1328_evidence",
+      "label": "Link shards 1329 and 1328 through UMLS profile shards",
+      "artifacts": [
+        {
+          "glob": "build/profile_evidence_pubmed_bulk_recent_1329_1328/*.jsonl",
+          "kind": "jsonl",
+          "min_files": 7,
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1329_1328_documents",
+      "label": "Aggregate shards 1329 and 1328 evidence into CUI/view documents",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1329_1328_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1329_1328_vectors",
+      "label": "Embed shards 1329 and 1328 CUI/view documents with SapBERT CLS",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1329_1328_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1329_1328_elastic",
+      "label": "Load shards 1329 and 1328 vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_pubmed_bulk_recent_1329_1328_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1329_1328_quality_review",
+      "label": "Review shards 1329 and 1328 search quality before more bulk ingest",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/pubmed_bulk_recent_1329_1328/search_quality_judgments.csv",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1327_1326_download",
+      "label": "Download PubMed 2026 baseline shards 1327 and 1326",
+      "artifacts": [
+        {
+          "path": "data/pubmed/baseline/pubmed26n1327.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "data/pubmed/baseline/pubmed26n1326.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "build/pubmed_bulk_recent_1327_1326_manifest.json",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1327_1326_corpus",
+      "label": "Stream-parse shards 1327 and 1326 into corpus",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1327_1326_corpus.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1327_1326_evidence",
+      "label": "Link shards 1327 and 1326 through UMLS profile shards",
+      "artifacts": [
+        {
+          "glob": "build/profile_evidence_pubmed_bulk_recent_1327_1326/*.jsonl",
+          "kind": "jsonl",
+          "min_files": 7,
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1327_1326_documents",
+      "label": "Aggregate shards 1327 and 1326 evidence into CUI/view documents",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1327_1326_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1327_1326_vectors",
+      "label": "Embed shards 1327 and 1326 CUI/view documents with SapBERT CLS",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1327_1326_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1327_1326_elastic",
+      "label": "Load shards 1327 and 1326 vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_pubmed_bulk_recent_1327_1326_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1327_1326_quality_review",
+      "label": "Review shards 1327 and 1326 search quality before more bulk ingest",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/pubmed_bulk_recent_1327_1326/search_quality_judgments.csv",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1325_1324_download",
+      "label": "Download PubMed 2026 baseline shards 1325 and 1324",
+      "artifacts": [
+        {
+          "path": "data/pubmed/baseline/pubmed26n1325.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "data/pubmed/baseline/pubmed26n1324.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "build/pubmed_bulk_recent_1325_1324_manifest.json",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1325_1324_corpus",
+      "label": "Stream-parse shards 1325 and 1324 into corpus",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1325_1324_corpus.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1325_1324_evidence",
+      "label": "Link shards 1325 and 1324 through UMLS profile shards",
+      "artifacts": [
+        {
+          "glob": "build/profile_evidence_pubmed_bulk_recent_1325_1324/*.jsonl",
+          "kind": "jsonl",
+          "min_files": 7,
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1325_1324_documents",
+      "label": "Aggregate shards 1325 and 1324 evidence into CUI/view documents",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1325_1324_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1325_1324_vectors",
+      "label": "Embed shards 1325 and 1324 CUI/view documents with SapBERT CLS",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1325_1324_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1325_1324_elastic",
+      "label": "Load shards 1325 and 1324 vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_pubmed_bulk_recent_1325_1324_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1325_1324_quality_review",
+      "label": "Review shards 1325 and 1324 search quality before more bulk ingest",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/pubmed_bulk_recent_1325_1324/search_quality_judgments.csv",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1323_1322_download",
+      "label": "Download PubMed 2026 baseline shards 1323 and 1322",
+      "artifacts": [
+        {
+          "path": "data/pubmed/baseline/pubmed26n1323.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "data/pubmed/baseline/pubmed26n1322.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "build/pubmed_bulk_recent_1323_1322_manifest.json",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1323_1322_corpus",
+      "label": "Stream-parse shards 1323 and 1322 into corpus",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1323_1322_corpus.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1323_1322_evidence",
+      "label": "Link shards 1323 and 1322 through UMLS profile shards",
+      "artifacts": [
+        {
+          "glob": "build/profile_evidence_pubmed_bulk_recent_1323_1322/*.jsonl",
+          "kind": "jsonl",
+          "min_files": 7,
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1323_1322_documents",
+      "label": "Aggregate shards 1323 and 1322 evidence into CUI/view documents",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1323_1322_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1323_1322_vectors",
+      "label": "Embed shards 1323 and 1322 CUI/view documents with SapBERT CLS",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1323_1322_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1323_1322_elastic",
+      "label": "Load shards 1323 and 1322 vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_pubmed_bulk_recent_1323_1322_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1323_1322_quality_review",
+      "label": "Review shards 1323 and 1322 search quality before more bulk ingest",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/pubmed_bulk_recent_1323_1322/search_quality_judgments.csv",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1321_1320_download",
+      "label": "Download PubMed 2026 baseline shards 1321 and 1320",
+      "artifacts": [
+        {
+          "path": "data/pubmed/baseline/pubmed26n1321.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "data/pubmed/baseline/pubmed26n1320.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "build/pubmed_bulk_recent_1321_1320_manifest.json",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1321_1320_corpus",
+      "label": "Stream-parse shards 1321 and 1320 into corpus",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1321_1320_corpus.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1321_1320_evidence",
+      "label": "Link shards 1321 and 1320 through UMLS profile shards",
+      "artifacts": [
+        {
+          "glob": "build/profile_evidence_pubmed_bulk_recent_1321_1320/*.jsonl",
+          "kind": "jsonl",
+          "min_files": 7,
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1321_1320_documents",
+      "label": "Aggregate shards 1321 and 1320 evidence into CUI/view documents",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1321_1320_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1321_1320_vectors",
+      "label": "Embed shards 1321 and 1320 CUI/view documents with SapBERT CLS",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1321_1320_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1321_1320_elastic_export",
+      "label": "Export shards 1321 and 1320 vectors for Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/qe-scaling-pubmed-bulk-recent-1321-1320-sapbert-cls.elastic.mapping.json",
+          "kind": "file"
+        },
+        {
+          "glob": "build/qe-scaling-pubmed-bulk-recent-1321-1320-sapbert-cls.elastic.bulk.part-*.ndjson",
+          "kind": "file",
+          "min_files": 1
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1321_1320_elastic",
+      "label": "Load shards 1321 and 1320 vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_pubmed_bulk_recent_1321_1320_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "pubmed_bulk_recent_1321_1320_quality_review",
+      "label": "Review shards 1321 and 1320 search quality before more bulk ingest",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/pubmed_bulk_recent_1321_1320/search_quality_judgments.csv",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "full_pubmed_bulk_ingest",
+      "label": "Full PubMed baseline/update bulk ingest",
+      "status_if_incomplete": "planned",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/full_pubmed_ingest.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "full_mimic_available",
+      "label": "Full MIMIC data available locally",
+      "status_if_incomplete": "paused",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/full_mimic_available.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "full_mimic_ingest",
+      "label": "Full MIMIC ingest and linking",
+      "status_if_incomplete": "paused",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/full_mimic_ingest.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "semantic_embeddings",
+      "label": "Full semantic embedding pass for changed CUI/view docs",
+      "status_if_incomplete": "planned",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/full_semantic_embeddings.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "incremental_manifests",
+      "label": "Incremental manifests, skip/resume, and changed-doc re-embedding",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/incremental_manifests.marker",
+          "kind": "file"
+        }
+      ]
+    }
+  ]
+}

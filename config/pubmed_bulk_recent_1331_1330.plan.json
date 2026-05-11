@@ -1,0 +1,103 @@
+{
+  "chunk_id": "pubmed_bulk_recent_1331_1330",
+  "title": "PubMed bulk recent shards 1331 and 1330",
+  "max_minutes_per_step": 10,
+  "scope": "Third bounded PubMed bulk ingest pilot. Adds high-numbered 2026 baseline files pubmed26n1331 and pubmed26n1330 after the reviewed next-two pilot.",
+  "steps": [
+    {
+      "id": "download_recent_1331_1330",
+      "label": "Download PubMed 2026 baseline shards 1331 and 1330",
+      "artifacts": [
+        {
+          "path": "data/pubmed/baseline/pubmed26n1331.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "data/pubmed/baseline/pubmed26n1331.xml.gz.md5",
+          "kind": "file"
+        },
+        {
+          "path": "data/pubmed/baseline/pubmed26n1330.xml.gz",
+          "kind": "file"
+        },
+        {
+          "path": "data/pubmed/baseline/pubmed26n1330.xml.gz.md5",
+          "kind": "file"
+        },
+        {
+          "path": "build/pubmed_bulk_recent_1331_1330_manifest.json",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "parse_recent_1331_1330",
+      "label": "Stream-parse shards 1331 and 1330 into corpus JSONL",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1331_1330_corpus.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "link_profiles",
+      "label": "Link shards 1331 and 1330 through UMLS profile shards",
+      "artifacts": [
+        {
+          "glob": "build/profile_evidence_pubmed_bulk_recent_1331_1330/*.jsonl",
+          "kind": "jsonl",
+          "min_files": 7,
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "build_docs",
+      "label": "Aggregate shards 1331 and 1330 evidence into CUI/view documents",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1331_1330_concept_documents.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        },
+        {
+          "path": "build/pubmed_bulk_recent_1331_1330_docs.sqlite",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "embed_vectors",
+      "label": "Embed shards 1331 and 1330 CUI/view documents with SapBERT CLS vectors",
+      "artifacts": [
+        {
+          "path": "build/pubmed_bulk_recent_1331_1330_concept_vectors.sapbert_cls.jsonl",
+          "kind": "jsonl",
+          "min_rows": 1
+        }
+      ]
+    },
+    {
+      "id": "export_load_elastic",
+      "label": "Export and load shards 1331 and 1330 vectors into Elasticsearch",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/elasticsearch_loaded_pubmed_bulk_recent_1331_1330_sapbert_cls.marker",
+          "kind": "file"
+        }
+      ]
+    },
+    {
+      "id": "quality_review",
+      "label": "Review shards 1331 and 1330 search quality before wider bulk ingest",
+      "artifacts": [
+        {
+          "path": "build/scaling_runs/pubmed_bulk_recent_1331_1330/search_quality_judgments.csv",
+          "kind": "file"
+        }
+      ]
+    }
+  ]
+}

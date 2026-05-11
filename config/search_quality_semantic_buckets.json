@@ -1,0 +1,103 @@
+[
+  {
+    "key": "DISO_DISEASE",
+    "label": "Diseases & Syndromes",
+    "code": "DISO",
+    "semanticTypes": [
+      "acquired abnormality",
+      "anatomical abnormality",
+      "cell or molecular dysfunction",
+      "congenital abnormality",
+      "disease or syndrome",
+      "experimental model of disease",
+      "injury or poisoning",
+      "mental or behavioral dysfunction",
+      "neoplastic process",
+      "pathologic function"
+    ]
+  },
+  {
+    "key": "DISO_FINDING",
+    "label": "Findings & Symptoms",
+    "code": "FIND",
+    "semanticTypes": [
+      "finding",
+      "sign or symptom"
+    ]
+  },
+  {
+    "key": "CHEM",
+    "label": "Drugs",
+    "code": "CHEM",
+    "codes": ["CHEM"]
+  },
+  {
+    "key": "PROC",
+    "label": "Procedures",
+    "code": "PROC",
+    "codes": ["PROC"]
+  },
+  {
+    "key": "CLIN_ATTR",
+    "label": "Observations & Lab Results",
+    "code": "OBS",
+    "codes": ["OBS"],
+    "semanticTypes": [
+      "clinical attribute",
+      "laboratory procedure",
+      "laboratory or test result"
+    ]
+  },
+  {
+    "key": "GENE",
+    "label": "Genes, Amino Acids, Peptides, Proteins",
+    "code": "GENE",
+    "codes": ["GENE"],
+    "semanticTypes": [
+      "amino acid sequence",
+      "amino acid, peptide, or protein",
+      "gene or genome",
+      "nucleic acid, nucleoside, or nucleotide",
+      "nucleotide sequence"
+    ]
+  },
+  {
+    "key": "DEVI",
+    "label": "Devices",
+    "code": "DEVI",
+    "codes": ["DEVI"]
+  },
+  {
+    "key": "ORGANISM",
+    "label": "Organisms",
+    "code": "LIVB",
+    "semanticTypes": [
+      "alga",
+      "archaeon",
+      "bacterium",
+      "fungus",
+      "rickettsia or chlamydia",
+      "virus"
+    ]
+  },
+  {
+    "key": "PEOPLE",
+    "label": "People & Populations",
+    "code": "LIVB",
+    "semanticTypes": [
+      "age group",
+      "family group",
+      "group",
+      "human",
+      "patient or disabled group",
+      "population group",
+      "professional or occupational group"
+    ]
+  },
+  {
+    "key": "ANAT",
+    "label": "Anatomy",
+    "code": "ANAT",
+    "codes": ["ANAT"]
+  }
+]

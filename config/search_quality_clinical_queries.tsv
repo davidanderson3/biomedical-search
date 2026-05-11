@@ -1,0 +1,11 @@
+id	query	expected_cuis	why
+chest_exertion	Patient reports intermittent chest pain worsening with exertion over past week	C0232288	The phrase is asking for the more specific exertional chest pain concept, not just chest pain.
+vitals_stable	No evidence of acute distress vital signs stable and within normal limits	C0518766|C0442807	The user likely wants observed vital-sign/normal-limit concepts rather than the act of taking vitals.
+history_risk	History significant for hypertension diabetes mellitus and prior myocardial infarction	C0020538|C0011849|C0027051	Multi-condition history should return the major condition CUIs as separate strong candidates.
+right_lower_quadrant	Physical examination reveals mild tenderness in lower right abdominal quadrant	C0694551	Right lower quadrant pain/tenderness is the clinically specific target.
+denies_weight_loss	Denies nausea vomiting fever chills or recent unintentional weight loss	C4528142	A denial query should not rank unintentional weight loss ahead of no weight loss.
+medication_adherence	Medication adherence inconsistent patient unable to recall current prescriptions accurately	C0746935	The target is medication nonadherence/noncompliance, not generic medication terms.
+possible_infection	Imaging studies suggest possible infection requiring further diagnostic evaluation and follow up	C3714514	Infection as a disease/finding should beat broader synonym-only disease buckets.
+antibiotics_followup	Plan includes initiating antibiotics monitoring symptoms and scheduling follow up visit	C0003232	Plan text should surface antibiotics and follow-up concepts without generic scheduling dominating.
+neuro_normal	Neurological exam normal cranial nerves intact no focal deficits observed	C3266627	Normal cranial nerve findings should be visible for this exam sentence.
+hydration_return	Patient advised to maintain hydration rest and return if symptoms worsen	C1321013	Hydration should beat generic charting fragments such as patient advised to.

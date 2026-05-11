@@ -1,0 +1,54 @@
+id	cui	label	why
+paragraph_01	C0235886	Leg edema	Explicit sign in the heart failure paragraph; useful even though core expected set focuses on HFrEF and bibasilar crackles.
+paragraph_03	C0003232	Antibiotics	Explicit therapeutic class in diabetic foot osteomyelitis paragraph.
+paragraph_04	C0036572	Seizures	Explicit seizure concept in EEG paragraph, separate from tonic-clonic subtype.
+paragraph_07	C0242231	Coronary Stenosis	Explicit coronary stenosis phrase in NSTEMI paragraph.
+paragraph_10	C0745442	Intravenous Catheters	Relevant device family for central venous catheter placement paragraph.
+paragraph_12	C4049342	Osteomyelitis of foot	More specific osteomyelitis result from diabetic foot osteomyelitis paragraph.
+paragraph_14	C0184633	Oxygen Therapy Care	Explicit oxygen therapy treatment in pneumonia paragraph.
+paragraph_15	C0034804	Estrogen Receptors	Explicit receptor concept in breast carcinoma paragraph.
+paragraph_17	C0341164	Bleeding gastric ulcer	Specific ulcer concept explicitly stated in GI bleeding paragraph.
+paragraph_19	C0343401	Methicillin resistant Staphylococcus aureus infection	Clinically useful infection concept from MRSA growth in blood cultures.
+paragraph_19	C0036974	Shock	Shock is a relevant component of septic shock wording.
+paragraph_20	C0859927	Increased work of breathing	Explicit respiratory finding in pediatric asthma paragraph.
+paragraph_23	C0020538	Hypertensive disease	Hypertension is explicitly present, though severe hypertension remains the core expected concept.
+paragraph_28	C3665472	Chemotherapy	Explicit platinum chemotherapy treatment concept in oncology trial paragraph.
+paragraph_34	C0748243	rapid ventricular response	Explicit atrial fibrillation qualifier/finding.
+paragraph_35	C0018681	Headache	Explicit migraine symptom.
+paragraph_26	C1707737	Diaphoretic	Explicit autonomic symptom in severe hypoglycemia paragraph.
+paragraph_40	C0429103	T wave feature	Useful ECG feature concept for peaked T waves in hyperkalemia paragraph.
+paragraph_40	C0037473	sodium	Sodium is explicitly present in sodium zirconium cyclosilicate in the hyperkalemia paragraph.
+paragraph_43	C0413120	Bee sting	Explicit trigger/exposure for anaphylaxis paragraph.
+paragraph_45	C0231240	Fluctuant	Explicit abscess descriptor in cellulitis paragraph.
+paragraph_48	C0030305	Pancreatitis	Base pancreatitis concept is useful beside acute pancreatitis.
+paragraph_53	C0262431	Compression fracture of vertebral column	Specific fracture concept explicitly stated in osteoporosis paragraph.
+paragraph_67	C0234632	Reduced visual acuity	Explicit ophthalmology finding.
+paragraph_71	C0002645	amoxicillin	Ingredient-level roll-up from amoxicillin-clavulanate paragraph.
+paragraph_73	C5395033	Severe aortic valve stenosis	More specific aortic stenosis concept explicitly stated.
+paragraph_83	C0040460	Toothache	Explicit symptom in dental abscess paragraph.
+paragraph_84	C0443275	Partial thickness	Explicit burn-depth qualifier in burn paragraph.
+paragraph_89	C0085096	Peripheral Vascular Diseases	Broad but clinically relevant result for peripheral arterial disease wording.
+paragraph_89	C0021775	Intermittent Claudication	Useful claudication concept from exertional calf claudication wording.
+paragraph_90	C0349208	Manic Episode	Explicit episode concept in bipolar disorder paragraph.
+paragraph_91	C0262463	Blood lead level above reference range	Specific elevated blood lead concept in lead poisoning paragraph.
+paragraph_92	C0018768	Hearing Aids	Explicit device concept in audiology paragraph.
+paragraph_92	C1842138	Progressive hearing loss	Specific finding explicitly stated in audiology paragraph.
+paragraph_85	C0205271	Irregular	Explicit lesion descriptor in melanoma paragraph.
+paragraph_36	C5203396	Suicidal ideation	Explicit psychiatric finding in depression paragraph; semantic type is awkward but concept is useful.
+paragraph_93	C0027540	Necrosis	Explicit tissue state in pressure ulcer paragraph.
+paragraph_93	C1272654	Wound care management	Useful care context in pressure ulcer paragraph.
+paragraph_94	C0040210	Tidal Volume	Explicit ventilator setting concept in ARDS paragraph.
+paragraph_96	C0404484	Chronic pelvic pain of female	Specific pelvic pain concept in gynecology paragraph.
+paragraph_96	C0030794	Pelvic Pain	Base pelvic pain concept is useful beside chronic pelvic pain.
+paragraph_98	C0376705	Viral Load result	Explicit viral load observation in BK virus nephropathy paragraph.
+paragraph_100	C0005824	Blood pressure determination	Useful measurement concept for severe range blood pressure paragraph.
+paragraph_101	C0014118	Endocarditis	Base endocarditis concept is useful beside infective endocarditis.
+paragraph_102	C0086511	Knee Replacement Arthroplasty	Relevant prior procedure/device context in prosthetic joint infection paragraph.
+paragraph_102	C0231749	Knee pain	Explicit symptom in prosthetic joint infection paragraph.
+paragraph_08	C0225808	Right side of heart	Explicit anatomy in right heart strain wording; useful for anatomy coverage beside pulmonary embolus.
+paragraph_65	C0232856	Rate of urine output, function	Useful observation concept for post void residual urine volume wording.
+paragraph_111	C0017741	Glucose tolerance test	Broader glucose tolerance test concept is useful beside the oral glucose tolerance test concept in gestational diabetes paragraphs.
+paragraph_113	C0194073	Kidney biopsy	Useful specific procedure concept when the paragraph says renal biopsy for glomerulonephritis.
+paragraph_115	C0004604	Back Pain	Explicit inflammatory back pain finding in ankylosing spondylitis paragraph.
+paragraph_115	C1415561	HLA-B gene	Gene-level HLA-B result is useful when the paragraph says positive HLA-B27, though the antigen measurement CUI is preferred.
+paragraph_116	C6025453	Progressive pulmonary fibrosis	Specific progressive pulmonary fibrosis concept is useful beside interstitial lung disease and pulmonary fibrosis.

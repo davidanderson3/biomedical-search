@@ -1,0 +1,13 @@
+topic	term	retmax
+cardiology_abbrev	HFrEF OR HFpEF OR NSTEMI OR STEMI OR AFib OR atrial fibrillation	150
+pulmonary_abbrev	COPD OR ARDS OR obstructive sleep apnea OR pulmonary embolism OR PE	150
+endocrine_abbrev	DKA OR HHS OR T1DM OR T2DM OR HbA1c OR diabetes	150
+renal_abbrev	CKD OR ESRD OR AKI OR eGFR OR albuminuria	150
+neurology_abbrev	TIA OR multiple sclerosis OR ALS OR mild cognitive impairment OR Alzheimer disease	150
+rheumatology_abbrev	RA OR rheumatoid arthritis OR SLE OR systemic lupus erythematosus OR ANCA vasculitis	150
+oncology_abbrev	NSCLC OR SCLC OR AML OR ALL OR CLL OR DLBCL	150
+infectious_abbrev	UTI OR VAP OR CLABSI OR CAUTI OR HIV OR HCV	150
+imaging_abbrev	CT imaging OR MRI OR PET CT OR TTE OR TEE echocardiography	150
+obstetric_abbrev	GDM OR gestational diabetes OR IUGR OR PPROM OR IVF	150
+pharmacology_abbrev	DOAC OR SSRI OR SGLT2 inhibitor OR GLP-1 receptor agonist OR ACE inhibitor	150
+procedure_abbrev	PCI OR CABG OR TAVR OR LVAD OR ECMO	150

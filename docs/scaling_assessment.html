@@ -1,0 +1,1249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UMLS Semantic Evidence Scaling Assessment</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #5b6673;
+      --line: #d7dde5;
+      --blue: #2563eb;
+      --teal: #0f766e;
+      --amber: #b45309;
+      --red: #b91c1c;
+      --green: #166534;
+      --code: #eef2f7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .wrap {
+      width: min(1440px, calc(100vw - 32px));
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 20px 0;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 22px;
+    }
+
+    h2 {
+      font-size: 16px;
+      margin-bottom: 14px;
+    }
+
+    h3 {
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .subhead {
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    main {
+      padding: 18px 0 36px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .file-grid {
+      grid-template-columns: repeat(5, minmax(160px, 1fr));
+    }
+
+    .metric-grid {
+      grid-template-columns: repeat(4, minmax(180px, 1fr));
+    }
+
+    .two-col {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .input-grid {
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      align-items: end;
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      margin-bottom: 6px;
+    }
+
+    input[type="file"],
+    input[type="number"],
+    input[type="text"],
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 9px 10px;
+      min-height: 38px;
+      font: inherit;
+    }
+
+    input[type="file"] {
+      padding: 7px 8px;
+      color: var(--muted);
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 9px 12px;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+      min-height: 38px;
+    }
+
+    button.primary {
+      background: var(--blue);
+      color: #fff;
+      border-color: var(--blue);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 92px;
+      background: #fff;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      margin-bottom: 6px;
+    }
+
+    .metric .value {
+      font-size: 24px;
+      font-weight: 750;
+      line-height: 1.1;
+      overflow-wrap: anywhere;
+    }
+
+    .metric .detail {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 6px;
+    }
+
+    .check {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      gap: 10px;
+      border-top: 1px solid var(--line);
+      padding: 10px 0;
+      align-items: start;
+    }
+
+    .check:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .badge {
+      display: inline-block;
+      min-width: 70px;
+      text-align: center;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .pass {
+      color: var(--green);
+      background: #dcfce7;
+    }
+
+    .warn {
+      color: var(--amber);
+      background: #fef3c7;
+    }
+
+    .fail {
+      color: var(--red);
+      background: #fee2e2;
+    }
+
+    .info {
+      color: #1d4ed8;
+      background: #dbeafe;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .small {
+      font-size: 12px;
+    }
+
+    .progress {
+      height: 8px;
+      background: #e8edf4;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .progress > div {
+      height: 100%;
+      width: 0;
+      background: var(--teal);
+      transition: width 120ms linear;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: minmax(120px, 220px) minmax(0, 1fr) 78px;
+      gap: 10px;
+      align-items: center;
+      padding: 6px 0;
+      border-top: 1px solid #edf0f4;
+    }
+
+    .bar-row:first-child {
+      border-top: 0;
+    }
+
+    .bar-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+    }
+
+    .bar-track {
+      height: 12px;
+      background: #e8edf4;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background: var(--teal);
+      min-width: 2px;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+      background: #fff;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid #edf0f4;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      background: #f8fafc;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    code,
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      background: var(--code);
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+
+    .summary {
+      width: 100%;
+      min-height: 160px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      resize: vertical;
+      color: var(--ink);
+      background: #fbfcfe;
+    }
+
+    @media (max-width: 1100px) {
+      .file-grid,
+      .metric-grid,
+      .input-grid,
+      .two-col {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .wrap {
+        width: min(100vw - 20px, 1440px);
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .file-grid,
+      .metric-grid,
+      .input-grid,
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+
+      .check {
+        grid-template-columns: 1fr;
+      }
+
+      .bar-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap topbar">
+      <div>
+        <h1>UMLS Semantic Evidence Scaling Assessment</h1>
+        <div class="subhead">Local artifact checks and runtime projections for the successor UMLS semantic evidence index.</div>
+      </div>
+      <div class="small muted">Open directly from disk. Data stays in this browser tab.</div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel">
+      <h2>Artifacts</h2>
+      <div class="grid file-grid">
+        <div>
+          <label for="docsFile">Concept documents JSONL</label>
+          <input id="docsFile" type="file" accept=".jsonl,.json,.txt">
+        </div>
+        <div>
+          <label for="vectorsFile">Vector JSONL</label>
+          <input id="vectorsFile" type="file" accept=".jsonl,.json,.txt">
+        </div>
+        <div>
+          <label for="bulkFiles">Elasticsearch bulk parts</label>
+          <input id="bulkFiles" type="file" accept=".ndjson,.jsonl,.txt" multiple>
+        </div>
+        <div>
+          <label for="evidenceFiles">Evidence JSONL files</label>
+          <input id="evidenceFiles" type="file" accept=".jsonl,.json,.txt" multiple>
+        </div>
+        <div>
+          <label for="corpusFiles">Corpus JSONL files</label>
+          <input id="corpusFiles" type="file" accept=".jsonl,.json,.txt" multiple>
+        </div>
+      </div>
+      <div class="grid input-grid" style="margin-top: 12px;">
+        <div>
+          <label for="maxLines">Max parsed lines per artifact type</label>
+          <input id="maxLines" type="number" min="0" step="1000" value="0">
+        </div>
+        <div>
+          <label for="setCap">Doc/CUI set cap</label>
+          <input id="setCap" type="number" min="10000" step="10000" value="500000">
+        </div>
+        <div>
+          <label for="normEvery">Vector norm sample interval</label>
+          <input id="normEvery" type="number" min="1" step="1" value="10">
+        </div>
+        <div>
+          <label for="expectedProfiles">Semantic profile count</label>
+          <input id="expectedProfiles" type="number" min="1" step="1" value="7">
+        </div>
+      </div>
+      <div class="actions">
+        <button id="analyzeBtn" class="primary">Analyze selected files</button>
+        <button id="resetBtn">Clear</button>
+        <span id="runStatus" class="muted small">Idle</span>
+      </div>
+      <div class="progress" aria-hidden="true"><div id="progressBar"></div></div>
+    </section>
+
+    <section class="panel">
+      <h2>Snapshot</h2>
+      <div id="metrics" class="grid metric-grid"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Integrity Checks</h2>
+      <div id="checks"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Scale Projection</h2>
+      <div class="grid input-grid">
+        <div>
+          <label for="pubmedRecords">PubMed citation records</label>
+          <input id="pubmedRecords" type="number" min="0" step="1000000" value="40000000">
+        </div>
+        <div>
+          <label for="mimicNotes">MIMIC-IV-Note rows</label>
+          <input id="mimicNotes" type="number" min="0" step="100000" value="2653149">
+        </div>
+        <div>
+          <label for="projectedDocs">Projected CUI/view docs</label>
+          <input id="projectedDocs" type="number" min="0" step="10000" value="1000000">
+        </div>
+        <div>
+          <label for="linkRate">Link scan rate, record-profile/sec</label>
+          <input id="linkRate" type="number" min="1" step="100" value="1400">
+        </div>
+        <div>
+          <label for="optimizedLinkRate">Optimized link rate, record-profile/sec</label>
+          <input id="optimizedLinkRate" type="number" min="1" step="100" value="5000">
+        </div>
+        <div>
+          <label for="hashRate">Hashing embed docs/sec</label>
+          <input id="hashRate" type="number" min="1" step="50" value="400">
+        </div>
+        <div>
+          <label for="semanticCpuRate">Transformer CPU docs/sec</label>
+          <input id="semanticCpuRate" type="number" min="0.1" step="0.5" value="3">
+        </div>
+        <div>
+          <label for="semanticGpuRate">Transformer GPU docs/sec</label>
+          <input id="semanticGpuRate" type="number" min="0.1" step="1" value="40">
+        </div>
+      </div>
+      <div class="actions">
+        <button id="projectionBtn">Recalculate projection</button>
+        <button id="useLoadedDocsBtn">Use loaded doc count</button>
+      </div>
+      <div id="projection"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Coverage</h2>
+      <div class="grid two-col">
+        <div>
+          <h3>Sources</h3>
+          <div id="sourceBars"></div>
+        </div>
+        <div>
+          <h3>Views and evidence types</h3>
+          <div id="viewBars"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Sample Records</h2>
+      <div id="samples" class="table-wrap"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Assessment Summary</h2>
+      <textarea id="summary" class="summary" readonly></textarea>
+      <div class="actions">
+        <button id="copySummaryBtn">Copy summary</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const state = {};
+    const els = {};
+
+    function initEls() {
+      [
+        "docsFile", "vectorsFile", "bulkFiles", "evidenceFiles", "corpusFiles",
+        "maxLines", "setCap", "normEvery", "expectedProfiles", "analyzeBtn",
+        "resetBtn", "runStatus", "progressBar", "metrics", "checks",
+        "pubmedRecords", "mimicNotes", "projectedDocs", "linkRate",
+        "optimizedLinkRate", "hashRate", "semanticCpuRate", "semanticGpuRate",
+        "projectionBtn", "useLoadedDocsBtn", "projection", "sourceBars",
+        "viewBars", "samples", "summary", "copySummaryBtn"
+      ].forEach((id) => els[id] = document.getElementById(id));
+    }
+
+    function newStats(type) {
+      return {
+        type,
+        files: [],
+        bytes: 0,
+        rows: 0,
+        lines: 0,
+        parseErrors: 0,
+        truncated: false,
+        duplicateDocIds: 0,
+        duplicateCuis: 0,
+        cappedSets: false,
+        docIds: new Set(),
+        cuis: new Set(),
+        seenCuis: new Set(),
+        views: new Map(),
+        sources: new Map(),
+        evidenceTypes: new Map(),
+        providers: new Map(),
+        models: new Map(),
+        dims: new Map(),
+        indexNames: new Map(),
+        emptyText: 0,
+        missingText: 0,
+        missingLabels: 0,
+        evidenceSum: 0,
+        weights: [],
+        textLengths: [],
+        vectorNorms: [],
+        drgSourceRows: 0,
+        bulkActionLines: 0,
+        bulkSourceLines: 0,
+        bulkBadPairs: 0,
+        samples: []
+      };
+    }
+
+    function resetState() {
+      state.docs = newStats("docs");
+      state.vectors = newStats("vectors");
+      state.bulk = newStats("bulk");
+      state.evidence = newStats("evidence");
+      state.corpus = newStats("corpus");
+      state.startedAt = null;
+      state.finishedAt = null;
+      state.checks = [];
+    }
+
+    function fmtNum(value) {
+      if (!Number.isFinite(value)) return "0";
+      return Math.round(value).toLocaleString();
+    }
+
+    function fmtPct(value) {
+      if (!Number.isFinite(value)) return "0%";
+      return `${(value * 100).toFixed(value < 0.01 && value > 0 ? 2 : 1)}%`;
+    }
+
+    function fmtBytes(bytes) {
+      if (!bytes) return "0 B";
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let size = bytes;
+      let idx = 0;
+      while (size >= 1024 && idx < units.length - 1) {
+        size /= 1024;
+        idx += 1;
+      }
+      return `${size >= 10 || idx === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[idx]}`;
+    }
+
+    function fmtDuration(hours) {
+      if (!Number.isFinite(hours) || hours < 0) return "n/a";
+      if (hours < 1 / 60) return `${Math.round(hours * 3600)} sec`;
+      if (hours < 1) return `${Math.round(hours * 60)} min`;
+      if (hours < 48) return `${hours.toFixed(hours < 10 ? 1 : 0)} hr`;
+      return `${(hours / 24).toFixed(1)} days`;
+    }
+
+    function esc(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function mapInc(map, key, amount = 1) {
+      if (key === undefined || key === null || key === "") return;
+      map.set(String(key), (map.get(String(key)) || 0) + amount);
+    }
+
+    function addLimited(set, value, stats) {
+      if (value === undefined || value === null || value === "") return false;
+      const cap = Math.max(1000, Number(els.setCap.value) || 500000);
+      if (set.has(value)) return true;
+      if (set.size >= cap) {
+        stats.cappedSets = true;
+        return false;
+      }
+      set.add(value);
+      return false;
+    }
+
+    function addNumericSample(list, value, max = 250000) {
+      if (!Number.isFinite(value)) return;
+      if (list.length < max) {
+        list.push(value);
+      } else {
+        const idx = Math.floor(Math.random() * (list.length + 1));
+        if (idx < max) list[idx] = value;
+      }
+    }
+
+    function percentiles(values) {
+      if (!values.length) return null;
+      const sorted = [...values].sort((a, b) => a - b);
+      const at = (p) => sorted[Math.min(sorted.length - 1, Math.floor(p * (sorted.length - 1)))];
+      return {
+        min: sorted[0],
+        p50: at(0.5),
+        p90: at(0.9),
+        p99: at(0.99),
+        max: sorted[sorted.length - 1]
+      };
+    }
+
+    function firstArray(value) {
+      if (Array.isArray(value)) return value;
+      if (value === undefined || value === null || value === "") return [];
+      return [value];
+    }
+
+    function trackSources(stats, record) {
+      const sources = firstArray(record.sources ?? record.source ?? (record.metadata && record.metadata.sources));
+      for (const source of sources) {
+        mapInc(stats.sources, source);
+        if (String(source).toLowerCase().includes("drg")) stats.drgSourceRows += 1;
+      }
+    }
+
+    function sampleRecord(stats, record) {
+      if (stats.samples.length >= 30) return;
+      const metadata = record.metadata || {};
+      stats.samples.push({
+        type: stats.type,
+        doc_id: record.doc_id || record.evidence_id || record.id || record.pmid || "",
+        cui: record.cui || "",
+        view: record.view || record.evidence_type || record.source || "",
+        evidence_count: record.evidence_count || metadata.evidence_count || "",
+        sources: firstArray(record.sources ?? record.source ?? metadata.sources).join(", "),
+        labels: firstArray(record.labels ?? metadata.labels).slice(0, 3).join("; "),
+        text: String(record.text || record.title || "").slice(0, 220)
+      });
+    }
+
+    function trackCommon(stats, record) {
+      stats.rows += 1;
+      const docId = record.doc_id || record.id || record.evidence_id || record.note_id || record.pmid || record.pmcid;
+      if (docId) {
+        const existed = addLimited(stats.docIds, String(docId), stats);
+        if (existed) stats.duplicateDocIds += 1;
+      }
+      if (record.cui) {
+        const cui = String(record.cui);
+        if (stats.seenCuis.has(cui)) stats.duplicateCuis += 1;
+        addLimited(stats.seenCuis, cui, stats);
+        addLimited(stats.cuis, cui, stats);
+      }
+      if (record.view) mapInc(stats.views, record.view);
+      if (record.evidence_type) mapInc(stats.evidenceTypes, record.evidence_type);
+      trackSources(stats, record);
+      if (record.text === undefined || record.text === null) {
+        stats.missingText += 1;
+      } else {
+        const len = String(record.text).length;
+        if (len === 0) stats.emptyText += 1;
+        addNumericSample(stats.textLengths, len);
+      }
+      const labels = record.labels ?? (record.metadata && record.metadata.labels);
+      if (Array.isArray(labels)) {
+        if (!labels.length) stats.missingLabels += 1;
+      } else if (stats.type === "docs" || stats.type === "vectors") {
+        stats.missingLabels += 1;
+      }
+      const evidenceCount = record.evidence_count ?? (record.metadata && record.metadata.evidence_count);
+      if (Number.isFinite(Number(evidenceCount))) {
+        stats.evidenceSum += Number(evidenceCount);
+      }
+      if (Number.isFinite(Number(record.weight))) {
+        addNumericSample(stats.weights, Number(record.weight));
+      }
+      sampleRecord(stats, record);
+    }
+
+    function handleDocs(record, stats) {
+      trackCommon(stats, record);
+      const weight = record.metadata && Number(record.metadata.total_weight);
+      if (Number.isFinite(weight)) addNumericSample(stats.weights, weight);
+    }
+
+    function handleVectors(record, stats) {
+      trackCommon(stats, record);
+      const meta = record.metadata || {};
+      mapInc(stats.providers, record.embedding_provider || meta.embedding_provider);
+      mapInc(stats.models, record.embedding_model || meta.embedding_model);
+      if (Array.isArray(record.vector)) {
+        mapInc(stats.dims, record.vector.length);
+        const every = Math.max(1, Number(els.normEvery.value) || 10);
+        if (stats.rows % every === 0) {
+          let sum = 0;
+          for (const v of record.vector) sum += Number(v) * Number(v);
+          addNumericSample(stats.vectorNorms, Math.sqrt(sum), 50000);
+        }
+      }
+    }
+
+    function handleEvidence(record, stats) {
+      trackCommon(stats, record);
+    }
+
+    function handleCorpus(record, stats) {
+      trackCommon(stats, record);
+      if (record.metadata && record.metadata.topic) mapInc(stats.views, `topic:${record.metadata.topic}`);
+    }
+
+    function handleBulkLine(record, stats, lineNumber) {
+      stats.lines += 1;
+      if (lineNumber % 2 === 1) {
+        stats.bulkActionLines += 1;
+        const action = record.index || record.create || record.update || record.delete;
+        if (!action) stats.bulkBadPairs += 1;
+        if (action && action._index) mapInc(stats.indexNames, action._index);
+      } else {
+        stats.bulkSourceLines += 1;
+        if (record.index || record.create || record.update || record.delete) stats.bulkBadPairs += 1;
+        trackCommon(stats, record);
+        if (Array.isArray(record.vector)) mapInc(stats.dims, record.vector.length);
+      }
+    }
+
+    async function parseJsonlFiles(files, stats, handler) {
+      const maxLines = Number(els.maxLines.value) || 0;
+      for (const file of files) {
+        stats.files.push({ name: file.name, size: file.size });
+        stats.bytes += file.size;
+        await parseJsonlFile(file, stats, handler, maxLines);
+      }
+    }
+
+    async function parseJsonlFile(file, stats, handler, maxLines) {
+      const reader = file.stream().getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fileLine = 0;
+      let stop = false;
+
+      while (!stop) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          fileLine += 1;
+          if (!line.trim()) continue;
+          if (maxLines && stats.rows >= maxLines) {
+            stats.truncated = true;
+            stop = true;
+            break;
+          }
+          try {
+            handler(JSON.parse(line), stats, fileLine);
+          } catch (err) {
+            stats.parseErrors += 1;
+          }
+          if ((stats.rows + stats.lines) % 5000 === 0) {
+            setStatus(`Parsing ${stats.type}: ${fmtNum(stats.rows || stats.lines)} rows`);
+            await nextFrame();
+          }
+        }
+      }
+
+      if (!stop) {
+        buffer += decoder.decode();
+        if (buffer.trim() && (!maxLines || stats.rows < maxLines)) {
+          fileLine += 1;
+          try {
+            handler(JSON.parse(buffer), stats, fileLine);
+          } catch (err) {
+            stats.parseErrors += 1;
+          }
+        }
+      } else {
+        try { await reader.cancel(); } catch (err) { /* noop */ }
+      }
+    }
+
+    function nextFrame() {
+      return new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+
+    function setStatus(text, progress) {
+      els.runStatus.textContent = text;
+      if (Number.isFinite(progress)) {
+        els.progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+      }
+    }
+
+    function addCheck(level, title, detail) {
+      state.checks.push({ level, title, detail });
+    }
+
+    function buildChecks() {
+      state.checks = [];
+      const d = state.docs;
+      const v = state.vectors;
+      const b = state.bulk;
+      const e = state.evidence;
+      const c = state.corpus;
+
+      if (d.rows) {
+        addCheck(d.parseErrors ? "fail" : "pass", "Concept document JSON parses cleanly", `${fmtNum(d.rows)} rows, ${fmtNum(d.parseErrors)} parse errors.`);
+        addCheck(d.duplicateDocIds ? "fail" : "pass", "Concept document IDs are unique", `${fmtNum(d.duplicateDocIds)} duplicate doc_id values found.`);
+        addCheck(d.emptyText || d.missingText ? "fail" : "pass", "Concept documents retain source text", `${fmtNum(d.emptyText)} empty text rows and ${fmtNum(d.missingText)} missing text rows.`);
+        addCheck(d.evidenceSum > 0 ? "pass" : "warn", "Concept documents carry evidence counts", `Total evidence_count across docs is ${fmtNum(d.evidenceSum)}.`);
+        addCheck(d.drgSourceRows ? "fail" : "pass", "DRG evidence is excluded from concept docs", `${fmtNum(d.drgSourceRows)} rows have a source containing "drg".`);
+      } else {
+        addCheck("warn", "Concept documents not loaded", "Load the CUI/view document JSONL to assess coverage and text integrity.");
+      }
+
+      if (v.rows) {
+        addCheck(v.parseErrors ? "fail" : "pass", "Vector JSON parses cleanly", `${fmtNum(v.rows)} rows, ${fmtNum(v.parseErrors)} parse errors.`);
+        addCheck(v.duplicateDocIds ? "fail" : "pass", "Vector doc IDs are unique", `${fmtNum(v.duplicateDocIds)} duplicate doc_id values found.`);
+        addCheck(v.dims.size === 1 ? "pass" : "fail", "Vector dimensions are consistent", mapSummary(v.dims, 5) || "No vector arrays found.");
+        const norms = percentiles(v.vectorNorms);
+        if (norms) {
+          const ok = norms.p50 > 0.85 && norms.p50 < 1.15;
+          addCheck(ok ? "pass" : "warn", "Sampled vector norms are near unit length", `p50 ${norms.p50.toFixed(3)}, p90 ${norms.p90.toFixed(3)}, sampled ${fmtNum(v.vectorNorms.length)} rows.`);
+        }
+        const omitted = v.emptyText / Math.max(1, v.rows);
+        addCheck(omitted > 0.9 ? "pass" : "info", "Vector records avoid duplicated text", `${fmtPct(omitted)} of vectors have empty text. Lean exports should be high here.`);
+      } else {
+        addCheck("warn", "Vectors not loaded", "Load a vector JSONL to validate dimensions, metadata, and doc alignment.");
+      }
+
+      if (d.rows && v.rows) {
+        addCheck(d.rows === v.rows ? "pass" : "fail", "Concept docs and vectors have matching row counts", `${fmtNum(d.rows)} docs versus ${fmtNum(v.rows)} vectors.`);
+        const overlap = setIntersectionSize(d.docIds, v.docIds);
+        const comparable = !d.cappedSets && !v.cappedSets;
+        const level = comparable && overlap === Math.min(d.docIds.size, v.docIds.size) ? "pass" : comparable ? "fail" : "warn";
+        addCheck(level, "Concept doc IDs align with vector doc IDs", `${fmtNum(overlap)} overlapping IDs. ${comparable ? "Sets were fully tracked." : "Set cap reached; increase the cap for a complete comparison."}`);
+      }
+
+      if (b.lines || b.bulkSourceLines) {
+        addCheck(b.parseErrors ? "fail" : "pass", "Elasticsearch bulk JSON parses cleanly", `${fmtNum(b.bulkSourceLines)} source docs, ${fmtNum(b.parseErrors)} parse errors.`);
+        addCheck(b.bulkActionLines === b.bulkSourceLines && b.bulkBadPairs === 0 ? "pass" : "fail", "Bulk action/source pairs are balanced", `${fmtNum(b.bulkActionLines)} actions, ${fmtNum(b.bulkSourceLines)} sources, ${fmtNum(b.bulkBadPairs)} pair issues.`);
+        if (v.rows) {
+          addCheck(b.bulkSourceLines === v.rows ? "pass" : "fail", "Bulk docs match vector rows", `${fmtNum(b.bulkSourceLines)} bulk docs versus ${fmtNum(v.rows)} vectors.`);
+        }
+      } else {
+        addCheck("info", "Elasticsearch bulk parts not loaded", "This is fine for offline checks, but load bulk parts before validating the ANN index payload.");
+      }
+
+      if (e.rows) {
+        addCheck(e.parseErrors ? "fail" : "pass", "Evidence JSON parses cleanly", `${fmtNum(e.rows)} rows, ${fmtNum(e.parseErrors)} parse errors.`);
+        addCheck(e.drgSourceRows ? "fail" : "pass", "DRG evidence is excluded from evidence files", `${fmtNum(e.drgSourceRows)} rows have a source containing "drg".`);
+        if (d.rows && d.evidenceSum) {
+          const ratio = e.rows ? d.evidenceSum / e.rows : 0;
+          const level = ratio > 0.9 && ratio < 1.1 ? "pass" : "warn";
+          addCheck(level, "Document evidence counts are plausible", `Doc evidence_count sum is ${fmtNum(d.evidenceSum)} versus ${fmtNum(e.rows)} loaded evidence rows.`);
+        }
+      } else {
+        addCheck("info", "Raw evidence files not loaded", "Load profile evidence shards when you want to check source balance before aggregation.");
+      }
+
+      if (c.rows) {
+        addCheck(c.parseErrors ? "fail" : "pass", "Corpus JSON parses cleanly", `${fmtNum(c.rows)} rows, ${fmtNum(c.parseErrors)} parse errors.`);
+        addCheck(c.emptyText || c.missingText ? "warn" : "pass", "Corpus rows have usable text", `${fmtNum(c.emptyText)} empty text rows and ${fmtNum(c.missingText)} missing text rows.`);
+      }
+
+      const failCount = state.checks.filter((x) => x.level === "fail").length;
+      const warnCount = state.checks.filter((x) => x.level === "warn").length;
+      if (!failCount && !warnCount) {
+        addCheck("pass", "Assessment gates are clean", "No hard failures or warnings were detected in the loaded artifacts.");
+      }
+    }
+
+    function setIntersectionSize(a, b) {
+      let count = 0;
+      const small = a.size <= b.size ? a : b;
+      const large = a.size <= b.size ? b : a;
+      for (const value of small) {
+        if (large.has(value)) count += 1;
+      }
+      return count;
+    }
+
+    function mapSummary(map, limit = 6) {
+      return [...map.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([k, v]) => `${k}: ${fmtNum(v)}`)
+        .join(", ");
+    }
+
+    function metric(label, value, detail) {
+      return `
+        <div class="metric">
+          <div class="label">${esc(label)}</div>
+          <div class="value">${esc(value)}</div>
+          <div class="detail">${esc(detail || "")}</div>
+        </div>`;
+    }
+
+    function renderMetrics() {
+      const d = state.docs;
+      const v = state.vectors;
+      const b = state.bulk;
+      const e = state.evidence;
+      const sourceCount = mergedMap(["sources"]).size;
+      els.metrics.innerHTML = [
+        metric("Concept documents", fmtNum(d.rows), `${fmtNum(d.cuis.size)} CUIs, ${fmtBytes(d.bytes)}`),
+        metric("Total evidence in docs", fmtNum(d.evidenceSum), `${fmtNum(d.views.size)} views, ${fmtNum(sourceCount)} sources`),
+        metric("Vectors", fmtNum(v.rows), `${mapSummary(v.dims, 3) || "no dimensions"}, ${fmtBytes(v.bytes)}`),
+        metric("Elasticsearch bulk docs", fmtNum(b.bulkSourceLines), `${fmtNum(b.bulkActionLines)} actions, ${fmtBytes(b.bytes)}`),
+        metric("Raw evidence rows", fmtNum(e.rows), `${fmtNum(e.cuis.size)} CUIs, ${fmtNum(e.evidenceTypes.size)} types`),
+        metric("Corpus rows", fmtNum(state.corpus.rows), `${fmtNum(state.corpus.sources.size)} sources, ${fmtBytes(state.corpus.bytes)}`),
+        metric("Parse errors", fmtNum(d.parseErrors + v.parseErrors + b.parseErrors + e.parseErrors + state.corpus.parseErrors), "Across loaded artifacts"),
+        metric("DRG source rows", fmtNum(d.drgSourceRows + e.drgSourceRows + state.corpus.drgSourceRows), "Should be zero for current scope")
+      ].join("");
+    }
+
+    function renderChecks() {
+      els.checks.innerHTML = state.checks.map((check) => `
+        <div class="check">
+          <div><span class="badge ${check.level}">${check.level}</span></div>
+          <div>
+            <strong>${esc(check.title)}</strong>
+            <div class="muted">${esc(check.detail)}</div>
+          </div>
+        </div>`).join("");
+    }
+
+    function mergedMap(names) {
+      const merged = new Map();
+      for (const statsName of ["docs", "vectors", "bulk", "evidence", "corpus"]) {
+        const stats = state[statsName];
+        for (const name of names) {
+          const map = stats[name];
+          if (!map) continue;
+          for (const [key, value] of map.entries()) mapInc(merged, key, value);
+        }
+      }
+      return merged;
+    }
+
+    function renderBars(target, map, emptyText) {
+      if (!map.size) {
+        target.innerHTML = `<div class="muted small">${esc(emptyText)}</div>`;
+        return;
+      }
+      const rows = [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15);
+      const max = rows[0][1] || 1;
+      target.innerHTML = rows.map(([name, value]) => `
+        <div class="bar-row">
+          <div class="bar-name" title="${esc(name)}">${esc(name)}</div>
+          <div class="bar-track"><div class="bar-fill" style="width: ${Math.max(1, value / max * 100)}%"></div></div>
+          <div class="mono small">${fmtNum(value)}</div>
+        </div>`).join("");
+    }
+
+    function renderCoverage() {
+      renderBars(els.sourceBars, mergedMap(["sources"]), "No source counts loaded.");
+      renderBars(els.viewBars, mergedMap(["views", "evidenceTypes"]), "No views or evidence types loaded.");
+    }
+
+    function renderSamples() {
+      const rows = [
+        ...state.docs.samples,
+        ...state.vectors.samples,
+        ...state.evidence.samples,
+        ...state.corpus.samples
+      ].slice(0, 40);
+      if (!rows.length) {
+        els.samples.innerHTML = `<div class="muted small" style="padding: 12px;">No sample records loaded.</div>`;
+        return;
+      }
+      els.samples.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>ID</th>
+              <th>CUI</th>
+              <th>View</th>
+              <th>Evidence</th>
+              <th>Sources</th>
+              <th>Labels / Text</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td>${esc(row.type)}</td>
+                <td class="mono small">${esc(row.doc_id)}</td>
+                <td class="mono small">${esc(row.cui)}</td>
+                <td>${esc(row.view)}</td>
+                <td>${esc(row.evidence_count)}</td>
+                <td>${esc(row.sources)}</td>
+                <td><div>${esc(row.labels)}</div><div class="muted small">${esc(row.text)}</div></td>
+              </tr>`).join("")}
+          </tbody>
+        </table>`;
+    }
+
+    function getNumber(id) {
+      return Number(els[id].value) || 0;
+    }
+
+    function projectionRows() {
+      const profiles = Math.max(1, getNumber("expectedProfiles"));
+      const pubmedRecords = getNumber("pubmedRecords");
+      const mimicNotes = getNumber("mimicNotes");
+      const projectedDocs = getNumber("projectedDocs");
+      const linkRate = Math.max(1, getNumber("linkRate"));
+      const optimizedLinkRate = Math.max(1, getNumber("optimizedLinkRate"));
+      const hashRate = Math.max(1, getNumber("hashRate"));
+      const cpuRate = Math.max(0.1, getNumber("semanticCpuRate"));
+      const gpuRate = Math.max(0.1, getNumber("semanticGpuRate"));
+      const linkUnits = (pubmedRecords + mimicNotes) * profiles;
+      const currentLinkHours = linkUnits / linkRate / 3600;
+      const optimizedLinkHours = linkUnits / optimizedLinkRate / 3600;
+      const hashHours = projectedDocs / hashRate / 3600;
+      const cpuHours = projectedDocs / cpuRate / 3600;
+      const gpuHours = projectedDocs / gpuRate / 3600;
+      const docBytes = state.docs.rows ? state.docs.bytes / state.docs.rows : 2700;
+      const vectorBytes = state.vectors.rows ? state.vectors.bytes / state.vectors.rows : 3500;
+      const bulkBytes = state.bulk.bulkSourceLines ? state.bulk.bytes / state.bulk.bulkSourceLines : 4100;
+
+      return [
+        ["Link PubMed + MIMIC notes, current rate", fmtDuration(currentLinkHours), `${fmtNum(linkUnits)} record-profile scans at ${fmtNum(linkRate)}/sec`],
+        ["Link PubMed + MIMIC notes, optimized rate", fmtDuration(optimizedLinkHours), `${fmtNum(linkUnits)} record-profile scans at ${fmtNum(optimizedLinkRate)}/sec`],
+        ["Hashing embeddings", fmtDuration(hashHours), `${fmtNum(projectedDocs)} CUI/view docs at ${fmtNum(hashRate)}/sec`],
+        ["Transformer embeddings on CPU", fmtDuration(cpuHours), `${fmtNum(projectedDocs)} CUI/view docs at ${cpuRate}/sec`],
+        ["Transformer embeddings on GPU", fmtDuration(gpuHours), `${fmtNum(projectedDocs)} CUI/view docs at ${gpuRate}/sec`],
+        ["Projected concept document storage", fmtBytes(projectedDocs * docBytes), `${fmtBytes(docBytes)} per CUI/view doc from loaded artifact or default`],
+        ["Projected vector JSONL storage", fmtBytes(projectedDocs * vectorBytes), `${fmtBytes(vectorBytes)} per vector row from loaded artifact or default`],
+        ["Projected ES bulk storage", fmtBytes(projectedDocs * bulkBytes), `${fmtBytes(bulkBytes)} per bulk source doc from loaded artifact or default`]
+      ];
+    }
+
+    function renderProjection() {
+      const rows = projectionRows();
+      const optimizedHours = ((getNumber("pubmedRecords") + getNumber("mimicNotes")) * Math.max(1, getNumber("expectedProfiles"))) / Math.max(1, getNumber("optimizedLinkRate")) / 3600;
+      const linkLevel = optimizedHours <= 24 ? "pass" : optimizedHours <= 48 ? "warn" : "fail";
+      const linkText = linkLevel === "pass"
+        ? "Optimized linking is in a one-day range."
+        : linkLevel === "warn"
+          ? "Optimized linking is close, but still likely needs sharding and resume."
+          : "Optimized linking is not yet fast enough for full PubMed plus MIMIC in a day.";
+      els.projection.innerHTML = `
+        <div class="check" style="border-top: 0; margin-top: 14px;">
+          <div><span class="badge ${linkLevel}">${linkLevel}</span></div>
+          <div>
+            <strong>${esc(linkText)}</strong>
+            <div class="muted">This projection assumes each record is scanned through each semantic profile. It should improve if we pre-route records or partition by source domain.</div>
+          </div>
+        </div>
+        <div class="table-wrap" style="margin-top: 10px;">
+          <table>
+            <thead><tr><th>Work unit</th><th>Estimate</th><th>Basis</th></tr></thead>
+            <tbody>
+              ${rows.map(([name, estimate, basis]) => `<tr><td>${esc(name)}</td><td class="mono">${esc(estimate)}</td><td>${esc(basis)}</td></tr>`).join("")}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function renderSummary() {
+      const failCount = state.checks.filter((x) => x.level === "fail").length;
+      const warnCount = state.checks.filter((x) => x.level === "warn").length;
+      const rows = projectionRows();
+      const lines = [
+        "UMLS semantic evidence scaling assessment",
+        `Generated: ${new Date().toISOString()}`,
+        "",
+        "Loaded artifacts:",
+        `- Concept docs: ${fmtNum(state.docs.rows)} rows, ${fmtNum(state.docs.cuis.size)} CUIs, ${fmtBytes(state.docs.bytes)}`,
+        `- Vectors: ${fmtNum(state.vectors.rows)} rows, dims ${mapSummary(state.vectors.dims, 4) || "n/a"}, ${fmtBytes(state.vectors.bytes)}`,
+        `- ES bulk: ${fmtNum(state.bulk.bulkSourceLines)} docs, ${fmtBytes(state.bulk.bytes)}`,
+        `- Evidence: ${fmtNum(state.evidence.rows)} rows`,
+        `- Corpus: ${fmtNum(state.corpus.rows)} rows`,
+        "",
+        "Gate status:",
+        `- Failures: ${fmtNum(failCount)}`,
+        `- Warnings: ${fmtNum(warnCount)}`,
+        ...state.checks.slice(0, 20).map((check) => `- ${check.level.toUpperCase()}: ${check.title} - ${check.detail}`),
+        "",
+        "Projection:",
+        ...rows.map(([name, estimate, basis]) => `- ${name}: ${estimate} (${basis})`)
+      ];
+      els.summary.value = lines.join("\n");
+    }
+
+    function renderAll() {
+      buildChecks();
+      renderMetrics();
+      renderChecks();
+      renderProjection();
+      renderCoverage();
+      renderSamples();
+      renderSummary();
+    }
+
+    async function analyze() {
+      resetState();
+      setStatus("Starting analysis", 2);
+      els.analyzeBtn.disabled = true;
+      state.startedAt = Date.now();
+      try {
+        const tasks = [
+          { input: els.docsFile, stats: state.docs, handler: handleDocs },
+          { input: els.vectorsFile, stats: state.vectors, handler: handleVectors },
+          { input: els.bulkFiles, stats: state.bulk, handler: handleBulkLine },
+          { input: els.evidenceFiles, stats: state.evidence, handler: handleEvidence },
+          { input: els.corpusFiles, stats: state.corpus, handler: handleCorpus }
+        ];
+        for (let i = 0; i < tasks.length; i += 1) {
+          const task = tasks[i];
+          const files = [...(task.input.files || [])];
+          if (!files.length) continue;
+          setStatus(`Parsing ${task.stats.type}`, 5 + i * 18);
+          await parseJsonlFiles(files, task.stats, task.handler);
+          renderAll();
+          setStatus(`Parsed ${task.stats.type}`, 5 + (i + 1) * 18);
+          await nextFrame();
+        }
+        state.finishedAt = Date.now();
+        renderAll();
+        const seconds = ((state.finishedAt - state.startedAt) / 1000).toFixed(1);
+        setStatus(`Done in ${seconds}s`, 100);
+      } catch (err) {
+        setStatus(`Failed: ${err.message}`, 100);
+        console.error(err);
+      } finally {
+        els.analyzeBtn.disabled = false;
+      }
+    }
+
+    function clearInputs() {
+      for (const id of ["docsFile", "vectorsFile", "bulkFiles", "evidenceFiles", "corpusFiles"]) {
+        els[id].value = "";
+      }
+      resetState();
+      renderAll();
+      setStatus("Idle", 0);
+    }
+
+    function wireEvents() {
+      els.analyzeBtn.addEventListener("click", analyze);
+      els.resetBtn.addEventListener("click", clearInputs);
+      els.projectionBtn.addEventListener("click", () => {
+        renderProjection();
+        renderSummary();
+      });
+      els.useLoadedDocsBtn.addEventListener("click", () => {
+        if (state.docs.rows) els.projectedDocs.value = state.docs.rows;
+        renderProjection();
+        renderSummary();
+      });
+      for (const id of [
+        "pubmedRecords", "mimicNotes", "projectedDocs", "linkRate",
+        "optimizedLinkRate", "hashRate", "semanticCpuRate", "semanticGpuRate",
+        "expectedProfiles"
+      ]) {
+        els[id].addEventListener("change", () => {
+          renderProjection();
+          renderSummary();
+        });
+      }
+      els.copySummaryBtn.addEventListener("click", async () => {
+        els.summary.select();
+        try {
+          await navigator.clipboard.writeText(els.summary.value);
+          setStatus("Summary copied", 100);
+        } catch (err) {
+          document.execCommand("copy");
+          setStatus("Summary copied", 100);
+        }
+      });
+    }
+
+    initEls();
+    resetState();
+    wireEvents();
+    renderAll();
+  </script>
+</body>
+</html>

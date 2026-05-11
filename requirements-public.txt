@@ -1,0 +1,10 @@
+# Public-first hashing rebuild requirements
+#
+# The reproducible public build path intentionally uses only the Python
+# standard library:
+#   python3 scripts/run_public_rebuild.py --provider hashing ...
+#
+# Optional features use extra packages but are not required for this path:
+#   - SapBERT/transformers embeddings: torch, transformers
+#   - sentence-transformer embeddings: sentence-transformers
+#   - external CUI vector indexing: numpy

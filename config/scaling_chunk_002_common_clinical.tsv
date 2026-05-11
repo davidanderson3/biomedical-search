@@ -1,0 +1,13 @@
+topic	term	retmax
+cardiometabolic_common	hypertension OR diabetes mellitus OR hyperlipidemia OR obesity OR metabolic syndrome	200
+heart_lung_common	heart failure OR atrial fibrillation OR chronic obstructive pulmonary disease OR asthma OR pulmonary embolism	200
+neuro_common	stroke OR seizure OR migraine OR dementia OR parkinson disease OR multiple sclerosis	200
+psychiatry_common	depression OR anxiety disorder OR bipolar disorder OR schizophrenia OR substance use disorder	200
+infection_common	sepsis OR pneumonia OR urinary tract infection OR cellulitis OR covid-19	200
+oncology_common	breast cancer OR lung cancer OR colorectal cancer OR prostate cancer OR lymphoma	200
+renal_liver_common	chronic kidney disease OR acute kidney injury OR cirrhosis OR hepatitis OR liver failure	200
+autoimmune_common	rheumatoid arthritis OR systemic lupus erythematosus OR inflammatory bowel disease OR psoriasis OR vasculitis	200
+endocrine_reproductive	thyroid disease OR adrenal insufficiency OR polycystic ovary syndrome OR menopause OR infertility	200
+pediatrics_common	neonatal sepsis OR congenital heart disease OR autism spectrum disorder OR pediatric asthma OR failure to thrive	200
+emergency_symptoms	chest pain OR abdominal pain OR shortness of breath OR syncope OR altered mental status	200
+labs_imaging_common	troponin OR hemoglobin a1c OR creatinine OR d-dimer OR computed tomography OR magnetic resonance imaging	200

@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UMLS 2.0 Scaling Progress</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #5b6673;
+      --line: #d7dde5;
+      --blue: #2563eb;
+      --green: #166534;
+      --amber: #b45309;
+      --red: #b91c1c;
+      --teal: #0f766e;
+      --code: #eef2f7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    header {
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .wrap {
+      width: min(1280px, calc(100vw - 32px));
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: flex-start;
+      padding: 20px 0;
+    }
+
+    h1,
+    h2 {
+      margin: 0;
+      letter-spacing: 0;
+      font-weight: 750;
+    }
+
+    h1 {
+      font-size: 23px;
+    }
+
+    h2 {
+      font-size: 16px;
+      margin-bottom: 12px;
+    }
+
+    main {
+      padding: 18px 0 40px;
+    }
+
+    a {
+      color: var(--blue);
+      text-decoration: none;
+      font-weight: 650;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .small {
+      font-size: 12px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+
+    .report-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .summary-card,
+    .phase-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+    }
+
+    .summary-title,
+    .phase-title {
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .summary-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .summary-list li {
+      border-top: 1px solid #edf0f4;
+      padding-top: 8px;
+    }
+
+    .summary-list li:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .phase-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .phase-bar {
+      height: 8px;
+      background: #e8edf4;
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 8px 0;
+    }
+
+    .phase-bar > div {
+      height: 100%;
+      width: 0;
+      background: var(--teal);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 260px;
+      gap: 18px;
+      align-items: center;
+    }
+
+    .progress-shell {
+      height: 16px;
+      background: #e8edf4;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0;
+      background: var(--teal);
+      transition: width 180ms ease;
+    }
+
+    .progress-value {
+      font-size: 42px;
+      line-height: 1;
+      font-weight: 850;
+      text-align: right;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .dashboard .metric-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+      min-height: 82px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .metric .value {
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.15;
+    }
+
+    .steps {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 36px minmax(0, 1fr) 130px;
+      gap: 12px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+
+    .step-index {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: var(--muted);
+      font-weight: 800;
+    }
+
+    .step.completed .step-index {
+      background: var(--green);
+    }
+
+    .step.pending.current .step-index {
+      background: var(--blue);
+    }
+
+    .step.planned .step-index {
+      background: #475569;
+    }
+
+    .step.paused .step-index {
+      background: var(--red);
+    }
+
+    .step-title {
+      font-weight: 750;
+      margin-bottom: 3px;
+    }
+
+    .step-why {
+      margin-top: 6px;
+      color: var(--ink);
+    }
+
+    details.artifact-details {
+      margin-top: 8px;
+    }
+
+    details.artifact-details summary {
+      cursor: pointer;
+      color: var(--blue);
+      font-weight: 700;
+    }
+
+    .badge {
+      display: inline-block;
+      min-width: 82px;
+      text-align: center;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .badge.completed {
+      color: var(--green);
+      background: #dcfce7;
+    }
+
+    .badge.pending {
+      color: var(--amber);
+      background: #fef3c7;
+    }
+
+    .badge.planned {
+      color: #1e40af;
+      background: #dbeafe;
+    }
+
+    .badge.paused {
+      color: var(--red);
+      background: #fee2e2;
+    }
+
+    .badge.built {
+      color: var(--green);
+      background: #dcfce7;
+    }
+
+    .badge.partial,
+    .badge.early {
+      color: var(--amber);
+      background: #fef3c7;
+    }
+
+    .badge.missing {
+      color: var(--red);
+      background: #fee2e2;
+    }
+
+    .artifacts {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .artifact {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 88px 88px;
+      gap: 8px;
+      padding: 7px 8px;
+      background: #f8fafc;
+      border: 1px solid #edf0f4;
+      border-radius: 6px;
+      align-items: start;
+    }
+
+    code,
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      background: var(--code);
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      padding: 8px 11px;
+      min-height: 36px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 900px) {
+      .topbar,
+      .hero,
+      .dashboard,
+      .summary-grid,
+      .phase-grid,
+      .report-grid,
+      .metric-grid,
+      .step,
+      .artifact {
+        grid-template-columns: 1fr;
+      }
+
+      .progress-value {
+        text-align: left;
+      }
+
+      .actions {
+        justify-content: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap topbar">
+      <div>
+        <h1>UMLS 2.0 Scaling Progress</h1>
+        <div id="subtitle" class="muted">Loading semantic evidence index status...</div>
+      </div>
+      <div class="actions">
+        <a href="/">Search quality</a>
+        <button id="refreshBtn">Refresh</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel">
+      <h2>Progress Report</h2>
+      <div class="muted small" style="margin: -6px 0 12px;">
+        Main percentages are heuristic effort-weighted processing progress. The readiness checklist is artifact completeness and is not a wall-clock estimate.
+      </div>
+      <div id="humanSummary"></div>
+      <div id="reportGrid" class="report-grid"></div>
+      <div id="phaseProgress" class="phase-grid"></div>
+    </section>
+
+    <div class="dashboard">
+      <section class="panel">
+        <div class="hero">
+          <div>
+            <h2 id="fullTitle">Full Pipeline</h2>
+            <div id="fullScope" class="muted"></div>
+            <div class="progress-shell"><div id="fullProgressBar" class="progress-bar"></div></div>
+          </div>
+          <div>
+            <div id="fullProgressValue" class="progress-value">0%</div>
+            <div id="fullNextStep" class="muted small" style="text-align: right;">Next step: loading</div>
+          </div>
+        </div>
+        <div id="fullMetrics" class="metric-grid"></div>
+        <h2 style="margin-top: 16px;">Full Steps</h2>
+        <div id="fullSteps" class="steps"></div>
+      </section>
+
+      <section class="panel">
+        <div class="hero">
+          <div>
+            <h2 id="chunkTitle">Current Chunk</h2>
+            <div id="chunkScope" class="muted"></div>
+            <div class="progress-shell"><div id="chunkProgressBar" class="progress-bar"></div></div>
+          </div>
+          <div>
+            <div id="chunkProgressValue" class="progress-value">0%</div>
+            <div id="chunkNextStep" class="muted small" style="text-align: right;">Next step: loading</div>
+          </div>
+        </div>
+        <div id="chunkMetrics" class="metric-grid"></div>
+        <h2 style="margin-top: 16px;">Active Plan Steps</h2>
+        <div id="chunkSteps" class="steps"></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const els = {};
+    for (const id of [
+      "subtitle", "refreshBtn",
+      "humanSummary", "reportGrid", "phaseProgress",
+      "fullTitle", "fullScope", "fullProgressBar", "fullProgressValue", "fullNextStep", "fullMetrics", "fullSteps",
+      "chunkTitle", "chunkScope", "chunkProgressBar", "chunkProgressValue", "chunkNextStep", "chunkMetrics", "chunkSteps"
+    ]) {
+      els[id] = document.getElementById(id);
+    }
+
+    function esc(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function fmtNum(value) {
+      return Math.round(Number(value) || 0).toLocaleString();
+    }
+
+    function fmtBytes(value) {
+      let size = Number(value) || 0;
+      for (const unit of ["B", "KB", "MB", "GB", "TB"]) {
+        if (size < 1024 || unit === "TB") {
+          return unit === "B" ? `${size.toFixed(0)} ${unit}` : `${size.toFixed(1)} ${unit}`;
+        }
+        size /= 1024;
+      }
+      return `${value} B`;
+    }
+
+    function pct(value) {
+      return Math.round((Number(value) || 0) * 100);
+    }
+
+    function fmtWeight(value) {
+      return (Number(value) || 0).toLocaleString(undefined, {
+        maximumFractionDigits: 1
+      });
+    }
+
+    async function loadProgress() {
+      els.subtitle.textContent = "Refreshing...";
+      const [full, chunk] = await Promise.all([
+        fetchStatus("/api/full-progress"),
+        fetchStatus("/api/progress")
+      ]);
+      render(full, "full");
+      render(chunk, "chunk");
+      renderReport(full, chunk);
+      els.subtitle.textContent = `Generated ${full.generated_at}`;
+    }
+
+    async function fetchStatus(path) {
+      const response = await fetch(path, { headers: { "Accept": "application/json" } });
+      const status = await response.json();
+      if (!response.ok) throw new Error(status.error || response.statusText);
+      return status;
+    }
+
+    function renderReport(full, chunk) {
+      const fullEffortPct = pct(full.weighted_progress_fraction);
+      const fullReadinessPct = pct(full.progress_fraction);
+      const chunkEffortPct = pct(chunk.weighted_progress_fraction);
+      const nextGate = full.next_step ? full.next_step.label : "complete";
+      const chunks = full.chunk_summary || {
+        total_chunks: 0,
+        built_chunks: 0,
+        loaded_chunks: 0,
+        quality_reviewed_chunks: 0
+      };
+      const summary = full.human_summary || fallbackSummary(full);
+      const metrics = summary.metrics || {};
+      els.humanSummary.innerHTML = renderHumanSummary(summary);
+      els.reportGrid.innerHTML = [
+        metric("Weighted pipeline", `${fullEffortPct}%`, `${fmtWeight(full.completed_effort_weight)} / ${fmtWeight(full.total_effort_weight)} effort units`),
+        metric("Readiness checklist", `${fullReadinessPct}%`, `${full.completed_steps} / ${full.total_steps} artifact steps`),
+        metric("Linked evidence", fmtNum(metrics.evidence_rows || 0), "CUI-anchored evidence rows"),
+        metric("CUI/view vectors", fmtNum(metrics.concept_vector_rows || 0), "Searchable evidence documents"),
+        metric("Resolver mappings", fmtNum(metrics.code_mapping_rows || 0), "MRCONSO CUI/code rows"),
+        metric("Configured chunks", `${chunks.built_chunks} / ${chunks.total_chunks}`, `${chunks.loaded_chunks} loaded, ${chunks.quality_reviewed_chunks} reviewed`),
+        metric("Active plan", `${chunkEffortPct}%`, `${fmtWeight(chunk.completed_effort_weight)} / ${fmtWeight(chunk.total_effort_weight)} effort units`),
+        metric("Next release gate", nextGate, full.next_step ? full.next_step.id : "done")
+      ].join("");
+      els.phaseProgress.innerHTML = (full.phase_summary || []).map(renderPhase).join("");
+    }
+
+    function fallbackSummary(status) {
+      const remaining = (status.steps || []).filter((step) => step.status !== "completed");
+      return {
+        headline: `${status.completed_steps} / ${status.total_steps} steps complete; ${remaining.length} left.`,
+        progress_sentence: "The weighted percent is the best single progress number; artifact readiness only says whether expected files exist.",
+        focus: {
+          label: status.next_step ? status.next_step.label : "Complete",
+          why: status.next_step ? (status.next_step.why || "This is the next missing pipeline artifact.") : "All tracked steps are complete."
+        },
+        done: [
+          {
+            label: "Tracked artifacts exist for completed work.",
+            detail: `${status.completed_steps} completed steps are represented by concrete files or markers.`
+          }
+        ],
+        left: remaining.map((step) => ({
+          label: step.label,
+          status: step.status,
+          why: step.why || "This missing step gates a later part of the pipeline.",
+          effort_weight: step.effort_weight || 0
+        }))
+      };
+    }
+
+    function renderHumanSummary(summary) {
+      const left = summary.left || [];
+      const done = summary.done || [];
+      const capabilities = summary.capabilities || [];
+      const evidenceFlow = summary.evidence_flow || [];
+      return `
+        <div class="summary-grid">
+          <div class="summary-card">
+            <div class="summary-title">Current product capabilities</div>
+            <div class="muted" style="margin-bottom: 10px;">${esc(summary.headline || "")}</div>
+            <ul class="summary-list">
+              ${capabilities.map((item) => `
+                <li>
+                  <strong>${esc(item.label)}</strong>
+                  <span class="badge ${esc(item.state || "pending")}" style="margin-left: 6px;">${esc(item.state || "")}</span><br>
+                  <span class="muted">${esc(item.quantity || "")}</span><br>
+                  <span class="muted">${esc(item.why || "")}</span>
+                </li>`).join("")}
+            </ul>
+          </div>
+          <div class="summary-card">
+            <div class="summary-title">How evidence is used in search</div>
+            <ul class="summary-list">
+              ${evidenceFlow.map((item) => `
+                <li>
+                  <strong>${esc(item.layer)}</strong><br>
+                  <span class="muted">${esc(item.search_use || "")}</span><br>
+                  <span class="muted">${esc(item.quantity || "")}</span>
+                </li>`).join("")}
+            </ul>
+          </div>
+        </div>
+        <div class="summary-grid">
+          <div class="summary-card">
+            <div class="summary-title">What has been done</div>
+            <ul class="summary-list">
+              ${done.map((item) => `<li><strong>${esc(item.label)}</strong><br><span class="muted">${esc(item.detail)}</span></li>`).join("")}
+            </ul>
+          </div>
+          <div class="summary-card">
+            <div class="summary-title">What is left</div>
+            <div class="muted" style="margin-bottom: 10px;">${esc(summary.progress_sentence || "")}</div>
+            <div style="margin-bottom: 10px;">
+              <strong>Current focus:</strong> ${esc(summary.focus?.label || "Complete")}<br>
+              <span class="muted">${esc(summary.focus?.why || "")}</span>
+            </div>
+            <ul class="summary-list">
+              ${left.length ? left.map((item) => `
+                <li>
+                  <strong>${esc(item.label)}</strong>
+                  <span class="badge ${esc(item.status)}" style="margin-left: 6px;">${esc(item.status)}</span><br>
+                  <span class="muted">${esc(item.why)}</span>
+                </li>`).join("") : "<li><strong>Nothing tracked remains.</strong></li>"}
+            </ul>
+          </div>
+        </div>`;
+    }
+
+    function renderPhase(phase) {
+      const progress = pct(phase.progress_fraction);
+      return `
+        <div class="phase-card">
+          <div class="phase-title">${esc(phase.phase)}</div>
+          <div class="muted small">${phase.completed_steps} / ${phase.total_steps} steps · ${progress}%</div>
+          <div class="phase-bar"><div style="width: ${progress}%"></div></div>
+          <div class="muted small">${esc(phase.purpose || "")}</div>
+        </div>`;
+    }
+
+    function render(status, prefix) {
+      const target = {
+        title: els[`${prefix}Title`],
+        scope: els[`${prefix}Scope`],
+        progressBar: els[`${prefix}ProgressBar`],
+        progressValue: els[`${prefix}ProgressValue`],
+        nextStep: els[`${prefix}NextStep`],
+        metrics: els[`${prefix}Metrics`],
+        steps: els[`${prefix}Steps`]
+      };
+      const effortPct = pct(status.weighted_progress_fraction ?? status.progress_fraction);
+      const readinessPct = pct(status.progress_fraction);
+      const next = status.next_step ? status.next_step.label : "complete";
+      target.title.textContent = status.title || status.chunk_id;
+      target.scope.textContent = status.scope || "";
+      target.progressBar.style.width = `${effortPct}%`;
+      target.progressValue.textContent = `${effortPct}%`;
+      target.nextStep.textContent = `Next step: ${next}`;
+      const totalRows = status.steps.reduce((sum, step) => sum + (step.rows || 0), 0);
+      const totalBytes = status.steps.reduce((sum, step) => sum + (step.bytes || 0), 0);
+      const paused = status.steps.filter((step) => step.status === "paused").length;
+      const planned = status.steps.filter((step) => step.status === "planned").length;
+      target.metrics.innerHTML = [
+        metric("Effort progress", `${effortPct}%`, `${fmtWeight(status.completed_effort_weight)} / ${fmtWeight(status.total_effort_weight)} heuristic units`),
+        metric("Readiness checklist", `${readinessPct}%`, `${status.completed_steps} / ${status.total_steps} artifact steps`),
+        metric("Artifact rows", fmtNum(totalRows), "Across tracked JSONL artifacts"),
+        metric("Waiting", `${planned} planned, ${paused} paused`, status.next_step ? status.next_step.id : "done")
+      ].join("");
+      const currentId = status.next_step && status.next_step.id;
+      target.steps.innerHTML = status.steps.map((step, index) => renderStep(step, index + 1, currentId)).join("");
+    }
+
+    function metric(label, value, detail) {
+      return `
+        <div class="metric">
+          <div class="label">${esc(label)}</div>
+          <div class="value">${esc(value)}</div>
+          <div class="muted small">${esc(detail)}</div>
+        </div>`;
+    }
+
+    function renderStep(step, index, currentId) {
+      const cls = `${step.status} ${step.id === currentId ? "current" : ""}`;
+      const artifactCount = (step.artifacts || []).reduce((sum, artifact) => sum + Math.max(artifact.files.length, 1), 0);
+      return `
+        <div class="step ${cls}">
+          <div class="step-index">${index}</div>
+          <div>
+            <div class="step-title">${esc(step.label)}</div>
+            <div class="muted small">${esc(step.id)} | effort ${fmtWeight(step.effort_weight)} | ${fmtNum(step.rows)} rows | ${fmtBytes(step.bytes)}</div>
+            <div class="step-why">${esc(step.why || "")}</div>
+            <details class="artifact-details">
+              <summary>${artifactCount} artifact ${artifactCount === 1 ? "check" : "checks"}</summary>
+              <div class="artifacts">${step.artifacts.map(renderArtifact).join("")}</div>
+            </details>
+          </div>
+          <div><span class="badge ${step.status}">${esc(step.status)}</span></div>
+        </div>`;
+    }
+
+    function renderArtifact(artifact) {
+      const files = artifact.files.length ? artifact.files : [`${artifact.pattern} missing`];
+      return files.map((file, idx) => `
+        <div class="artifact">
+          <div><code>${esc(file)}</code>${idx === 0 && artifact.files.length > 1 ? ` <span class="muted small">+${artifact.files.length - 1} files</span>` : ""}</div>
+          <div class="mono small">${idx === 0 ? fmtNum(artifact.rows) : ""}</div>
+          <div class="mono small">${idx === 0 ? fmtBytes(artifact.bytes) : ""}</div>
+        </div>`).join("");
+    }
+
+    els.refreshBtn.addEventListener("click", () => loadProgress().catch((err) => {
+      els.subtitle.textContent = `Failed: ${err.message}`;
+    }));
+    loadProgress().catch((err) => {
+      els.subtitle.textContent = `Failed: ${err.message}`;
+    });
+    setInterval(() => {
+      loadProgress().catch(() => {});
+    }, 15000);
+  </script>
+</body>
+</html>

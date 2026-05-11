@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UMLS 2.0 Assessment Guide</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #5b6673;
+      --line: #d7dde5;
+      --blue: #2563eb;
+      --code: #eef2f7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .wrap {
+      width: min(960px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 28px 0 44px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 17px;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    ol,
+    ul {
+      margin: 0;
+      padding-left: 22px;
+    }
+
+    li {
+      margin: 8px 0;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      background: var(--code);
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .button {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 10px 14px;
+      border-radius: 6px;
+      background: var(--blue);
+      color: #fff;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .file-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .file-row {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #fbfcfe;
+    }
+
+    .label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="panel">
+      <h1>UMLS 2.0 Assessment Guide</h1>
+      <p class="muted">Assess the UMLS Semantic Evidence Index: a successor search layer that retrieves CUIs with SapBERT vectors, evidence, and provenance.</p>
+      <a class="button" href="scaling_assessment.html">Open integrity assessment</a>
+      <a class="button" href="search_quality_assessment.html">Open search quality assessment</a>
+      <a class="button" href="http://127.0.0.1:8766/">Open server-backed search</a>
+      <a class="button" href="umls_2_product.md">Open product plan</a>
+      <a class="button" href="technical_pipeline.md">Open technical docs</a>
+      <a class="button" href="explain_like_im_5.md">Open simple explanation</a>
+    </section>
+
+    <section class="panel">
+      <h2>What This Is</h2>
+      <p>This project treats UMLS as the stable concept identity layer and builds the successor retrieval product around it: evidence-backed CUI/view vectors, Elasticsearch indexes, source provenance, and reviewed search judgments.</p>
+      <p>It is not another MRCONSO synonym expansion. A release-quality artifact should prove that it retrieves the right CUI for real biomedical language and can show the evidence behind each result.</p>
+    </section>
+
+    <section class="panel">
+      <h2>How to Use It</h2>
+      <ol>
+        <li>Open this page in a browser, not just the IDE editor.</li>
+        <li>Click <strong>Open integrity assessment</strong> to check files, counts, and scale assumptions.</li>
+        <li>Click <strong>Open search quality assessment</strong> to run searches and judge successor-index quality.</li>
+        <li>In the <strong>Artifacts</strong> section, choose the files listed below.</li>
+        <li>Leave <strong>Max parsed lines</strong> as <code>0</code> to scan the whole file.</li>
+        <li>Click <strong>Analyze selected files</strong>.</li>
+        <li>Read <strong>Integrity Checks</strong> first. Failures are real problems; warnings are things to inspect.</li>
+      </ol>
+    </section>
+
+    <section class="panel">
+      <h2>Search Quality Test</h2>
+      <p>The easiest version is server-backed, so you do not load files manually. The current canonical server command is maintained in <code>docs/technical_pipeline.md</code>; it includes all five topic chunks, the PubMed bulk pilot, Elasticsearch ANN search, and the UMLS label fallback index.</p>
+      <p>If the server is already running, open <code>http://127.0.0.1:8766/</code>. Check <code>http://127.0.0.1:8766/api/status</code> to confirm the active vectors, evidence files, label index, and judgment path.</p>
+      <ol>
+        <li>Use the server-backed page above for normal testing.</li>
+        <li>Use the static <strong>search quality assessment</strong> only when you need a no-server fallback.</li>
+        <li>Use the SapBERT/CLS vector JSONL and the concept document JSONL.</li>
+        <li>Run one query at a time, inspect the labels and evidence snippets, and mark results as relevant, partial, or wrong.</li>
+        <li>For a repeatable benchmark, add one query per line in the query set box. If you know the target CUI, add it after a tab or comma.</li>
+        <li>Use the exported judgment CSV as the start of the release evaluation set.</li>
+      </ol>
+    </section>
+
+    <section class="panel">
+      <h2>Files to Select</h2>
+      <div class="file-list">
+        <div class="file-row">
+          <span class="label">Concept documents JSONL</span>
+          <code>build/scaling_chunk_001_gap_topics_concept_documents.jsonl</code>,
+          <code>build/scaling_chunk_002_common_clinical_concept_documents.jsonl</code>,
+          <code>build/scaling_chunk_003_abbreviation_language_concept_documents.jsonl</code>,
+          <code>build/scaling_chunk_004_drug_safety_therapeutics_concept_documents.jsonl</code>,
+          <code>build/scaling_chunk_005_diagnostics_procedures_devices_concept_documents.jsonl</code>,
+          <code>build/pubmed_bulk_recent_baseline_concept_documents.jsonl</code>
+        </div>
+        <div class="file-row">
+          <span class="label">Vector JSONL</span>
+          <code>build/scaling_chunk_001_gap_topics_concept_vectors.sapbert_cls.jsonl</code>,
+          <code>build/scaling_chunk_002_common_clinical_concept_vectors.sapbert_cls.jsonl</code>,
+          <code>build/scaling_chunk_003_abbreviation_language_concept_vectors.sapbert_cls.jsonl</code>,
+          <code>build/scaling_chunk_004_drug_safety_therapeutics_concept_vectors.sapbert_cls.jsonl</code>,
+          <code>build/scaling_chunk_005_diagnostics_procedures_devices_concept_vectors.sapbert_cls.jsonl</code>,
+          <code>build/pubmed_bulk_recent_baseline_concept_vectors.sapbert_cls.jsonl</code>
+        </div>
+        <div class="file-row">
+          <span class="label">Elasticsearch bulk parts</span>
+          Select all matching files:
+          <code>build/qe-scaling-chunk-001-gap-topics-sapbert-cls.elastic.bulk.part-*.ndjson</code>,
+          <code>build/qe-scaling-chunk-002-common-clinical-sapbert-cls.elastic.bulk.part-*.ndjson</code>,
+          <code>build/qe-scaling-chunk-003-abbreviation-language-sapbert-cls.elastic.bulk.part-*.ndjson</code>,
+          <code>build/qe-scaling-chunk-004-drug-safety-therapeutics-sapbert-cls.elastic.bulk.part-*.ndjson</code>,
+          <code>build/qe-scaling-chunk-005-diagnostics-procedures-devices-sapbert-cls.elastic.bulk.part-*.ndjson</code>
+        </div>
+        <div class="file-row">
+          <span class="label">Evidence JSONL files, optional but useful</span>
+          Select the JSONL files in:
+          <code>build/profile_evidence_scaling_chunk_001_gap_topics_materialized/</code>,
+          <code>build/profile_evidence_scaling_chunk_002_common_clinical_materialized/</code>, and
+          <code>build/profile_evidence_scaling_chunk_003_abbreviation_language_materialized/</code>,
+          <code>build/profile_evidence_scaling_chunk_004_drug_safety_therapeutics_materialized/</code>, and
+          <code>build/profile_evidence_scaling_chunk_005_diagnostics_procedures_devices_materialized/</code>
+        </div>
+        <div class="file-row">
+          <span class="label">Corpus JSONL files, optional</span>
+          <code>build/pubmed_scaling_chunk_001_gap_topics_corpus.jsonl</code>,
+          <code>build/europepmc_scaling_chunk_001_gap_topics_corpus.jsonl</code>,
+          <code>build/pubmed_scaling_chunk_002_common_clinical_corpus.jsonl</code>,
+          <code>build/europepmc_scaling_chunk_002_common_clinical_corpus.jsonl</code>,
+          <code>build/pubmed_scaling_chunk_003_abbreviation_language_corpus.jsonl</code>, and
+          <code>build/europepmc_scaling_chunk_003_abbreviation_language_corpus.jsonl</code>,
+          <code>build/pubmed_scaling_chunk_004_drug_safety_therapeutics_corpus.jsonl</code>,
+          <code>build/europepmc_scaling_chunk_004_drug_safety_therapeutics_corpus.jsonl</code>,
+          <code>build/pubmed_scaling_chunk_005_diagnostics_procedures_devices_corpus.jsonl</code>, and
+          <code>build/europepmc_scaling_chunk_005_diagnostics_procedures_devices_corpus.jsonl</code>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>What Good Looks Like</h2>
+      <ul>
+        <li>The cumulative Elasticsearch alias <code>qe-scaling-sapbert-cls</code> includes all reviewed chunk indexes.</li>
+        <li>The current five-chunk plus PubMed bulk pilot prototype has <code>219,367</code> SapBERT vector records loaded by the assessment server.</li>
+        <li>The source evidence shown in the UI comes from <code>build/search_quality_provenance.sqlite</code>, currently <code>667,003</code> display provenance references.</li>
+        <li>Vector dimensions show one value, currently <code>768</code>.</li>
+        <li>DRG source rows show <code>0</code>.</li>
+        <li>Parse errors show <code>0</code>.</li>
+        <li>Queries return plausible CUIs with PubMed or Europe PMC provenance, not just high vector scores.</li>
+        <li>No chunk becomes release-quality until reviewed judgments show acceptable precision.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

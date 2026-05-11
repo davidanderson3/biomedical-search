@@ -1,0 +1,80 @@
+topic	term	retmax
+cardiology_arrhythmia	atrial fibrillation OR ventricular tachycardia OR supraventricular tachycardia OR bradycardia OR cardiac arrhythmia	250
+cardiology_ischemia	myocardial infarction OR angina OR coronary artery disease OR acute coronary syndrome OR myocardial ischemia	250
+cardiology_failure	heart failure OR cardiomyopathy OR reduced ejection fraction OR preserved ejection fraction OR cardiac decompensation	250
+vascular_stroke	stroke OR transient ischemic attack OR cerebral infarction OR intracranial hemorrhage OR carotid stenosis	250
+vascular_thrombosis	deep vein thrombosis OR pulmonary embolism OR venous thromboembolism OR anticoagulation OR thrombophilia	250
+hypertension_lipids	hypertension OR dyslipidemia OR hypercholesterolemia OR atherosclerosis OR blood pressure	250
+oncology_breast	breast cancer OR mammary carcinoma OR HER2 OR estrogen receptor OR triple negative breast cancer	250
+oncology_lung	lung cancer OR non-small cell lung cancer OR small cell lung cancer OR EGFR mutation OR pulmonary neoplasm	250
+oncology_gi	colorectal cancer OR pancreatic cancer OR gastric cancer OR hepatocellular carcinoma OR gastrointestinal neoplasm	250
+oncology_heme	leukemia OR lymphoma OR multiple myeloma OR myelodysplastic syndrome OR stem cell transplant	250
+oncology_therapy	chemotherapy OR immunotherapy OR checkpoint inhibitor OR radiation therapy OR targeted therapy	250
+infectious_sepsis	sepsis OR septic shock OR bacteremia OR bloodstream infection OR systemic inflammatory response	250
+infectious_respiratory	pneumonia OR influenza OR COVID-19 OR respiratory syncytial virus OR tuberculosis	250
+infectious_hiv_hepatitis	HIV OR acquired immunodeficiency syndrome OR hepatitis B OR hepatitis C OR opportunistic infection	250
+infectious_bacterial	Staphylococcus aureus OR Escherichia coli OR Klebsiella pneumoniae OR Pseudomonas aeruginosa OR Enterococcus	250
+infectious_fungal_parasitic	Candida OR Aspergillus OR malaria OR toxoplasmosis OR fungal infection	250
+endocrine_diabetes	type 1 diabetes OR type 2 diabetes OR diabetic ketoacidosis OR hypoglycemia OR insulin resistance	250
+endocrine_thyroid	thyroid disease OR hyperthyroidism OR hypothyroidism OR thyroid nodule OR thyroid cancer	250
+endocrine_adrenal_pituitary	adrenal insufficiency OR Cushing syndrome OR pituitary adenoma OR acromegaly OR diabetes insipidus	250
+metabolism_obesity	obesity OR metabolic syndrome OR bariatric surgery OR weight loss OR nonalcoholic fatty liver disease	250
+bone_calcium	osteoporosis OR fracture OR hypercalcemia OR vitamin D deficiency OR parathyroid disease	250
+neurology_seizure	epilepsy OR seizure OR status epilepticus OR antiepileptic drug OR febrile seizure	250
+neurology_neurodegenerative	Alzheimer disease OR dementia OR Parkinson disease OR amyotrophic lateral sclerosis OR Huntington disease	250
+neurology_headache_pain	migraine OR headache OR neuropathic pain OR trigeminal neuralgia OR fibromyalgia	250
+neurology_demyelinating	multiple sclerosis OR optic neuritis OR transverse myelitis OR neuromyelitis optica OR demyelinating disease	250
+psychiatry_mood	depression OR major depressive disorder OR bipolar disorder OR mania OR suicidal ideation	250
+psychiatry_anxiety_trauma	anxiety OR panic disorder OR post-traumatic stress disorder OR obsessive compulsive disorder OR phobia	250
+psychiatry_psychosis	schizophrenia OR psychosis OR hallucination OR delusion OR antipsychotic	250
+addiction_substance	alcohol use disorder OR opioid use disorder OR cocaine OR methamphetamine OR withdrawal	250
+pulmonary_airway	asthma OR chronic obstructive pulmonary disease OR bronchiectasis OR wheezing OR airway obstruction	250
+pulmonary_critical	acute respiratory distress syndrome OR mechanical ventilation OR respiratory failure OR hypoxemia OR pulmonary edema	250
+pulmonary_interstitial	interstitial lung disease OR pulmonary fibrosis OR sarcoidosis OR pneumoconiosis OR hypersensitivity pneumonitis	250
+gi_liver	cirrhosis OR portal hypertension OR hepatitis OR liver failure OR ascites	250
+gi_bowel	inflammatory bowel disease OR Crohn disease OR ulcerative colitis OR irritable bowel syndrome OR gastrointestinal bleeding	250
+gi_pancreas_biliary	pancreatitis OR gallstone OR cholangitis OR cholecystitis OR pancreatic insufficiency	250
+renal_kidney	chronic kidney disease OR acute kidney injury OR dialysis OR glomerulonephritis OR nephrotic syndrome	250
+renal_electrolytes	hyponatremia OR hyperkalemia OR metabolic acidosis OR electrolyte disorder OR acid base balance	250
+urology	urinary tract infection OR nephrolithiasis OR benign prostatic hyperplasia OR urinary incontinence OR bladder cancer	250
+rheumatology_arthritis	rheumatoid arthritis OR osteoarthritis OR gout OR psoriatic arthritis OR ankylosing spondylitis	250
+rheumatology_autoimmune	systemic lupus erythematosus OR vasculitis OR scleroderma OR Sjogren syndrome OR antiphospholipid syndrome	250
+dermatology_inflammatory	eczema OR psoriasis OR dermatitis OR urticaria OR hidradenitis suppurativa	250
+dermatology_infectious_wound	cellulitis OR skin ulcer OR pressure injury OR wound infection OR abscess	250
+dermatology_cancer	melanoma OR basal cell carcinoma OR squamous cell carcinoma OR skin cancer OR nevus	250
+obgyn_pregnancy	pregnancy OR preeclampsia OR gestational diabetes OR preterm birth OR postpartum hemorrhage	250
+obgyn_reproductive	endometriosis OR infertility OR polycystic ovary syndrome OR uterine fibroid OR ovarian cyst	250
+obgyn_cancer	ovarian cancer OR cervical cancer OR endometrial cancer OR human papillomavirus OR gynecologic neoplasm	250
+pediatrics_neonatal	neonatal sepsis OR prematurity OR respiratory distress syndrome newborn OR neonatal jaundice OR congenital anomaly	250
+pediatrics_development	autism OR developmental delay OR attention deficit hyperactivity disorder OR cerebral palsy OR learning disorder	250
+pediatrics_general	childhood asthma OR bronchiolitis OR pediatric obesity OR febrile illness OR vaccination children	250
+hematology_anemia	anemia OR iron deficiency OR hemolysis OR thalassemia OR sickle cell disease	250
+hematology_bleeding	bleeding disorder OR hemophilia OR thrombocytopenia OR coagulopathy OR disseminated intravascular coagulation	250
+immunology_allergy	allergy OR anaphylaxis OR asthma allergy OR food allergy OR allergic rhinitis	250
+immunology_transplant	transplant rejection OR graft versus host disease OR immunosuppression OR organ transplant OR HLA matching	250
+immunology_primary	immunodeficiency OR common variable immunodeficiency OR severe combined immunodeficiency OR complement deficiency OR autoinflammatory disease	250
+pharmacology_safety	adverse drug reaction OR drug interaction OR pharmacovigilance OR medication error OR drug toxicity	250
+pharmacology_pk	pharmacokinetics OR pharmacodynamics OR therapeutic drug monitoring OR dose adjustment OR drug metabolism	250
+toxicology	overdose OR poisoning OR acetaminophen toxicity OR lead poisoning OR carbon monoxide poisoning	250
+surgery_general	appendectomy OR colectomy OR hernia repair OR postoperative complication OR surgical site infection	250
+surgery_transplant	transplant surgery OR kidney transplant OR liver transplant OR heart transplant OR graft survival	250
+procedures_endoscopy	endoscopy OR colonoscopy OR bronchoscopy OR biopsy OR catheterization	250
+devices_implants	pacemaker OR implantable cardioverter defibrillator OR stent OR prosthesis OR medical device	250
+imaging_mri_ct	magnetic resonance imaging OR computed tomography OR contrast agent OR radiology OR imaging biomarker	250
+imaging_ultrasound_echo	ultrasound OR echocardiography OR Doppler OR fetal ultrasound OR point of care ultrasound	250
+pathology	inflammation OR necrosis OR fibrosis OR dysplasia OR pathology specimen	250
+lab_chemistry	creatinine OR bilirubin OR albumin OR blood glucose OR liver enzyme	250
+lab_hematology	hemoglobin OR white blood cell count OR platelet count OR neutrophil OR eosinophil	250
+lab_cardiac	troponin OR brain natriuretic peptide OR creatine kinase OR D-dimer OR C-reactive protein	250
+genetics_mendelian	cystic fibrosis OR muscular dystrophy OR Marfan syndrome OR inherited disease OR genetic counseling	250
+genomics_cancer	BRCA1 OR EGFR OR KRAS OR BRAF OR tumor sequencing	250
+genomics_methods	genome sequencing OR whole exome sequencing OR genome wide association study OR polygenic risk score OR variant interpretation	250
+microbiome	microbiome OR gut microbiota OR metagenomics OR dysbiosis OR probiotic	250
+nutrition	diet OR malnutrition OR enteral nutrition OR parenteral nutrition OR vitamin deficiency	250
+public_health	epidemiology OR health disparities OR screening OR prevention OR population health	250
+emergency_trauma	trauma OR shock OR cardiac arrest OR emergency department OR resuscitation	250
+critical_care	intensive care OR vasopressor OR delirium ICU OR acute organ failure OR critical illness	250
+ophthalmology	glaucoma OR cataract OR macular degeneration OR diabetic retinopathy OR uveitis	250
+ent	hearing loss OR sinusitis OR otitis media OR tonsillitis OR vertigo	250
+rehabilitation	rehabilitation OR physical therapy OR occupational therapy OR gait disorder OR functional recovery	250
+palliative	palliative care OR hospice OR end of life care OR symptom management OR advance care planning	250

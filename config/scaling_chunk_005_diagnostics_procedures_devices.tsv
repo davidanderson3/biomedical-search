@@ -1,0 +1,13 @@
+topic	term	retmax
+diagnostic_imaging	computed tomography OR magnetic resonance imaging OR ultrasound OR radiography OR nuclear medicine imaging	150
+cardiac_procedures	percutaneous coronary intervention OR coronary artery bypass grafting OR transcatheter aortic valve replacement OR cardiac catheterization	150
+vascular_procedures	angioplasty OR endovascular repair OR thrombectomy OR vascular stent OR embolization	150
+endoscopy_procedures	colonoscopy OR upper endoscopy OR bronchoscopy OR endoscopic ultrasound OR ERCP	150
+biopsy_pathology	biopsy OR fine needle aspiration OR surgical pathology OR cytology OR frozen section	150
+lab_diagnostics	biomarker testing OR diagnostic assay OR point of care test OR molecular diagnostic test OR laboratory test	150
+critical_care_devices	mechanical ventilation OR extracorporeal membrane oxygenation OR central venous catheter OR arterial line	150
+orthopedic_devices	joint replacement OR hip prosthesis OR knee arthroplasty OR orthopedic implant OR fracture fixation	150
+neurologic_devices	deep brain stimulation OR vagus nerve stimulation OR intracranial pressure monitor OR neurostimulator	150
+women_health_procedures	mammography OR cervical cancer screening OR hysteroscopy OR cesarean delivery OR fetal ultrasound	150
+urologic_procedures	cystoscopy OR prostate biopsy OR ureteral stent OR lithotripsy OR urinary catheter	150
+device_complications	device infection OR catheter associated infection OR implant failure OR prosthesis complication OR device malfunction	150

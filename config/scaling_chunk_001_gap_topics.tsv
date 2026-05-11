@@ -1,0 +1,13 @@
+topic	term	retmax
+rare_disease_genetics	rare disease OR orphan disease OR inherited metabolic disorder OR congenital syndrome OR inborn error of metabolism	200
+pharmacogenomics	pharmacogenomics OR pharmacogenetics OR CYP2D6 OR HLA-B OR DPYD	200
+antimicrobial_resistance	antimicrobial resistance OR multidrug resistant bacteria OR carbapenem resistant OR MRSA OR VRE	200
+mycology_parasitology	invasive fungal infection OR aspergillosis OR candidemia OR malaria OR neglected tropical disease	200
+anatomy_neurovascular	cerebral artery OR cranial nerve OR spinal cord tract OR vascular anatomy OR neuroanatomy	200
+anatomy_msk	ligament injury OR tendon disorder OR rotator cuff OR meniscus OR musculoskeletal anatomy	200
+pathology_molecular	molecular pathology OR immunohistochemistry OR tumor marker OR histopathology OR cytopathology	200
+genomic_variants	pathogenic variant OR variant of uncertain significance OR copy number variant OR gene fusion OR loss of heterozygosity	200
+cell_therapy	gene therapy OR cell therapy OR CAR T-cell OR CRISPR therapy OR antisense oligonucleotide	200
+medical_devices_safety	medical device adverse event OR implant failure OR device infection OR device recall OR prosthesis complication	200
+lab_microbiology	culture susceptibility OR antimicrobial susceptibility testing OR blood culture OR urine culture OR molecular diagnostic test	200
+environmental_occupational	occupational exposure OR environmental exposure OR air pollution health OR pesticide toxicity OR heavy metal exposure	200
