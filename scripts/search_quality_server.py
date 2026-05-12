@@ -71,16 +71,8 @@ __all__ = [
 ]
 
 
-DEFAULT_DOCS = (
-    ROOT
-    / "build"
-    / "biomedicine_expanded_literature_mimic_structured_top12_concept_documents.jsonl"
-)
-DEFAULT_VECTORS = (
-    ROOT
-    / "build"
-    / "biomedicine_expanded_literature_mimic_structured_top12_concept_vectors.lean.hashing.jsonl"
-)
+DEFAULT_DOCS = ROOT / "build" / "public" / "public_concept_documents.jsonl"
+DEFAULT_VECTORS = ROOT / "build" / "public" / "public_concept_vectors.hashing.jsonl"
 DEFAULT_EXTENSION_DOCS = (
     ROOT
     / "build"
@@ -136,8 +128,6 @@ DEFAULT_ELASTIC_URL = "http://localhost:9200"
 DEFAULT_ELASTIC_INDEX = "qe-umls-biomedicine-hashing-current"
 DEFAULT_EVIDENCE_DIRS = (
     ROOT / "build" / "profile_evidence_literature_expanded",
-    ROOT / "build" / "profile_evidence_mimic_demo_no_drg",
-    ROOT / "build" / "profile_evidence_mimic_demo_structured",
     ROOT / "build" / "openalex_cited_evidence" / "evidence",
 )
 DEFAULT_VECTOR_PATHS = [
@@ -202,7 +192,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Evidence JSONL files used to annotate evidence bullets with provenance. "
-            "Defaults to the current literature and MIMIC evidence shard directories."
+            "Defaults to the current public literature and OpenAlex evidence shard directories."
         ),
     )
     parser.add_argument(

@@ -1,20 +1,19 @@
 # UMLS Semantic Evidence Index
 
-This project is a prototype for a successor architecture to the traditional
-UMLS distribution: an evidence-backed semantic retrieval layer over biomedical
-concepts. It keeps UMLS CUIs as the stable concept backbone, but moves the
-primary search experience from static synonym matching toward vector retrieval
-grounded in PubMed, Europe PMC, MIMIC, and other real-world biomedical evidence.
+This project is an evidence-backed semantic retrieval layer over biomedical
+concepts. It uses UMLS CUIs as the stable concept backbone, then adds searchable
+context from PubMed, Europe PMC, PMC Open Access, and other permitted biomedical
+evidence.
 
-This is not an official National Library of Medicine UMLS release. It is a
-candidate product direction for "UMLS 2.0": UMLS as an evaluated, provenance-rich
-semantic index rather than just a collection of source vocabularies, MRCONSO
-strings, and relationship files.
+The goal is to make CUI lookup more useful for real biomedical language:
+provenance-rich, evaluable, reproducible, and responsive to new evidence while
+preserving source vocabulary identifiers and local licensing boundaries.
 
 The basic idea is:
 
 1. Keep UMLS CUIs as the concept identity layer.
-2. Collect real-world prose from PubMed, Europe PMC, MIMIC, and similar corpora.
+2. Collect real-world prose from PubMed, Europe PMC, PMC Open Access, and
+   similar permitted corpora.
 3. Use high-precision UMLS label matches to anchor corpus contexts to CUIs.
 4. Build multiple evidence views per CUI instead of one centroid.
 5. Embed those views with biomedical BERT models and index the vectors.
@@ -22,11 +21,7 @@ The basic idea is:
 7. Release reproducible vector/index/evidence manifests that can be updated in
    bounded deltas.
 
-This intentionally does **not** pull synonyms from HPO, Orphanet, NCI, MeSH,
-SNOMED CT, MedDRA, RxNorm, ICD, or any other vocabulary already represented in
-UMLS.
-
-## Product Direction
+## Architecture Goals
 
 The release artifact should be a **semantic evidence index for UMLS CUIs**. The
 core product is not another synonym file; it is a ranked retrieval layer that
@@ -43,15 +38,8 @@ Release-grade artifacts should include:
   method, counts, and file hashes.
 - Delta packs for new or changed evidence and re-embedded CUI views.
 
-Restricted artifacts, especially anything derived from MIMIC or other
-credentialed clinical corpora, should remain separate from public literature
-artifacts and should never redistribute raw clinical text.
-
-See [UMLS 2.0 Product Plan](docs/umls_2_product.md) for the product framing and
-release boundary.
-
-See [Continuously Updated, Search-Driven UMLS Proposal](docs/proposals/search_driven_umls_replacement.md)
-for the short replacement-model proposal.
+Restricted or credentialed clinical corpora should remain separate from public
+literature artifacts and should never redistribute raw clinical text.
 
 For external rebuilds and artifact boundaries, see
 [Reproducibility Guide](docs/reproducibility.md). It separates public/shareable
@@ -178,47 +166,6 @@ python3 scripts/evidence_vectors.py fetch-pmc-oa-topics \
   --out build/pmc_oa_biomedicine_topics_corpus.jsonl
 ```
 
-#### MIMIC and other local clinical tables
-
-MIMIC access is credentialed, so this pipeline expects local CSV/TSV/GZ files.
-For MIMIC-IV-ED triage chief complaints:
-
-```sh
-python3 scripts/evidence_vectors.py ingest-tabular-corpus \
-  --input /path/to/mimic-iv-ed/ed/triage.csv.gz \
-  --source mimic_iv_ed_triage \
-  --id-column subject_id \
-  --id-column stay_id \
-  --text-column chiefcomplaint \
-  --out build/mimic_ed_triage_corpus.jsonl
-```
-
-For a notes table:
-
-```sh
-python3 scripts/evidence_vectors.py ingest-tabular-corpus \
-  --input /path/to/discharge.csv.gz \
-  --source mimic_iv_note_discharge \
-  --id-column note_id \
-  --text-column text \
-  --out build/mimic_notes_corpus.jsonl
-```
-
-For the standard MIMIC-IV-Note 2.2 download, keep discharge and radiology notes
-as separate sources and use row caps for a first local pilot:
-
-```sh
-python3 scripts/evidence_vectors.py ingest-mimic-notes \
-  --root ~/Downloads/mimic-iv-note-deidentified-free-text-clinical-notes-2.2 \
-  --out-dir build/mimic_iv_note_local_pilot \
-  --max-discharge-rows 25000 \
-  --max-radiology-rows 25000
-```
-
-Omit the row caps for a full local run. Full discharge and radiology linking can
-produce very large evidence files, so run the capped pilot first and scale after
-checking row counts, disk use, and linker runtime.
-
 ### 2. Build a UMLS label index
 
 This index is used only for anchoring real-world text spans to CUIs. You can keep
@@ -306,7 +253,7 @@ number of matching CUIs is within `--max-ambiguity`.
 
 ```sh
 python3 scripts/evidence_vectors.py link-corpus \
-  --corpus build/pubmed_corpus.jsonl build/europepmc_corpus.jsonl build/mimic_ed_triage_corpus.jsonl \
+  --corpus build/pubmed_corpus.jsonl build/europepmc_corpus.jsonl build/pmc_oa_corpus.jsonl \
   --label-index build/umls_label_index.sqlite \
   --out build/corpus_evidence.jsonl \
   --matcher trie
@@ -369,39 +316,23 @@ python3 scripts/evidence_vectors.py build-docs \
   --out build/concept_documents.jsonl
 ```
 
-When mixing MIMIC demo evidence with PubMed, exclude administrative DRG-derived
-evidence before building documents:
-
-```sh
-python3 scripts/evidence_vectors.py filter-evidence \
-  --evidence build/mimic_demo_clinical_evidence.jsonl \
-  --exclude-source mimic_demo_drg \
-  --out build/mimic_demo_clinical_evidence.no_drg.jsonl
-
-python3 scripts/evidence_vectors.py build-docs \
-  --evidence build/pubmed_corpus_evidence.jsonl build/mimic_demo_clinical_evidence.no_drg.jsonl \
-  --mrconso ~/Downloads/2026AA/META/MRCONSO.RRF \
-  --out build/combined_pubmed_mimic_no_drg_concept_documents.jsonl
-```
-
 For larger evidence sets, use the SQLite-backed builder instead of the in-memory
 builder:
 
 ```sh
 python3 scripts/evidence_vectors.py build-docs-sqlite \
-  --evidence build/pubmed_corpus_evidence.jsonl build/mimic_demo_clinical_evidence.jsonl \
-  --exclude-source mimic_demo_drg \
+  --evidence build/pubmed_corpus_evidence.jsonl build/europepmc_corpus_evidence.jsonl build/pmc_oa_corpus_evidence.jsonl \
   --mrconso ~/Downloads/2026AA/META/MRCONSO.RRF \
-  --sqlite build/combined_pubmed_mimic_no_drg_docs.sqlite \
+  --sqlite build/literature_docs.sqlite \
   --replace \
-  --out build/combined_pubmed_mimic_no_drg_concept_documents.sqlite.jsonl
+  --out build/literature_concept_documents.sqlite.jsonl
 ```
 
 The builder emits separate views such as `pubmed_context`,
-`europepmc_context`, `mimic_iv_ed_triage_context`, `query_language`, and
-`prose_evidence` instead of forcing all evidence into one centroid. That usually
-gives better retrieval because literature language, clinical prose, and user
-queries can be very different.
+`europepmc_context`, `pmc_oa_context`, `query_language`, and `prose_evidence`
+instead of forcing all evidence into one centroid. That usually gives better
+retrieval because literature language, open full-text prose, and user queries
+can be very different.
 
 ### 7. Embed documents
 
@@ -588,9 +519,9 @@ components. Use it as the first pass before deeper relevance review.
 High-value evidence:
 
 - PubMed abstracts and PMC/Europe PMC open literature text
-- MIMIC-IV-ED chief complaints and rhythm fields
-- MIMIC-IV-Note discharge/radiology notes, if available locally under credentialed access
-- other de-identified clinical prose with real patient or clinician language
+- DailyMed, RxNorm/RxClass, LOINC, MeSH, NCI/NCIt, HPO, and other permitted
+  public biomedical sources
+- OpenAlex citation-linked evidence when it adds useful literature context
 - manually reviewed examples when available
 
 Lower-value evidence should be kept separate or down-weighted:
@@ -601,9 +532,10 @@ Lower-value evidence should be kept separate or down-weighted:
 
 ## Why Label Anchoring
 
-PubMed, MIMIC, and Europe PMC give us real language, but they do not directly give
-trustworthy UMLS CUI labels for every useful snippet. The linker therefore uses
-UMLS itself as a high-precision anchor: when a corpus span exactly matches a UMLS
-label, the surrounding context becomes evidence for that CUI. The context may
-contain abbreviations, lay phrasing, spelling variants, and neighboring wording
-that are not good MRCONSO additions but are useful for vector retrieval.
+PubMed, Europe PMC, PMC Open Access, and other permitted sources give us real
+language, but they do not directly give trustworthy UMLS CUI labels for every
+useful snippet. The linker therefore uses UMLS itself as a high-precision anchor:
+when a corpus span exactly matches a UMLS label, the surrounding context becomes
+evidence for that CUI. The context may contain abbreviations, lay phrasing,
+spelling variants, and neighboring wording that are not good MRCONSO additions
+but are useful for vector retrieval.

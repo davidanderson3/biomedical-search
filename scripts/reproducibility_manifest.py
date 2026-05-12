@@ -14,8 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 DEFAULT_ARTIFACTS = [
-    ("docs", "build/biomedicine_expanded_literature_mimic_structured_top12_concept_documents.jsonl", "restricted_local", "Default local concept documents; name indicates restricted/local clinical-derived content may be included."),
-    ("vectors", "build/biomedicine_expanded_literature_mimic_structured_top12_concept_vectors.lean.hashing.jsonl", "restricted_local", "Default local hashing vectors paired with the default local documents."),
+    ("docs", "build/public/public_concept_documents.jsonl", "public_generated", "Public rebuild concept documents generated from public corpora and locally licensed vocabulary files."),
+    ("vectors", "build/public/public_concept_vectors.hashing.jsonl", "public_generated", "Public rebuild hashing vectors paired with the public concept documents."),
     ("extension_docs", "build/new_umls_iterations/iteration_002_existing_data/extension_concept_documents.cumulative.jsonl", "local_generated", "Locally generated NEW####### extension concept documents."),
     ("extension_vectors", "build/new_umls_iterations/iteration_002_existing_data/extension_concept_vectors.cumulative.hashing.jsonl", "local_generated", "Locally generated extension concept vectors."),
     ("wikipedia_docs", "build/wikipedia_enrichment/wikipedia_concept_documents.jsonl", "public_generated", "Wikipedia-derived enrichment documents."),

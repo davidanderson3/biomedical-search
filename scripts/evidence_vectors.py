@@ -54,8 +54,6 @@ from qe_evidence_vectors.fetchers import (
 from qe_evidence_vectors.ingest import read_query_log_tsv, read_snippet_tsv
 from qe_evidence_vectors.label_index import LabelIndex, build_label_index
 from qe_evidence_vectors.linker import iter_linked_corpus_evidence
-from qe_evidence_vectors.mimic_notes import write_mimic_note_corpora
-from qe_evidence_vectors.mimic_structured import iter_mimic_structured_documents
 from qe_evidence_vectors.profile_workflow import build_profile_indexes, link_profile_shards
 from qe_evidence_vectors.pubmed_bulk import (
     DEFAULT_PUBMED_BULK_LATEST_BASELINE,
@@ -210,6 +208,8 @@ def cmd_ingest_tabular_corpus(args: argparse.Namespace) -> int:
 
 
 def cmd_ingest_mimic_structured(args: argparse.Namespace) -> int:
+    from qe_evidence_vectors.mimic_structured import iter_mimic_structured_documents
+
     documents = iter_mimic_structured_documents(
         args.root,
         sources=set(args.source) if args.source else None,
@@ -227,6 +227,8 @@ def cmd_ingest_mimic_structured(args: argparse.Namespace) -> int:
 
 
 def cmd_ingest_mimic_notes(args: argparse.Namespace) -> int:
+    from qe_evidence_vectors.mimic_notes import write_mimic_note_corpora
+
     results = write_mimic_note_corpora(
         root=args.root,
         out_dir=args.out_dir,

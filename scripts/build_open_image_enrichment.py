@@ -25,7 +25,12 @@ from qe_evidence_vectors.schema import write_jsonl
 DEFAULT_OUT_DIR = ROOT / "build" / "open_image_enrichment"
 DEFAULT_TARGETS = ROOT / "config" / "open_image_enrichment_seed_targets.txt"
 DEFAULT_DOC_PATHS = [
-    ROOT / "build" / "biomedicine_expanded_literature_mimic_structured_top12_concept_documents.jsonl",
+    ROOT / "build" / "public" / "public_concept_documents.jsonl",
+    ROOT / "build" / "scaling_chunk_001_gap_topics_concept_documents.jsonl",
+    ROOT / "build" / "scaling_chunk_002_common_clinical_concept_documents.jsonl",
+    ROOT / "build" / "scaling_chunk_003_abbreviation_language_concept_documents.jsonl",
+    ROOT / "build" / "scaling_chunk_004_drug_safety_therapeutics_concept_documents.jsonl",
+    ROOT / "build" / "scaling_chunk_005_diagnostics_procedures_devices_concept_documents.jsonl",
     ROOT
     / "build"
     / "new_umls_iterations"

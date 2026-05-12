@@ -33,8 +33,6 @@ add_vector build/pubmed_bulk_recent_1327_1326_concept_vectors.sapbert_cls.jsonl
 add_vector build/pubmed_bulk_recent_1325_1324_concept_vectors.sapbert_cls.jsonl
 add_vector build/pubmed_bulk_recent_1323_1322_concept_vectors.sapbert_cls.jsonl
 add_vector build/pubmed_bulk_recent_1321_1320_concept_vectors.sapbert_cls.jsonl
-add_vector build/mimic_iv_note_local_pilot_concept_vectors.sapbert_cls.jsonl
-add_vector build/mimic_iv_2_2_structured_concept_vectors.sapbert_cls.jsonl
 
 add_doc build/scaling_chunk_001_gap_topics_concept_documents.jsonl
 add_doc build/scaling_chunk_002_common_clinical_concept_documents.jsonl
@@ -49,8 +47,6 @@ add_doc build/pubmed_bulk_recent_1327_1326_concept_documents.jsonl
 add_doc build/pubmed_bulk_recent_1325_1324_concept_documents.jsonl
 add_doc build/pubmed_bulk_recent_1323_1322_concept_documents.jsonl
 add_doc build/pubmed_bulk_recent_1321_1320_concept_documents.jsonl
-add_doc build/mimic_iv_note_local_pilot_concept_documents.jsonl
-add_doc build/mimic_iv_2_2_structured_concept_documents.jsonl
 
 exec python3 scripts/search_quality_server.py \
   --port "$PORT" \

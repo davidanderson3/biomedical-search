@@ -503,7 +503,7 @@ class SearchHydrationMixin:
             "embedding_model": self.embedder.model_name,
             "ranker": "hybrid rerank: lexical label match + bounded MRDEF definition match + MRREL cross-type relation support + query-anchor recall/specificity + vector similarity + evidence presence + semantic, composite-intent, and fragment controls",
             "source_role": (
-                "PubMed, PMC OA, MIMIC, and other corpora contribute evidence text to CUI/view "
+                "PubMed, PMC OA, and other permitted corpora contribute evidence text to CUI/view "
                 "documents. Source names do not receive independent score weights in the current ranker."
             ),
         }
