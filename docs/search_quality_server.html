@@ -12,17 +12,23 @@
       <h2>Find Concepts</h2>
       <div class="grid query-grid">
         <div>
-          <label for="query">Text, CUI, or code</label>
-          <input id="query" type="text" value="heart failure with reduced ejection fraction">
+          <input id="query" type="text" aria-label="Text, CUI, or code" value="heart failure with reduced ejection fraction">
         </div>
         <div>
           <label for="topK">Search pool</label>
           <input id="topK" type="number" min="18" max="100" value="60">
         </div>
         <div>
-          <label for="semanticGroupFilter">Semantic groups</label>
-          <select id="semanticGroupFilter" multiple size="4" aria-label="Semantic group filter"></select>
-          <div class="filter-help">No selection searches all groups.</div>
+          <label for="searchMode">Search mode</label>
+          <select id="searchMode" aria-label="Search mode">
+            <option value="balanced" selected>Balanced</option>
+            <option value="exact">Exact</option>
+            <option value="comprehensive">Comprehensive</option>
+          </select>
+        </div>
+        <div>
+          <label for="semanticGroupFilter">Semantic group</label>
+          <select id="semanticGroupFilter" aria-label="Semantic group filter"></select>
         </div>
         <div>
           <label for="includeRelated">Related</label>
@@ -92,6 +98,31 @@ appendectomy surgical procedure</textarea>
       </div>
     </details>
   </main>
+
+  <div id="snomedLicenseDialog" class="license-dialog-backdrop" role="presentation" hidden>
+    <section
+      class="license-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="snomedLicenseTitle"
+      aria-describedby="snomedLicenseBody"
+      tabindex="-1"
+    >
+      <h2 id="snomedLicenseTitle">SNOMED CT License Acknowledgement</h2>
+      <div id="snomedLicenseBody" class="license-dialog-body">
+        This search may include SNOMED CT-derived concepts, terms, or relationships. Continue only if this local deployment and your use are permitted under the
+        <a href="https://www.nlm.nih.gov/research/umls/knowledge_sources/metathesaurus/release/license_agreement_snomed.html" target="_blank" rel="noopener">NLM SNOMED CT Affiliate License Agreement</a>
+        and any applicable organizational or jurisdictional requirements.
+      </div>
+      <label class="license-dialog-check">
+        <input id="snomedLicenseCheckbox" type="checkbox">
+        I acknowledge that SNOMED CT content is licensed content and confirm that I am permitted to use it in this environment under the linked NLM agreement.
+      </label>
+      <div class="license-dialog-actions">
+        <button id="snomedLicenseAcceptBtn" class="primary" type="button" disabled>Continue</button>
+      </div>
+    </section>
+  </div>
 
   <script src="/search_quality_app.js"></script>
 </body>

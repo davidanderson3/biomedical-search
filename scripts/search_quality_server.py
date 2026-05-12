@@ -15,6 +15,9 @@ if str(SRC) not in sys.path:
 from qe_evidence_vectors.embeddings import DEFAULT_BIOMEDICAL_BERT_MODEL
 from qe_evidence_vectors.elastic_client import search_knn
 from qe_evidence_vectors.search_quality_http import (
+    API_VERSION,
+    OPENAPI_SPEC,
+    api_error,
     make_handler,
     parse_bounded_int_param,
     read_judgments,
@@ -46,9 +49,12 @@ class SearchIndex(_SearchIndex):
 
 
 __all__ = [
+    "API_VERSION",
     "LabelFallback",
+    "OPENAPI_SPEC",
     "SearchIndex",
     "SearchRecord",
+    "api_error",
     "concept_display_name",
     "content_tokens",
     "label_fallback_anchor_queries",

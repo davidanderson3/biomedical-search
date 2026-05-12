@@ -483,15 +483,22 @@ class SearchHydrationMixin:
             )
         return hit
 
-    def scoring_summary(self, backend: str) -> dict:
+    def scoring_summary(self, backend: str, *, search_mode: str = "balanced") -> dict:
         if backend == "resolver":
             retrieval = "direct CUI/code resolver"
         elif backend == "elasticsearch":
             retrieval = "Elasticsearch kNN over concept-document embeddings"
         else:
             retrieval = "local vector scan over concept-document embeddings"
+        mode_descriptions = {
+            "balanced": "balanced hybrid search",
+            "exact": "exact literal label/span search; semantic-only vector hits are filtered out",
+            "comprehensive": "comprehensive search with a larger reranking candidate pool",
+        }
         return {
             "retrieval": retrieval,
+            "search_mode": search_mode,
+            "search_mode_description": mode_descriptions.get(search_mode, mode_descriptions["balanced"]),
             "embedding_provider": self.embedder.provider_name,
             "embedding_model": self.embedder.model_name,
             "ranker": "hybrid rerank: lexical label match + bounded MRDEF definition match + MRREL cross-type relation support + query-anchor recall/specificity + vector similarity + evidence presence + semantic, composite-intent, and fragment controls",
@@ -509,6 +516,7 @@ class SearchHydrationMixin:
         started: float,
         include_related: bool = True,
         semantic_bucket_keys: object = None,
+        search_mode: str = "balanced",
     ) -> dict:
         semantic_bucket_keys = normalize_semantic_bucket_filter(semantic_bucket_keys)
         candidates = list(resolution.get("candidates") or [])
@@ -554,15 +562,19 @@ class SearchHydrationMixin:
                 "sepsis_subtype_penalty": 0.0,
                 "semantic_fragment_penalty": 0.0,
                 "generic_fragment_penalty": 0.0,
+                "assertion_context_penalty": 0.0,
+                "assertion": {"status": "current"},
                 "normal_exam_fragment_penalty": 0.0,
                 "lexical_fallback_used": False,
                 "retrieval_kind": str(hit.get("match_type") or "resolver"),
             }
+            hit["assertion"] = {"status": "current"}
         return self.compact_search_response({
             "query": resolution.get("query") or "",
             "top_k": top_k,
+            "search_mode": search_mode,
             "backend": "resolver",
-            "scoring": self.scoring_summary("resolver"),
+            "scoring": self.scoring_summary("resolver", search_mode=search_mode),
             "semantic_bucket_filter": list(semantic_bucket_keys),
             "input_type": resolution.get("input_type") or "",
             "resolution": resolution,

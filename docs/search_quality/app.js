@@ -9,6 +9,7 @@
       lastRelatedResultBuckets: [],
       lastScoring: null,
       includeRelated: false,
+      searchMode: "balanced",
       selectedSemanticBucketKeys: [],
       searchRequestSeq: 0,
       searchAbortController: null,
@@ -31,6 +32,8 @@
     const RELATED_BUCKET_MIN_STRENGTH = 0.58;
     const RELATED_BUCKET_MIN_CONFIDENCE = 0.50;
     const BRAND_STATUS = "UMLS 2.0";
+    const SNOMED_LICENSE_ACK_KEY = "qe_snomed_license_ack_v2";
+    let snomedLicenseAcknowledgedForSession = false;
     const CONTRAINDICATION_RELATION_MARKERS = [
       "contraindicat"
     ];
@@ -350,14 +353,22 @@
 
     function renderSemanticGroupFilter() {
       if (!els.semanticGroupFilter) return;
-      const selected = new Set(selectedSemanticBucketKeys());
-      els.semanticGroupFilter.innerHTML = semanticResultBucketDefs.map((bucket) => `
-        <option value="${esc(bucket.key)}"${selected.has(bucket.key) ? " selected" : ""}>${esc(bucket.label)}</option>
+      const selectedKey = selectedSemanticBucketKeys()[0] || "";
+      const bucketOptions = semanticResultBucketDefs.map((bucket) => `
+        <option value="${esc(bucket.key)}"${selectedKey === bucket.key ? " selected" : ""}>${esc(bucket.label)}</option>
       `).join("");
+      els.semanticGroupFilter.innerHTML = `
+        <option value=""${selectedKey ? "" : " selected"}>All semantic groups</option>
+        ${bucketOptions}
+      `;
     }
 
     function selectedSemanticBucketKeys() {
       if (!els.semanticGroupFilter) return [];
+      if (!els.semanticGroupFilter.multiple) {
+        const value = String(els.semanticGroupFilter.value || "").trim();
+        return value ? [value] : [];
+      }
       return Array.from(els.semanticGroupFilter.selectedOptions || [])
         .map((option) => String(option.value || "").trim())
         .filter(Boolean);
@@ -365,6 +376,12 @@
 
     function semanticBucketFilterQueryParam(keys = selectedSemanticBucketKeys()) {
       return keys.length ? `&semantic_buckets=${encodeURIComponent(keys.join(","))}` : "";
+    }
+
+    function selectedSearchMode() {
+      const mode = String(els.searchMode?.value || "balanced").trim().toLowerCase();
+      if (mode === "exact" || mode === "comprehensive") return mode;
+      return "balanced";
     }
 
     function activeSemanticResultBucketDefs() {
@@ -424,10 +441,11 @@
 
     const els = {};
     for (const id of [
-      "status", "query", "topK", "semanticGroupFilter", "searchBtn", "querySet", "runSetBtn",
+      "status", "query", "topK", "searchMode", "semanticGroupFilter", "searchBtn", "querySet", "runSetBtn",
       "includeRelated", "saveJudgmentsBtn", "clearJudgmentsBtn", "exportBtn", "metrics", "results", "setResults",
       "searchProgress", "searchFeedback", "querySetFeedback",
-      "clinicalSuggestionSelect", "paragraphTestSelect"
+      "clinicalSuggestionSelect", "paragraphTestSelect",
+      "snomedLicenseDialog", "snomedLicenseCheckbox", "snomedLicenseAcceptBtn"
     ]) {
       els[id] = document.getElementById(id);
     }
@@ -518,6 +536,45 @@
       localStorage.setItem("qe_search_server_judgments", JSON.stringify(state.judgments));
     }
 
+    function hasSnomedLicenseAcknowledgement() {
+      if (snomedLicenseAcknowledgedForSession) return true;
+      try {
+        return localStorage.getItem(SNOMED_LICENSE_ACK_KEY) === "accepted";
+      } catch (err) {
+        return false;
+      }
+    }
+
+    function saveSnomedLicenseAcknowledgement() {
+      snomedLicenseAcknowledgedForSession = true;
+      try {
+        localStorage.setItem(SNOMED_LICENSE_ACK_KEY, "accepted");
+      } catch (err) {
+        // Session acknowledgement still lets the app work when storage is disabled.
+      }
+    }
+
+    function showSnomedLicenseDialog() {
+      if (!els.snomedLicenseDialog) return;
+      els.snomedLicenseDialog.hidden = false;
+      document.body.classList.add("has-modal");
+      window.setTimeout(() => {
+        els.snomedLicenseDialog.querySelector(".license-dialog")?.focus();
+      }, 0);
+    }
+
+    function hideSnomedLicenseDialog() {
+      if (!els.snomedLicenseDialog) return;
+      els.snomedLicenseDialog.hidden = true;
+      document.body.classList.remove("has-modal");
+    }
+
+    function requireSnomedLicenseAcknowledgement() {
+      if (hasSnomedLicenseAcknowledgement()) return true;
+      showSnomedLicenseDialog();
+      return false;
+    }
+
     function judgmentKey(query, docId) {
       return `${query}\t${docId}`;
     }
@@ -552,7 +609,13 @@
       } catch (err) {
         throw new Error(`Invalid JSON from ${url}: ${text.slice(0, 120)}`);
       }
-      if (!response.ok) throw new Error(payload.error || response.statusText);
+      if (!response.ok) {
+        const error = payload?.error;
+        const message = typeof error === "string"
+          ? error
+          : (error?.message || response.statusText || `HTTP ${response.status}`);
+        throw new Error(message);
+      }
       return payload;
     }
 
@@ -589,11 +652,15 @@
     }
 
     async function runSearch() {
+      if (!requireSnomedLicenseAcknowledgement()) return;
       const query = els.query.value.trim();
       const topK = Math.max(18, Math.min(100, Number(els.topK.value) || SEMANTIC_BUCKET_FETCH_MIN));
       const includeRelated = els.includeRelated && els.includeRelated.checked ? "1" : "0";
+      const searchMode = selectedSearchMode();
       const semanticBucketKeys = selectedSemanticBucketKeys();
-      const searchK = includeRelated === "1" ? topK : Math.max(topK, SEMANTIC_BUCKET_FETCH_MIN);
+      const searchK = searchMode === "comprehensive"
+        ? Math.max(topK, 100)
+        : (includeRelated === "1" ? topK : Math.max(topK, SEMANTIC_BUCKET_FETCH_MIN));
       if (!query) {
         setSearchFeedback("Enter text, a CUI, or a source code before searching.", "error");
         return;
@@ -609,7 +676,7 @@
       setBrandStatus();
       try {
         const payload = await api(
-          `/api/search?q=${encodeURIComponent(query)}&k=${searchK}&related=${includeRelated}${semanticBucketFilterQueryParam(semanticBucketKeys)}`,
+          `/api/search?q=${encodeURIComponent(query)}&k=${searchK}&related=${includeRelated}&mode=${encodeURIComponent(searchMode)}${semanticBucketFilterQueryParam(semanticBucketKeys)}`,
           { signal: controller?.signal }
         );
         if (searchId !== state.searchRequestSeq) return;
@@ -624,6 +691,7 @@
         state.lastRelatedResultBuckets = payload.related_result_buckets || [];
         state.lastScoring = payload.scoring || null;
         state.includeRelated = includeRelated === "1";
+        state.searchMode = payload.search_mode || searchMode;
         state.selectedSemanticBucketKeys = semanticBucketKeys;
         setBrandStatus();
         setSearchFeedback();
@@ -994,18 +1062,25 @@
       return normalized ? normalized.split(" ").length : 0;
     }
 
-    function isUsefulConceptLabel(label) {
+    function isShortGeneSymbolLabel(label, hit) {
+      if (semanticGroupForHit(hit).code !== "GENE") return false;
+      return /^[A-Z][A-Z0-9-]{2,11}$/.test(String(label || "").trim());
+    }
+
+    function isUsefulConceptLabel(label, hit = null) {
       const value = String(label || "").trim();
       if (!value) return false;
       if (/^C\d{7}$/i.test(value)) return false;
       if (/^[A-Z]{2,12}:\S+$/.test(value)) return false;
       const normalized = normalizedPhrase(value);
-      if (!normalized || normalized.length < 4) return false;
+      if (!normalized) return false;
       const generic = new Set([
         "patient", "patients", "study", "result", "results", "history",
         "assessment", "plan", "procedure", "note", "clinical", "finding"
       ]);
       if (generic.has(normalized)) return false;
+      if (isShortGeneSymbolLabel(value, hit)) return true;
+      if (normalized.length < 4) return false;
       return phraseTokenCount(value) >= 2 || normalized.length >= 6;
     }
 
@@ -1063,7 +1138,7 @@
         .map((value) => String(value || "").trim())
         .filter((value) => {
           const key = normalizedPhrase(value);
-          if (!key || seen.has(key) || !isUsefulConceptLabel(value)) return false;
+          if (!key || seen.has(key) || !isUsefulConceptLabel(value, hit)) return false;
           seen.add(key);
           return true;
         })
@@ -1128,13 +1203,6 @@
     ]);
     const CLINICAL_ANCHOR_GROUPS = new Set(["DISO", "FIND", "PHEN"]);
     const SUBJECT_TEXT_HINTS = /\b(patient|patients|child|adult|man|woman|recipient|researcher|researchers|team|clinic|clinician|provider|providers|surgery|urology|neurology|rheumatology|cardiology|endocrinology|gynecology|ophthalmology|oncology|obstetrics|nephrology|hepatology|orthopedics|emergency department|icu)\b/i;
-    const PATIENT_COHORT_TEXT_HINTS = /\b(patient|patients|child|children|adult|adolescent|man|woman|recipient|participant|participants|pregnant|postoperative|icu|cohort|trial)\b/i;
-    const COHORT_TEXT_FILLER_PREFIX = /^(?:the|a|an)\s+/i;
-    const COHORT_PHRASE_PATTERNS = [
-      /\b((?:postoperative|pregnant|icu)\s+patient(?:\s+(?:with|at|after|in|on)\s+[^.;]{2,120})?)/gi,
-      /\b((?:a|an|the)\s+(?:child|adolescent|adult|man|woman|transplant recipient)(?:\s+(?:with|at|after|in|on)\s+[^.;]{2,120})?)/gi,
-      /\b((?:patients|participants)\s+(?:with|receiving|treated for|undergoing|enrolled with)\s+[^.;]{2,140}?)(?=\s+(?:versus|compared with|with patients|and patients)\b|[.;]|$)/gi
-    ];
     const CONCATENATION_BRIDGE_TOKENS = new Set([
       "with", "without", "of", "to", "due", "secondary", "associated",
       "related", "from", "in", "for", "type", "stage", "grade", "acute",
@@ -1553,121 +1621,6 @@
         }
       }
       return false;
-    }
-
-    function cleanCohortText(value) {
-      const cleaned = String(value || "")
-        .replace(/^[\s,.;:]+|[\s,.;:]+$/g, "")
-        .replace(COHORT_TEXT_FILLER_PREFIX, "")
-        .replace(/\s+/g, " ")
-        .trim();
-      if (cleaned.length <= 170) return cleaned;
-      return `${cleaned.slice(0, 167).replace(/\s+\S*$/, "")}...`;
-    }
-
-    function cohortTypeForText(value) {
-      const text = normalizedPhrase(value);
-      if (/\b(cohort|trial|participant|participants|enrolled)\b/.test(text)) return "Research cohort";
-      if (/\b(pregnant|weeks|obstetrics)\b/.test(text)) return "Pregnancy cohort";
-      if (/\b(icu|emergency|postoperative|transplant|recipient)\b/.test(text)) return "Care setting";
-      if (/\b(child|children|adolescent|adult|man|woman)\b/.test(text)) return "Demographic cohort";
-      return "Patient group";
-    }
-
-    function cohortSpanForText(query, text) {
-      const direct = findQuerySpan(query, text);
-      if (direct) return direct;
-      const withoutArticle = cleanCohortText(text);
-      return findQuerySpan(query, withoutArticle);
-    }
-
-    function conceptsForCohortSpan(concepts, span, description) {
-      const normalizedDescription = normalizedPhrase(description);
-      return (concepts || []).filter((concept) => {
-        if (span && concept.start >= span.start && concept.end <= span.end) return true;
-        const matched = normalizedPhrase(concept.matchedText || concept.name || "");
-        return matched && normalizedDescription.includes(matched);
-      }).slice(0, 8);
-    }
-
-    function addCohortItem(items, seen, query, concepts, text, source) {
-      const description = cleanCohortText(text);
-      if (!description || !PATIENT_COHORT_TEXT_HINTS.test(description)) return;
-      const key = normalizedPhrase(description);
-      if (!key || seen.has(key)) return;
-      seen.add(key);
-      const span = cohortSpanForText(query, text) || cohortSpanForText(query, description);
-      items.push({
-        description,
-        source,
-        type: cohortTypeForText(description),
-        concepts: conceptsForCohortSpan(concepts, span, description)
-      });
-    }
-
-    function buildPatientCohort(query, statement) {
-      const concepts = statement?.linkedConcepts || [];
-      const items = [];
-      const seen = new Set();
-      for (const item of statement?.statements || []) {
-        if (item.subject?.kind !== "text") continue;
-        addCohortItem(items, seen, query, concepts, item.subject.text, "statement subject");
-      }
-      for (const pattern of COHORT_PHRASE_PATTERNS) {
-        const regex = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`);
-        let match;
-        while ((match = regex.exec(query)) !== null) {
-          addCohortItem(items, seen, query, concepts, match[1] || match[0], "text pattern");
-          if (regex.lastIndex <= match.index) regex.lastIndex = match.index + 1;
-        }
-      }
-      return {
-        items: items.slice(0, 4)
-      };
-    }
-
-    function renderCohortConceptChip(concept) {
-      const label = concept.matchedText || concept.name || concept.cui;
-      const titleParts = [concept.name, concept.cui, concept.semanticType]
-        .filter(Boolean)
-        .join(" · ");
-      return `
-        <a class="chip cohort-concept-chip" href="${esc(utsConceptUrl(concept.cui))}" target="_blank" rel="noreferrer" title="${esc(titleParts || label)}">
-          ${esc(label)}
-        </a>`;
-    }
-
-    function renderCohortItem(item) {
-      return `
-        <div class="cohort-item">
-          <div class="cohort-item-main">
-            <div class="cohort-item-title">${esc(item.description)}</div>
-            <div class="result-semantic-type">${esc(item.type)}</div>
-          </div>
-          <div class="chips cohort-concept-chips">
-            ${(item.concepts || []).length
-              ? item.concepts.map(renderCohortConceptChip).join("")
-              : '<span class="chip">no linked CUI in cohort phrase</span>'}
-          </div>
-        </div>`;
-    }
-
-    function renderPatientCohortGroup(cohort) {
-      const items = cohort?.items || [];
-      if (!items.length) return "";
-      return `
-        <section class="result-group cohort-group" aria-label="Patient cohort">
-          <div class="result-group-head">
-            <div>
-              <span class="result-group-title">Patient Cohort</span>
-              <span class="result-group-code">COHORT</span>
-            </div>
-            <div class="result-group-count">${fmtNum(items.length)} inferred ${items.length === 1 ? "group" : "groups"}</div>
-          </div>
-          <div class="result-group-items cohort-group-items">
-            ${items.map(renderCohortItem).join("")}
-          </div>
-        </section>`;
     }
 
     function renderStructuredStatementPanel(statement) {
@@ -2361,11 +2314,10 @@
       }
       const statement = buildStructuredStatement(state.lastQuery || "", state.lastResults);
       const statementHtml = renderStructuredStatementPanel(statement);
-      const cohortHtml = renderPatientCohortGroup(buildPatientCohort(state.lastQuery || "", statement));
       els.results.innerHTML = `
         ${statementHtml}
         <div class="results-layout results-layout-full">
-          <div class="results-main">${cohortHtml}${hitHtml}</div>
+          <div class="results-main">${hitHtml}</div>
         </div>`;
 
       bindResultInteractions(els.results);
@@ -2905,6 +2857,16 @@
         description: "The concept mainly matches a low-specificity query fragment."
       },
       {
+        key: "family_history_context_penalty",
+        label: "Family-history mismatch",
+        description: "The query asks for family history, but the concept represents active disease rather than family-history context."
+      },
+      {
+        key: "assertion_context_penalty",
+        label: "Assertion context",
+        description: "The concept is mentioned as historical, uncertain, planned, or otherwise not clearly current/active."
+      },
+      {
         key: "normal_exam_fragment_penalty",
         label: "Exam fragment",
         description: "The concept mainly matches bare exam anatomy, such as heart or lung, instead of the observed exam finding."
@@ -3041,9 +3003,12 @@
     function renderScoreBreakdown(hit) {
       const breakdown = hit.score_breakdown || {};
       const scoring = state.lastScoring || {};
+      const assertion = hit.assertion || breakdown.assertion || {};
+      const assertionStatus = String(assertion.status || "");
       const chips = [
         `retrieval ${breakdown.retrieval_kind || hit.match_type || hit.view || "vector"}`,
         `raw ${fmtScore(breakdown.retrieval_score ?? hit.score)}`,
+        assertionStatus && assertionStatus !== "current" ? `assertion ${assertionStatus.replace(/_/g, " ")}` : "",
         `lexical ${fmtScore(breakdown.lexical_component)}`,
         `vector ${fmtScore(breakdown.vector_component)}`,
         `evidence ${fmtScore(breakdown.evidence_component)}`,
@@ -3156,9 +3121,11 @@
       const researchLinks = state.status?.research_relation_links || 0;
       const definitionRows = state.status?.definition_rows || 0;
       const codeMappings = state.status?.code_mappings || 0;
+      const scoring = state.lastScoring || {};
       els.metrics.innerHTML = [
         metric("Vectors", fmtNum(state.status?.records || 0), `${fmtNum(state.status?.docs || 0)} docs, ${fmtNum(state.status?.evidence_sources || 0)} source refs${provenanceMode}`),
         metric("Backend", state.status?.search_backend || "n/a", state.status?.elastic_index || "local vector scan"),
+        metric("Search mode", scoring.search_mode || state.searchMode || "balanced", scoring.search_mode_description || "Balanced hybrid search"),
         metric("Model", state.status?.embedding_provider || "n/a", state.status?.embedding_model || "n/a"),
         metric("Resolver", fmtNum(codeMappings), codeMappings ? "CUI/code mappings loaded" : "No code index loaded"),
         metric("Definitions", fmtNum(definitionRows), definitionRows ? `${fmtNum(state.status?.definition_cuis || 0)} CUIs with MRDEF text` : "No MRDEF index loaded"),
@@ -3226,8 +3193,10 @@
     }
 
     async function runQuerySet() {
+      if (!requireSnomedLicenseAcknowledgement()) return;
       const rows = parseQuerySet();
       const topK = Math.max(1, Math.min(100, Number(els.topK.value) || 10));
+      const searchMode = selectedSearchMode();
       if (!rows.length) {
         setQuerySetFeedback("Add one query per line before running the query set.", "error");
         return;
@@ -3243,7 +3212,7 @@
           setBrandStatus();
           setQuerySetFeedback(`Running ${fmtNum(i + 1)} of ${fmtNum(rows.length)} queries.`);
           const payload = await api(
-            `/api/search?q=${encodeURIComponent(row.query)}&k=${topK}&related=0${semanticBucketFilterQueryParam()}`
+            `/api/search?q=${encodeURIComponent(row.query)}&k=${topK}&related=0&mode=${encodeURIComponent(searchMode)}${semanticBucketFilterQueryParam()}`
           );
           const hits = payload.hits || [];
           let expectedRank = "";
@@ -3355,6 +3324,18 @@
     els.query.addEventListener("keydown", (event) => {
       if (event.key === "Enter") runSearch();
     });
+    if (els.snomedLicenseCheckbox && els.snomedLicenseAcceptBtn) {
+      els.snomedLicenseCheckbox.addEventListener("change", () => {
+        els.snomedLicenseAcceptBtn.disabled = !els.snomedLicenseCheckbox.checked;
+      });
+      els.snomedLicenseAcceptBtn.addEventListener("click", () => {
+        if (!els.snomedLicenseCheckbox.checked) return;
+        saveSnomedLicenseAcknowledgement();
+        hideSnomedLicenseDialog();
+        els.searchBtn?.focus();
+      });
+    }
+    if (!hasSnomedLicenseAcknowledgement()) showSnomedLicenseDialog();
     if (els.clinicalSuggestionSelect) {
       els.clinicalSuggestionSelect.addEventListener("change", () => {
         runSelectedDropdownQuery(els.clinicalSuggestionSelect, clinicalNoteSuggestions);

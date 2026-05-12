@@ -16,6 +16,26 @@ from qe_evidence_vectors.search_utils import (
     source_mix_from_evidence_items,
 )
 
+VALID_SEARCH_MODES = {"balanced", "exact", "comprehensive"}
+
+
+def normalize_search_mode(value: object = None) -> str:
+    mode = str(value or "balanced").strip().lower().replace("_", "-")
+    aliases = {
+        "default": "balanced",
+        "normal": "balanced",
+        "standard": "balanced",
+        "broad": "comprehensive",
+        "wide": "comprehensive",
+        "literal": "exact",
+    }
+    mode = aliases.get(mode, mode)
+    if mode not in VALID_SEARCH_MODES:
+        raise ValueError(
+            "search mode must be one of: balanced, exact, comprehensive"
+        )
+    return mode
+
 
 class SearchExecutionMixin:
     SEARCH_HIT_DETAIL_FIELDS = {
@@ -39,12 +59,15 @@ class SearchExecutionMixin:
         top_k: int,
         include_related: bool,
         semantic_bucket_keys: object = None,
+        search_mode: object = None,
     ) -> tuple:
+        mode = normalize_search_mode(search_mode)
         return (
             "search",
             str(query or "").strip(),
             int(top_k),
             bool(include_related),
+            mode,
             tuple(normalize_semantic_bucket_filter(semantic_bucket_keys)),
             int(getattr(self, "related_limit", 0) or 0),
             int(getattr(self, "related_source_limit", 0) or 0),
@@ -55,17 +78,32 @@ class SearchExecutionMixin:
             str(getattr(self, "elastic_index", "") or ""),
         )
 
-    def rerank_candidate_pool_size(self, top_k: int) -> int:
+    def rerank_candidate_pool_size(self, top_k: int, *, search_mode: object = None) -> int:
         top_k = max(1, int(top_k or 1))
+        mode = normalize_search_mode(search_mode)
         multiplier = max(1, int(getattr(self, "candidate_pool_multiplier", 1) or 1))
         minimum = max(1, int(getattr(self, "candidate_pool_min", 40) or 40))
+        if mode == "comprehensive":
+            multiplier = max(multiplier, 3)
+            minimum = max(minimum, 120)
+        elif mode == "exact":
+            minimum = max(minimum, 80)
         return max(top_k, minimum, top_k * multiplier)
 
-    def semantic_filter_rank_limit(self, top_k: int, semantic_bucket_keys: object = None) -> int:
+    def semantic_filter_rank_limit(
+        self,
+        top_k: int,
+        semantic_bucket_keys: object = None,
+        *,
+        search_mode: object = None,
+    ) -> int:
         keys = normalize_semantic_bucket_filter(semantic_bucket_keys)
+        mode = normalize_search_mode(search_mode)
+        if mode == "comprehensive":
+            return max(top_k, self.rerank_candidate_pool_size(top_k, search_mode=mode))
         if not keys:
             return top_k
-        return max(top_k, self.rerank_candidate_pool_size(top_k))
+        return max(top_k, self.rerank_candidate_pool_size(top_k, search_mode=mode))
 
     def filter_hits_by_semantic_buckets(
         self,
@@ -95,6 +133,28 @@ class SearchExecutionMixin:
         output["hits"] = [self.compact_search_hit(hit) for hit in result.get("hits") or []]
         output["details_lazy"] = True
         return output
+
+    def filter_hits_by_search_mode(self, hits: list[dict], *, search_mode: object = None) -> list[dict]:
+        mode = normalize_search_mode(search_mode)
+        if mode != "exact":
+            return hits
+        return [hit for hit in hits if self.hit_has_exact_search_signal(hit)]
+
+    def hit_has_exact_search_signal(self, hit: dict) -> bool:
+        breakdown = hit.get("score_breakdown") or {}
+        exact_keys = (
+            "exact_label_component",
+            "exact_primary_name_component",
+            "exact_span_component",
+            "exact_pharmacologic_component",
+            "curated_exact_label_component",
+            "local_extension_phrase_component",
+        )
+        if any(float(breakdown.get(key) or 0.0) > 0.0 for key in exact_keys):
+            return True
+        if hit.get("match_type") == "umls_label" and str(hit.get("matched_query_span") or "").strip():
+            return True
+        return False
 
     def cached_search_result(self, cache_key: tuple, *, started: float) -> dict | None:
         if int(getattr(self, "query_cache_size", 0) or 0) <= 0:
@@ -219,14 +279,17 @@ class SearchExecutionMixin:
         top_k: int,
         include_related: bool = True,
         semantic_bucket_keys: object = None,
+        search_mode: object = None,
     ) -> dict:
         started = time.time()
+        search_mode = normalize_search_mode(search_mode)
         semantic_bucket_keys = normalize_semantic_bucket_filter(semantic_bucket_keys)
         cache_key = self.search_cache_key(
             query,
             top_k=top_k,
             include_related=include_related,
             semantic_bucket_keys=semantic_bucket_keys,
+            search_mode=search_mode,
         )
         cached = self.cached_search_result(cache_key, started=started)
         if cached is not None:
@@ -239,6 +302,7 @@ class SearchExecutionMixin:
                 started=started,
                 include_related=include_related,
                 semantic_bucket_keys=semantic_bucket_keys,
+                search_mode=search_mode,
             )
             return self.store_search_result_cache(cache_key, result)
         query_vector = array("f", self.embedder.embed([query])[0])
@@ -255,6 +319,7 @@ class SearchExecutionMixin:
                     started=started,
                     include_related=include_related,
                     semantic_bucket_keys=semantic_bucket_keys,
+                    search_mode=search_mode,
                 )
                 return self.store_search_result_cache(cache_key, result)
             except (OSError, URLError) as exc:
@@ -267,6 +332,7 @@ class SearchExecutionMixin:
                     backend="local_fallback",
                     fallback_reason=f"elasticsearch unavailable: {exc}",
                     semantic_bucket_keys=semantic_bucket_keys,
+                    search_mode=search_mode,
                 )
                 return self.store_search_result_cache(cache_key, result)
         result = self.search_local(
@@ -276,6 +342,7 @@ class SearchExecutionMixin:
             started=started,
             include_related=include_related,
             semantic_bucket_keys=semantic_bucket_keys,
+            search_mode=search_mode,
         )
         return self.store_search_result_cache(cache_key, result)
 
@@ -290,7 +357,9 @@ class SearchExecutionMixin:
         backend: str = "local",
         fallback_reason: str = "",
         semantic_bucket_keys: object = None,
+        search_mode: object = None,
     ) -> dict:
+        search_mode = normalize_search_mode(search_mode)
         best_by_cui: dict[str, dict] = {}
         for record in self.records:
             score = dot(query_vector, record.vector)
@@ -300,13 +369,14 @@ class SearchExecutionMixin:
                     "score": score,
                     "record": record,
                 }
-        rank_top_k = self.semantic_filter_rank_limit(top_k, semantic_bucket_keys)
-        candidate_pool_k = self.rerank_candidate_pool_size(rank_top_k)
+        rank_top_k = self.semantic_filter_rank_limit(top_k, semantic_bucket_keys, search_mode=search_mode)
+        candidate_pool_k = self.rerank_candidate_pool_size(rank_top_k, search_mode=search_mode)
         hits = [
             self.hit_from_record(item["record"], score=float(item["score"]))
             for item in sorted(best_by_cui.values(), key=lambda hit: hit["score"], reverse=True)[:candidate_pool_k]
         ]
         hits = self.merge_label_fallback(query, hits, top_k=rank_top_k)
+        hits = self.filter_hits_by_search_mode(hits, search_mode=search_mode)
         hits = self.filter_hits_by_semantic_buckets(hits, semantic_bucket_keys)[:top_k]
         if include_related:
             self.attach_related_concepts(hits)
@@ -315,8 +385,9 @@ class SearchExecutionMixin:
         result = {
             "query": query,
             "top_k": top_k,
+            "search_mode": search_mode,
             "backend": backend,
-            "scoring": self.scoring_summary("local"),
+            "scoring": self.scoring_summary("local", search_mode=search_mode),
             "semantic_bucket_filter": list(normalize_semantic_bucket_filter(semantic_bucket_keys)),
             "hits": hits,
             **self.semantic_response_metadata(
@@ -340,9 +411,11 @@ class SearchExecutionMixin:
         started: float,
         include_related: bool = True,
         semantic_bucket_keys: object = None,
+        search_mode: object = None,
     ) -> dict:
-        rank_top_k = self.semantic_filter_rank_limit(top_k, semantic_bucket_keys)
-        candidate_pool_k = self.rerank_candidate_pool_size(rank_top_k)
+        search_mode = normalize_search_mode(search_mode)
+        rank_top_k = self.semantic_filter_rank_limit(top_k, semantic_bucket_keys, search_mode=search_mode)
+        candidate_pool_k = self.rerank_candidate_pool_size(rank_top_k, search_mode=search_mode)
         elastic_k = candidate_pool_k
         raw_hits = self.search_knn(
             base_url=self.elastic_url or "",
@@ -394,6 +467,7 @@ class SearchExecutionMixin:
                 best_by_cui[cui] = result
         hits = sorted(best_by_cui.values(), key=lambda item: item["score"], reverse=True)[:candidate_pool_k]
         hits = self.merge_label_fallback(query, hits, top_k=rank_top_k)
+        hits = self.filter_hits_by_search_mode(hits, search_mode=search_mode)
         hits = self.filter_hits_by_semantic_buckets(hits, semantic_bucket_keys)[:top_k]
         if include_related:
             self.attach_related_concepts(hits)
@@ -402,8 +476,9 @@ class SearchExecutionMixin:
         return self.compact_search_response({
             "query": query,
             "top_k": top_k,
+            "search_mode": search_mode,
             "backend": "elasticsearch",
-            "scoring": self.scoring_summary("elasticsearch"),
+            "scoring": self.scoring_summary("elasticsearch", search_mode=search_mode),
             "semantic_bucket_filter": list(normalize_semantic_bucket_filter(semantic_bucket_keys)),
             "hits": hits,
             **self.semantic_response_metadata(

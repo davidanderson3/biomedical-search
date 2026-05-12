@@ -16,6 +16,7 @@ class QuerySpec:
     query_id: str
     query: str
     expected_cuis: list[str]
+    disallowed_cuis: list[str] | None = None
     why: str = ""
 
 
@@ -48,6 +49,12 @@ def read_query_specs(path: Path) -> list[QuerySpec]:
                     query_id=(row.get("id") or f"query_{index}").strip(),
                     query=query,
                     expected_cuis=split_expected_cuis(row.get("expected_cuis") or ""),
+                    disallowed_cuis=split_expected_cuis(
+                        row.get("disallowed_cuis")
+                        or row.get("forbidden_cuis")
+                        or row.get("negative_cuis")
+                        or ""
+                    ),
                     why=(row.get("why") or "").strip(),
                 )
             )
@@ -97,6 +104,7 @@ def score_component_summary(hit: dict) -> str:
             "numeric_specificity_penalty",
             "numeric_context_fragment_penalty",
             "generic_fragment_penalty",
+            "family_history_context_penalty",
             "normal_exam_fragment_penalty",
             "action_observation_penalty",
             "denied_positive_finding_penalty",

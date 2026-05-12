@@ -112,6 +112,11 @@ def accepted_ranks_by_expected(
     return accepted_ranks, accepted_cuis
 
 
+def ranks_for_cuis(hits: list[dict], cuis: set[str]) -> dict[str, int]:
+    ranks = rank_by_cui(hits)
+    return {cui: ranks[cui] for cui in sorted(cuis) if cui in ranks}
+
+
 def expected_groups_at_limit(
     hits: list[dict],
     expected: set[str],
@@ -166,6 +171,10 @@ def judge_quality(
     acceptable_universe = set()
     for expected_cui in expected:
         acceptable_universe.update(acceptable_options(expected_cui, acceptable_alternatives))
+    disallowed = {cui.upper() for cui in (spec.disallowed_cuis or [])}
+    disallowed_ranks = ranks_for_cuis(hits, disallowed)
+    disallowed_10 = sorted(cui for cui, rank in disallowed_ranks.items() if rank <= 10)
+    disallowed_20 = sorted(cui for cui, rank in disallowed_ranks.items() if rank <= 20)
     top_on_target = top_cui in acceptable_universe
     expected_groups = expected_groups_at_limit(
         hits,
@@ -192,6 +201,9 @@ def judge_quality(
     else:
         verdict = "poor"
         rationale = "Central expected concepts are missing from the useful result window or the focus is wrong."
+    if disallowed_10:
+        verdict = "mixed" if verdict == "good" else verdict
+        rationale = "Known false-positive concepts appear in the first page."
 
     return {
         "id": spec.query_id,
@@ -220,6 +232,8 @@ def judge_quality(
             for expected_cui in sorted(found_10)
             if accepted_cuis.get(expected_cui) and accepted_cuis[expected_cui] != expected_cui
         ),
+        "disallowed_at_10": "|".join(disallowed_10),
+        "disallowed_at_20": "|".join(disallowed_20),
         "hits_top_10": compact_hits(hits, limit=10),
         "query": spec.query,
     }
@@ -250,6 +264,8 @@ def write_tsv(path: Path, rows: list[dict]) -> None:
         "missing_at_20",
         "missing_at_60",
         "accepted_alternatives_at_10",
+        "disallowed_at_10",
+        "disallowed_at_20",
         "hits_top_10",
         "query",
     ]
@@ -289,6 +305,8 @@ def summarize(rows: list[dict]) -> dict:
     summary["queries_all_expected_at_20"] = sum(
         1 for row in rows if int(row["found_at_20"]) == int(row["expected_count"])
     )
+    summary["queries_with_disallowed_at_10"] = sum(1 for row in rows if row.get("disallowed_at_10"))
+    summary["queries_with_disallowed_at_20"] = sum(1 for row in rows if row.get("disallowed_at_20"))
     return summary
 
 
@@ -296,6 +314,7 @@ def write_report(path: Path, summary: dict, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     misses = [row for row in rows if row["missing_at_10"]]
     accepted = [row for row in rows if row.get("accepted_alternatives_at_10")]
+    disallowed = [row for row in rows if row.get("disallowed_at_10") or row.get("disallowed_at_20")]
     poor_or_mixed = [row for row in rows if row["verdict"] != "good"]
     lines = [
         "# Paragraph Search Quality Evaluation",
@@ -322,6 +341,8 @@ def write_report(path: Path, summary: dict, rows: list[dict]) -> None:
             f"- Expected semantic group recall@10: {group_recall:.1f}%",
             f"- Queries with all expected concepts@10: {summary['queries_all_expected_at_10']}/{summary['paragraphs']}",
             f"- Queries with all expected concepts@20: {summary['queries_all_expected_at_20']}/{summary['paragraphs']}",
+            f"- Queries with known false positives@10: {summary['queries_with_disallowed_at_10']}/{summary['paragraphs']}",
+            f"- Queries with known false positives@20: {summary['queries_with_disallowed_at_20']}/{summary['paragraphs']}",
             "",
             "## Mixed Or Poor Paragraphs",
             "",
@@ -347,6 +368,15 @@ def write_report(path: Path, summary: dict, rows: list[dict]) -> None:
     else:
         for row in accepted:
             lines.append(f"- {row['id']}: {row['accepted_alternatives_at_10']}")
+    lines.extend(["", "## Known False Positives", ""])
+    if not disallowed:
+        lines.append("- None.")
+    else:
+        for row in disallowed:
+            lines.append(
+                f"- {row['id']}: disallowed@10={row['disallowed_at_10'] or 'none'}; "
+                f"disallowed@20={row['disallowed_at_20'] or 'none'}"
+            )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

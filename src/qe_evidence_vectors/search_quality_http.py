@@ -16,13 +16,143 @@ JUDGMENT_FIELDS = ["query", "doc_id", "cui", "view", "score", "grade", "labels"]
 VALID_JUDGMENT_GRADES = {"relevant", "partial", "wrong"}
 
 __all__ = [
+    "API_VERSION",
+    "OPENAPI_SPEC",
     "parse_multi_param",
     "parse_bool_param",
     "parse_bounded_int_param",
+    "api_error",
     "read_judgments",
     "write_judgments",
     "make_handler",
 ]
+
+API_VERSION = "2026-05-12"
+
+
+def api_error(code: str, message: str, *, status: int = 400) -> dict:
+    return {
+        "error": {
+            "code": code,
+            "message": message,
+            "status": int(status),
+        }
+    }
+
+
+OPENAPI_SPEC = {
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Biomedical Concept Search API",
+        "version": API_VERSION,
+        "description": (
+            "Local biomedical concept search and linking API. The contract is stable for "
+            "the documented fields; extra fields may be added over time."
+        ),
+    },
+    "servers": [{"url": "/"}],
+    "paths": {
+        "/api/health": {
+            "get": {
+                "summary": "Cheap liveness/readiness check",
+                "responses": {
+                    "200": {
+                        "description": "Server is ready to answer API requests.",
+                    }
+                },
+            }
+        },
+        "/api/status": {
+            "get": {
+                "summary": "Loaded index and server status",
+                "responses": {"200": {"description": "Search index status and artifact counts."}},
+            }
+        },
+        "/api/search": {
+            "get": {
+                "summary": "Search free text for biomedical concepts",
+                "parameters": [
+                    {"name": "q", "in": "query", "required": True, "schema": {"type": "string"}},
+                    {"name": "k", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100}},
+                    {
+                        "name": "mode",
+                        "in": "query",
+                        "schema": {"type": "string", "enum": ["balanced", "exact", "comprehensive"]},
+                    },
+                    {"name": "include_related", "in": "query", "schema": {"type": "boolean"}},
+                    {
+                        "name": "semantic_bucket",
+                        "in": "query",
+                        "schema": {"type": "string"},
+                        "description": "Comma-separated custom semantic bucket keys.",
+                    },
+                ],
+                "responses": {
+                    "200": {"description": "Ranked concept hits grouped by semantic bucket."},
+                    "400": {"description": "Validation error."},
+                },
+            }
+        },
+        "/api/resolve": {
+            "get": {
+                "summary": "Resolve direct CUI/code/text input before full search",
+                "parameters": [
+                    {"name": "q", "in": "query", "required": True, "schema": {"type": "string"}},
+                    {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100}},
+                ],
+                "responses": {"200": {"description": "Resolution candidates."}},
+            }
+        },
+        "/api/detail": {
+            "get": {
+                "summary": "Fetch lazy details for a result by doc_id or CUI",
+                "parameters": [
+                    {"name": "doc_id", "in": "query", "schema": {"type": "string"}},
+                    {"name": "cui", "in": "query", "schema": {"type": "string", "pattern": "^C[0-9]{7}$"}},
+                    {"name": "include_related", "in": "query", "schema": {"type": "boolean"}},
+                ],
+                "responses": {"200": {"description": "Detailed concept record."}},
+            }
+        },
+        "/api/related": {
+            "get": {
+                "summary": "Fetch related concepts and mappings for a CUI",
+                "parameters": [
+                    {"name": "cui", "in": "query", "required": True, "schema": {"type": "string", "pattern": "^C[0-9]{7}$"}},
+                    {"name": "k", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100}},
+                    {"name": "vocab", "in": "query", "schema": {"type": "string"}},
+                ],
+                "responses": {"200": {"description": "Related concept bundle."}},
+            }
+        },
+        "/api/judgments": {
+            "get": {"summary": "Read local search quality judgments", "responses": {"200": {"description": "Judgment rows."}}},
+            "post": {"summary": "Replace local search quality judgments", "responses": {"200": {"description": "Persisted judgment count."}}},
+        },
+        "/api/openapi.json": {
+            "get": {"summary": "Machine-readable API contract", "responses": {"200": {"description": "OpenAPI 3.1 document."}}},
+        },
+    },
+    "components": {
+        "schemas": {
+            "ApiError": {
+                "type": "object",
+                "required": ["error"],
+                "properties": {
+                    "error": {
+                        "type": "object",
+                        "required": ["code", "message", "status"],
+                        "properties": {
+                            "code": {"type": "string"},
+                            "message": {"type": "string"},
+                            "status": {"type": "integer"},
+                        },
+                    }
+                },
+            }
+        }
+    },
+}
 
 
 def parse_multi_param(params: dict, *names: str) -> list[str]:
@@ -167,13 +297,26 @@ def make_handler(
             if parsed.path in {"/", "/index.html"}:
                 self.send_html(html_path.read_text(encoding="utf-8"))
                 return
+            if parsed.path == "/api/health":
+                self.send_json(
+                    {
+                        "ok": True,
+                        "api_version": API_VERSION,
+                        "records": len(index.records),
+                        "backend": index.status().get("search_backend"),
+                    }
+                )
+                return
+            if parsed.path == "/api/openapi.json":
+                self.send_json(OPENAPI_SPEC)
+                return
             if parsed.path == "/progress":
                 self.send_html(progress_html_path.read_text(encoding="utf-8"))
                 return
             if parsed.path in static_assets:
                 asset_path, content_type = static_assets[parsed.path]
                 if not asset_path.exists():
-                    self.send_json({"error": "not found"}, status=404)
+                    self.send_error_json("not_found", "not found", status=404)
                     return
                 self.send_text(asset_path.read_text(encoding="utf-8"), content_type=content_type)
                 return
@@ -214,10 +357,10 @@ def make_handler(
                     maximum=100,
                 )
                 if error:
-                    self.send_json({"error": error}, status=400)
+                    self.send_error_json("invalid_parameter", error, status=400)
                     return
                 if not query:
-                    self.send_json({"error": "missing q"}, status=400)
+                    self.send_error_json("missing_parameter", "missing q", status=400)
                     return
                 self.send_json(index.resolve(query, limit=limit or 10))
                 return
@@ -234,13 +377,13 @@ def make_handler(
                     maximum=100,
                 )
                 if error:
-                    self.send_json({"error": error}, status=400)
+                    self.send_error_json("invalid_parameter", error, status=400)
                     return
                 if not cui:
-                    self.send_json({"error": "missing cui"}, status=400)
+                    self.send_error_json("missing_parameter", "missing cui", status=400)
                     return
                 if not is_cui(cui):
-                    self.send_json({"error": "cui must look like C0000000"}, status=400)
+                    self.send_error_json("invalid_cui", "cui must look like C0000000", status=400)
                     return
                 self.send_json(
                     index.related_bundle(
@@ -261,10 +404,10 @@ def make_handler(
                     default=True,
                 )
                 if not doc_id and not cui:
-                    self.send_json({"error": "missing doc_id or cui"}, status=400)
+                    self.send_error_json("missing_parameter", "missing doc_id or cui", status=400)
                     return
                 if cui and not is_cui(cui):
-                    self.send_json({"error": "cui must look like C0000000"}, status=400)
+                    self.send_error_json("invalid_cui", "cui must look like C0000000", status=400)
                     return
                 bundle = index.detail_bundle(
                     doc_id=doc_id,
@@ -272,7 +415,13 @@ def make_handler(
                     include_related=include_related,
                 )
                 if bundle.get("error"):
-                    self.send_json(bundle, status=404 if bundle["error"] != "missing doc_id or cui" else 400)
+                    error_message = str(bundle["error"])
+                    error_status = 404 if error_message != "missing doc_id or cui" else 400
+                    self.send_error_json(
+                        "not_found" if error_status == 404 else "missing_parameter",
+                        error_message,
+                        status=error_status,
+                    )
                     return
                 self.send_json(bundle)
                 return
@@ -289,10 +438,10 @@ def make_handler(
                     maximum=100,
                 )
                 if error:
-                    self.send_json({"error": error}, status=400)
+                    self.send_error_json("invalid_parameter", error, status=400)
                     return
                 if not query:
-                    self.send_json({"error": "missing q"}, status=400)
+                    self.send_error_json("missing_parameter", "missing q", status=400)
                     return
                 include_related = parse_bool_param(
                     params,
@@ -309,6 +458,11 @@ def make_handler(
                     "semantic_group",
                     "semantic_groups",
                 )
+                search_mode = (
+                    (params.get("mode") or params.get("search_mode") or ["balanced"])[0]
+                    .strip()
+                    .lower()
+                )
                 try:
                     self.send_json(
                         index.search(
@@ -316,17 +470,18 @@ def make_handler(
                             top_k=top_k or 10,
                             include_related=include_related,
                             semantic_bucket_keys=semantic_bucket_keys,
+                            search_mode=search_mode,
                         )
                     )
                 except ValueError as exc:
-                    self.send_json({"error": str(exc)}, status=400)
+                    self.send_error_json("invalid_parameter", str(exc), status=400)
                 return
-            self.send_json({"error": "not found"}, status=404)
+            self.send_error_json("not_found", "not found", status=404)
 
         def do_POST(self) -> None:
             parsed = urlparse(self.path)
             if parsed.path != "/api/judgments":
-                self.send_json({"error": "not found"}, status=404)
+                self.send_error_json("not_found", "not found", status=404)
                 return
             try:
                 length = int(self.headers.get("Content-Length") or "0")
@@ -334,12 +489,12 @@ def make_handler(
                 payload = json.loads(body or "{}")
                 rows = payload.get("judgments")
                 if not isinstance(rows, list):
-                    self.send_json({"error": "expected judgments array"}, status=400)
+                    self.send_error_json("invalid_payload", "expected judgments array", status=400)
                     return
                 count = write_judgments(judgments_path, rows)
                 self.send_json({"path": str(judgments_path), "count": count})
             except Exception as exc:
-                self.send_json({"error": str(exc)}, status=400)
+                self.send_error_json("invalid_payload", str(exc), status=400)
 
         def log_message(self, format: str, *args) -> None:
             sys.stderr.write("%s - %s\n" % (self.address_string(), format % args))
@@ -364,6 +519,9 @@ def make_handler(
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
+
+        def send_error_json(self, code: str, message: str, *, status: int = 400) -> None:
+            self.send_json(api_error(code, message, status=status), status=status)
 
         def send_common_headers(self) -> None:
             self.send_header("Access-Control-Allow-Origin", "*")

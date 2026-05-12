@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from qe_evidence_vectors.text import normalized_key
+from qe_evidence_vectors.generic_filters import is_blocked_generic_concept
 from qe_evidence_vectors.search_denial import (
     denied_context_mismatch_penalty_for_hit,
     denied_positive_finding_penalty_for_hit,
@@ -11,6 +12,10 @@ from qe_evidence_vectors.search_denial import (
     has_denial_context,
     label_is_negated,
     label_is_low_quality_negated_fragment,
+)
+from qe_evidence_vectors.search_assertions import (
+    assertion_context_for_hit,
+    assertion_context_penalty_for_hit,
 )
 from qe_evidence_vectors.search_hit_features import (
     hit_matched_specific_tokens,
@@ -219,6 +224,7 @@ def score_breakdown_for_hit(
         else query_specificity_component(query_tokens, all_label_tokens)
     )
     role_mismatch_penalty = query_role_mismatch_penalty(
+        query=query,
         query_set=query_set,
         label_tokens=all_label_tokens,
         labels=labels,
@@ -305,6 +311,17 @@ def score_breakdown_for_hit(
         query_tokens=query_tokens,
         label_tokens=all_label_tokens,
     )
+    family_history_context_penalty = family_history_context_penalty_for_hit(
+        query_tokens=query_tokens,
+        label_tokens=all_label_tokens,
+        labels=labels,
+        hit=hit,
+    )
+    assertion = assertion_context_for_hit(query=query, labels=labels, hit=hit)
+    assertion_context_penalty = assertion_context_penalty_for_hit(
+        assertion=assertion,
+        hit=hit,
+    )
     normal_exam_fragment_penalty = normal_exam_fragment_penalty_for_hit(
         query_tokens=query_tokens,
         label_tokens=all_label_tokens,
@@ -352,6 +369,8 @@ def score_breakdown_for_hit(
         - sepsis_subtype_penalty
         - semantic_fragment_penalty
         - generic_fragment_penalty
+        - family_history_context_penalty
+        - assertion_context_penalty
         - normal_exam_fragment_penalty
         - clinical_context_sense_penalty
     )
@@ -397,6 +416,9 @@ def score_breakdown_for_hit(
         "sepsis_subtype_penalty": round(sepsis_subtype_penalty, 6),
         "semantic_fragment_penalty": round(semantic_fragment_penalty, 6),
         "generic_fragment_penalty": round(generic_fragment_penalty, 6),
+        "family_history_context_penalty": round(family_history_context_penalty, 6),
+        "assertion_context_penalty": round(assertion_context_penalty, 6),
+        "assertion": assertion,
         "normal_exam_fragment_penalty": round(normal_exam_fragment_penalty, 6),
         "lexical_fallback_used": lexical_fallback_used,
         "retrieval_kind": (
@@ -437,6 +459,7 @@ def rank_hits(query: str, hits: list[SearchHit], *, top_k: int) -> list[SearchHi
         )
         hit["rank_score"] = breakdown["rank_score"]
         hit["score_breakdown"] = breakdown
+        hit["assertion"] = breakdown.get("assertion") or {"status": "current"}
         ranked.append(hit)
     apply_relative_specificity_penalties(ranked, query_tokens=query_tokens)
     ranked = sorted(
@@ -838,6 +861,11 @@ def apply_evidence_aware_cutoff(
     query_tokens: list[str],
     top_k: int,
 ) -> list[SearchHit]:
+    ranked_hits = [
+        hit
+        for hit in ranked_hits
+        if not is_blocked_generic_result(hit)
+    ]
     signal_hits = [
         hit
         for hit in ranked_hits
@@ -856,6 +884,18 @@ def apply_evidence_aware_cutoff(
             continue
         filtered.append(hit)
     return select_anchor_diverse_hits(filtered, query_tokens=query_tokens, top_k=top_k)
+
+
+def is_blocked_generic_result(hit: SearchHit) -> bool:
+    labels = [str(label or "") for label in hit.get("labels") or []]
+    for label in [
+        str(hit.get("name") or ""),
+        str(hit.get("matched_label") or ""),
+        *labels,
+    ]:
+        if is_blocked_generic_concept(str(hit.get("cui") or ""), label):
+            return True
+    return False
 
 
 LOW_VALUE_ADMIN_STATUS_RESULT_LABELS = {
@@ -892,6 +932,15 @@ LOW_VALUE_ADMIN_STATUS_RESULT_LABELS = {
     "patient discharge",
     "pending day type",
     "per 4 0 milliliters",
+    "chart review",
+    "drug utilization review",
+    "medical chart review",
+    "medical records review",
+    "not reviewed",
+    "peer review",
+    "peer reviewed",
+    "reviewed",
+    "reviewed by",
     "second ordinal",
     "second unit of plane angle",
     "scheduled procedure status",
@@ -980,6 +1029,8 @@ LOW_VALUE_CONTEXT_ANCHOR_TOKENS = {
     "rapid",
     "recurrent",
     "relieved",
+    "review",
+    "reviewed",
     "score",
     "second",
     "singular",
@@ -1036,6 +1087,10 @@ def is_generic_status_noise_result(hit: SearchHit, *, query_tokens: list[str]) -
             label_tokens=label_tokens,
         ):
             return True
+        if hit_has_admin_review_status_context(hit=hit, labels=labels) and not query_asks_for_admin_review(
+            query_set
+        ):
+            return True
         if hit_has_contextual_false_positive_anchor_context(
             hit=hit,
             labels=labels,
@@ -1071,6 +1126,10 @@ def is_generic_status_noise_result(hit: SearchHit, *, query_tokens: list[str]) -
             hit=hit,
             labels=labels,
             label_tokens=label_tokens,
+        )
+        or (
+            hit_has_admin_review_status_context(hit=hit, labels=labels)
+            and not query_asks_for_admin_review(query_set)
         )
         or hit_has_broad_organism_context(
             hit=hit,
@@ -1196,6 +1255,7 @@ def select_anchor_diverse_hits(
                 is_exact_administered_pharmacologic_hit(hit, query_tokens=query_tokens)
                 or is_explicit_sepsis_component_anchor_hit(hit, query_tokens=query_tokens)
                 or is_curated_exact_label_hit(hit)
+                or is_exact_condition_variant_hit(hit)
             ):
                 deferred.append(hit)
                 continue
@@ -1311,6 +1371,24 @@ def is_explicit_sepsis_component_anchor_hit(hit: SearchHit, *, query_tokens: lis
     return group in {"CHEM", "OBS", "PHYS", "PROC"}
 
 
+def is_exact_condition_variant_hit(hit: SearchHit) -> bool:
+    breakdown = hit.get("score_breakdown") or {}
+    if float(breakdown.get("exact_span_component") or 0.0) <= 0.0:
+        return False
+    if not (semantic_type_names(hit) & TEMPORAL_CONDITION_CONTEXT_SEMANTIC_TYPES):
+        return False
+    labels = [
+        str(hit.get("matched_label") or ""),
+        str(hit.get("name") or ""),
+        *[str(label or "") for label in hit.get("labels") or []],
+    ]
+    for label in labels:
+        norm = f" {normalized_key(label)} "
+        if " with " in norm or " without " in norm:
+            return True
+    return False
+
+
 def is_unanchored_low_signal_hit(hit: SearchHit, *, query_tokens: list[str]) -> bool:
     breakdown = hit.get("score_breakdown") or {}
     if not breakdown.get("lexical_fallback_used"):
@@ -1373,6 +1451,11 @@ def is_curated_exact_label_hit(hit: SearchHit) -> bool:
 def label_fallback_anchor_queries(query: str) -> list[str]:
     anchors = []
     seen = set()
+    for anchor in with_or_without_anchor_queries(query):
+        if anchor in seen:
+            continue
+        seen.add(anchor)
+        anchors.append(anchor)
     for token in normalized_key(query).split():
         canonical = canonical_token(token)
         if (
@@ -1392,6 +1475,42 @@ def label_fallback_anchor_queries(query: str) -> list[str]:
             continue
         seen.add(anchor)
         anchors.append(anchor)
+    return anchors
+
+
+def with_or_without_anchor_queries(query: str) -> list[str]:
+    tokens = normalized_key(query).split()
+    anchors: list[str] = []
+    seen = set()
+    for index in range(1, len(tokens) - 2):
+        if tokens[index : index + 3] != ["with", "or", "without"]:
+            continue
+        prefix_start = index - 1
+        while (
+            prefix_start - 1 >= 0
+            and canonical_token(tokens[prefix_start - 1])
+            and canonical_token(tokens[prefix_start - 1]) not in RANK_STOPWORDS
+            and canonical_token(tokens[prefix_start - 1]) not in LOW_SPECIFICITY_QUERY_TOKENS
+            and canonical_token(tokens[prefix_start - 1]) not in NEGATION_QUERY_TOKENS
+        ):
+            prefix_start -= 1
+        prefix = tokens[prefix_start:index]
+        suffix = []
+        for token in tokens[index + 3 :]:
+            canonical = canonical_token(token)
+            if not canonical or canonical in RANK_STOPWORDS or canonical in LOW_SPECIFICITY_QUERY_TOKENS:
+                break
+            suffix.append(token)
+            if len(suffix) >= 4:
+                break
+        if not prefix or not suffix:
+            continue
+        for connector in ("with", "without"):
+            anchor = " ".join([*prefix, connector, *suffix])
+            if anchor in seen:
+                continue
+            seen.add(anchor)
+            anchors.append(anchor)
     return anchors
 
 
@@ -1949,6 +2068,33 @@ def direct_query_span(query: str, label: str) -> tuple[int, int, str] | None:
     except re.error:
         return None
     if not match:
+        variant = with_or_without_query_span(query, label)
+        if variant:
+            return variant
+        return None
+    return match.start(1), match.end(1), query[match.start(1):match.end(1)]
+
+
+def with_or_without_query_span(query: str, label: str) -> tuple[int, int, str] | None:
+    label_tokens = normalized_key(label).split()
+    if "with" in label_tokens:
+        connector_index = label_tokens.index("with")
+    elif "without" in label_tokens:
+        connector_index = label_tokens.index("without")
+    else:
+        return None
+    prefix = " ".join(label_tokens[:connector_index])
+    suffix = " ".join(label_tokens[connector_index + 1 :])
+    if not prefix or not suffix:
+        return None
+    prefix_pattern = re.escape(prefix).replace(r"\ ", r"\s+")
+    suffix_pattern = re.escape(suffix).replace(r"\ ", r"\s+")
+    pattern = rf"(?<![A-Za-z0-9])({prefix_pattern}\s+with\s+or\s+without\s+{suffix_pattern})(?![A-Za-z0-9])"
+    try:
+        match = re.search(pattern, query, flags=re.I)
+    except re.error:
+        return None
+    if not match:
         return None
     return match.start(1), match.end(1), query[match.start(1):match.end(1)]
 
@@ -1988,6 +2134,7 @@ def query_specificity_component(query_tokens: list[str], label_tokens: set[str])
 
 def query_role_mismatch_penalty(
     *,
+    query: str,
     query_set: set[str],
     label_tokens: set[str],
     labels: list[str],
@@ -1998,6 +2145,8 @@ def query_role_mismatch_penalty(
         return 0.0
     if (query_set & DRUG_ROLE_QUERY_TOKENS) and (query_set & THERAPEUTIC_ACTION_QUERY_TOKENS):
         if hit_has_pharmacologic_role(label_tokens=label_tokens, hit=hit):
+            return 0.0
+        if hit_is_first_statement_condition_anchor(query=query, labels=labels, hit=hit):
             return 0.0
         non_role_specific = specific_tokens - DRUG_ROLE_QUERY_TOKENS - THERAPEUTIC_ACTION_QUERY_TOKENS
         return 0.65 if label_tokens & non_role_specific else 0.45
@@ -2012,6 +2161,12 @@ def query_role_mismatch_penalty(
             return 0.18
         return 0.24
     return 0.0
+
+
+def hit_is_first_statement_condition_anchor(*, query: str, labels: list[str], hit: dict) -> bool:
+    if not (semantic_type_names(hit) & TEMPORAL_CONDITION_CONTEXT_SEMANTIC_TYPES):
+        return False
+    return first_statement_component_for_hit(query=query, labels=labels, hit=hit) > 0.0
 
 
 def numeric_specificity_mismatch_penalty(
@@ -2147,6 +2302,10 @@ def clinical_context_sense_penalty_for_hit(
         label_tokens=label_tokens,
     ) and query_has_biomedical_context_beyond_prose_status(query_set):
         penalty = max(penalty, 0.95)
+    if hit_has_admin_review_status_context(hit=hit, labels=labels) and not query_asks_for_admin_review(
+        query_set
+    ):
+        penalty = max(penalty, 0.65)
     if label_is_mortality_outcome_context(label_tokens=label_tokens) and not query_asks_for_mortality_outcome(
         raw_query_set
     ):
@@ -2159,6 +2318,10 @@ def clinical_context_sense_penalty_for_hit(
         query_set
     ):
         penalty = max(penalty, 0.34)
+    if label_is_surgical_recovery_program_context(label_tokens=label_tokens) and not query_asks_for_surgical_recovery(
+        query_set
+    ):
+        penalty = max(penalty, 0.60)
     if label_is_prior_condition_context(
         semantic_types=semantic_types,
         label_tokens=label_tokens,
@@ -2239,6 +2402,11 @@ def clinical_context_sense_penalty_for_hit(
     ):
         if query_uses_component_as_part_of_more_specific_phrase(query_set):
             penalty = max(penalty, 0.85)
+    if label_is_oncology_drug_or_treatment_class_context(label_tokens=label_tokens, hit=hit) and (
+        query_has_antibiotic_diarrhea_context(query_set)
+        and not query_has_oncology_treatment_context(query_set)
+    ):
+        penalty = max(penalty, 0.65)
     if (
         label_tokens & BRAND_LABEL_TOKENS
         and semantic_types & DRUG_CHEMICAL_VIEW_SEMANTIC_TYPES
@@ -2313,6 +2481,75 @@ def query_asks_for_susceptibility(query_tokens: set[str]) -> bool:
             "variants",
         }
     )
+
+
+def family_history_context_penalty_for_hit(
+    *,
+    query_tokens: list[str],
+    label_tokens: set[str],
+    labels: list[str],
+    hit: dict,
+) -> float:
+    query_set = set(query_tokens)
+    if not query_asks_for_family_history(query_set):
+        return 0.0
+    if hit_is_family_history_context(labels=labels, label_tokens=label_tokens):
+        return 0.0
+    if not hit_is_active_condition_context(hit=hit, label_tokens=label_tokens):
+        return 0.0
+    if not (family_history_target_tokens(query_set) & label_tokens):
+        return 0.0
+    penalty = 0.36
+    if semantic_type_names(hit) & {"neoplastic process"}:
+        penalty = 0.72
+    return penalty
+
+
+def query_asks_for_family_history(query_tokens: set[str]) -> bool:
+    return "family" in query_tokens and "history" in query_tokens
+
+
+def family_history_target_tokens(query_tokens: set[str]) -> set[str]:
+    return query_tokens - {
+        "family",
+        "familial",
+        "history",
+        "historical",
+        "risk",
+        "risks",
+        "screening",
+        "test",
+        "testing",
+    } - LOW_SPECIFICITY_QUERY_TOKENS
+
+
+def hit_is_family_history_context(*, labels: list[str], label_tokens: set[str]) -> bool:
+    if {"family", "history"} <= label_tokens:
+        return True
+    normalized_labels = [" ".join(content_tokens(label)) for label in labels]
+    return any(
+        label.startswith(("family history of ", "fh ", "fhx "))
+        for label in normalized_labels
+    )
+
+
+def hit_is_active_condition_context(*, hit: dict, label_tokens: set[str]) -> bool:
+    if label_tokens & {
+        "family",
+        "familial",
+        "gene",
+        "genes",
+        "genetic",
+        "genetics",
+        "history",
+        "predisposition",
+        "risk",
+        "screening",
+        "susceptibility",
+        "susceptible",
+    }:
+        return False
+    return bool(semantic_type_names(hit) & TEMPORAL_CONDITION_CONTEXT_SEMANTIC_TYPES)
 
 
 def label_is_staging_context(*, label_tokens: set[str]) -> bool:
@@ -2471,6 +2708,76 @@ def query_has_biomedical_context_beyond_prose_status(query_tokens: set[str]) -> 
     return bool(
         query_tokens - GENERIC_PROSE_STATUS_QUERY_TOKENS - LOW_SPECIFICITY_QUERY_TOKENS
     )
+
+
+ADMIN_REVIEW_LABEL_TOKENS = {
+    "activity",
+    "activities",
+    "annual",
+    "care",
+    "chart",
+    "claim",
+    "claims",
+    "drug",
+    "health",
+    "medical",
+    "medication",
+    "pathology",
+    "peer",
+    "record",
+    "records",
+    "review",
+    "reviewed",
+    "reviewing",
+    "reviews",
+    "scientific",
+    "utilization",
+}
+ADMIN_REVIEW_TRIGGER_TOKENS = {
+    "review",
+    "reviewed",
+    "reviewing",
+    "reviews",
+}
+ADMIN_REVIEW_DIRECT_QUERY_TOKENS = ADMIN_REVIEW_LABEL_TOKENS | {
+    "audit",
+    "audits",
+    "reviewer",
+    "reviewers",
+}
+ADMIN_REVIEW_CONTEXT_TOKENS = {
+    "annual",
+    "care",
+    "chart",
+    "claim",
+    "claims",
+    "drug",
+    "health",
+    "medical",
+    "medication",
+    "pathology",
+    "peer",
+    "record",
+    "records",
+    "scientific",
+    "utilization",
+}
+
+
+def hit_has_admin_review_status_context(*, hit: dict, labels: list[str]) -> bool:
+    for token_set in hit_primary_label_token_sets(hit=hit, labels=labels, label_limit=4):
+        if not token_set & ADMIN_REVIEW_TRIGGER_TOKENS:
+            continue
+        if token_set <= ADMIN_REVIEW_LABEL_TOKENS:
+            return True
+        if token_set & ADMIN_REVIEW_CONTEXT_TOKENS:
+            return True
+    return False
+
+
+def query_asks_for_admin_review(query_tokens: set[str]) -> bool:
+    useful_query = query_tokens - LOW_SPECIFICITY_QUERY_TOKENS
+    return bool(useful_query) and useful_query <= ADMIN_REVIEW_DIRECT_QUERY_TOKENS
 
 
 CONFIRMATION_STATUS_LABEL_TOKENS = {
@@ -2807,6 +3114,29 @@ def query_asks_for_sleep_metric(query_tokens: set[str]) -> bool:
     return bool(query_tokens & SLEEP_METRIC_QUERY_TOKENS)
 
 
+SURGICAL_RECOVERY_PROGRAM_LABEL_TOKENS = {"enhanced", "recovery", "surgery", "postsurgical"}
+SURGICAL_RECOVERY_PROGRAM_QUERY_TOKENS = {
+    "eras",
+    "enhanced",
+    "postoperative",
+    "postsurgical",
+    "recovery",
+    "surgery",
+    "surgical",
+}
+
+
+def label_is_surgical_recovery_program_context(*, label_tokens: set[str]) -> bool:
+    return (
+        {"recovery", "surgery"} <= label_tokens
+        or {"enhanced", "postsurgical", "recovery"} <= label_tokens
+    )
+
+
+def query_asks_for_surgical_recovery(query_tokens: set[str]) -> bool:
+    return bool(query_tokens & SURGICAL_RECOVERY_PROGRAM_QUERY_TOKENS)
+
+
 TEMPORAL_CONDITION_CONTEXT_SEMANTIC_TYPES = {
     "disease or syndrome",
     "finding",
@@ -3028,6 +3358,53 @@ def query_uses_component_as_part_of_more_specific_phrase(query_tokens: set[str])
         or {"opioid", "withdrawal"} <= query_tokens
         or {"androgen", "deprivation", "therapy"} <= query_tokens
     )
+
+
+ANTIBIOTIC_EXPOSURE_QUERY_TOKENS = {
+    "antibiotic",
+    "antimicrobial",
+    "antibacterial",
+    "antiinfective",
+}
+DIARRHEA_QUERY_TOKENS = {"diarrhea", "diarrhoea"}
+ONCOLOGY_TREATMENT_LABEL_TOKENS = {
+    "antineoplastic",
+    "antineoplastics",
+    "chemoprophylaxis",
+    "chemotherapeutic",
+    "chemotherapy",
+}
+ONCOLOGY_TREATMENT_QUERY_TOKENS = ONCOLOGY_TREATMENT_LABEL_TOKENS | {
+    "cancer",
+    "carcinoma",
+    "leukemia",
+    "lymphoma",
+    "malignancy",
+    "malignant",
+    "metastases",
+    "metastatic",
+    "neoplasm",
+    "oncology",
+    "tumor",
+    "tumour",
+}
+
+
+def query_has_antibiotic_diarrhea_context(query_tokens: set[str]) -> bool:
+    return bool(query_tokens & ANTIBIOTIC_EXPOSURE_QUERY_TOKENS) and bool(
+        query_tokens & DIARRHEA_QUERY_TOKENS
+    )
+
+
+def query_has_oncology_treatment_context(query_tokens: set[str]) -> bool:
+    return bool(query_tokens & ONCOLOGY_TREATMENT_QUERY_TOKENS)
+
+
+def label_is_oncology_drug_or_treatment_class_context(*, label_tokens: set[str], hit: dict) -> bool:
+    if label_tokens & ONCOLOGY_TREATMENT_LABEL_TOKENS:
+        return True
+    primary_tokens = set(content_tokens(str(hit.get("name") or "")))
+    return bool(primary_tokens & ONCOLOGY_TREATMENT_LABEL_TOKENS)
 
 
 def is_therapy_transition_context(query_tokens: set[str]) -> bool:

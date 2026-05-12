@@ -63,6 +63,8 @@ class ScoreBreakdown(TypedDict, total=False):
     semantic_fragment_penalty: float
     generic_fragment_penalty: float
     normal_exam_fragment_penalty: float
+    assertion_context_penalty: float
+    assertion: dict
     lexical_fallback_used: bool
     retrieval_kind: str
 
@@ -84,3 +86,4 @@ class SearchHit(TypedDict, total=False):
     semantic_group_label: str
     related_concepts: list[RelatedConcept]
     score_breakdown: ScoreBreakdown
+    assertion: dict

@@ -53,3 +53,16 @@ C0006405	C1169989	buprenorphine / naloxone	The combination product is clinically
 C0027358	C1169989	buprenorphine / naloxone	The combination product is clinically acceptable when buprenorphine-naloxone is initiated.
 C2825032	C0087169	Withdrawal Symptoms	Withdrawal symptoms is clinically acceptable for opioid withdrawal symptoms wording.
 C0019740	C2046362	HLA-B27 Antigen Measurement	HLA-B27 antigen measurement is clinically acceptable when the paragraph says positive HLA-B27.
+C0741160	C0265012	Ruptured abdominal aortic aneurysm	Specific ruptured abdominal aortic aneurysm is clinically acceptable for both abdominal aortic aneurysm rupture and AAA rupture wording.
+C0162871	C0265012	Ruptured abdominal aortic aneurysm	Specific ruptured abdominal aortic aneurysm satisfies the abdominal aortic aneurysm target when rupture is explicit.
+C0153676	C0242379	Malignant neoplasm of lung	Lung malignancy is clinically acceptable for metastatic lung cancer wording when the result set also contains metastatic disease context.
+C0202178	C0031705	Phosphorus	The analyte phosphorus is clinically acceptable when a nutrition/refeeding paragraph says phosphorus measurement.
+C1332828	C4545439	CYP2C19 poor metabolizer	CYP2C19 poor metabolizer is clinically acceptable for CYP2C19 pharmacogenomic search wording.
+C1332828	C0960580	CYP2C19 protein, human	CYP2C19 protein is clinically acceptable when the paragraph tests CYP2C19 pharmacogenomic retrieval and the gene CUI is lower ranked.
+C0019693	C0019699	HIV Seropositivity	HIV seropositivity is clinically acceptable for an HIV patient pharmacogenomic screening paragraph.
+C0201179	C0427965	Antimicrobial susceptibility	Antimicrobial susceptibility is clinically acceptable for antimicrobial susceptibility test wording.
+C0024671	C0203028	Screening mammography	Screening mammography is clinically acceptable for mammography in preventive screening wording.
+C1654909	C0021344	Human papillomavirus	The HPV organism concept is clinically acceptable when the paragraph says human papillomavirus test and screening-test context is explicit.
+C0042029	C0577708	Urinary tract infection caused by Escherichia coli	Specific E. coli urinary tract infection is clinically acceptable for UTI in an ESBL E. coli UTI search.
+C0019046	C1561562	Hemoglobin finding	Hemoglobin finding is clinically acceptable when a postpartum hemorrhage paragraph says hemoglobin dropped.
+C0740304	C3508933	Chronic obstructive pulmonary disease exacerbation	Specific COPD exacerbation CUI is clinically acceptable when chart-review wording says COPD exacerbation.

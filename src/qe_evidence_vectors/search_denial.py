@@ -137,6 +137,13 @@ def denial_scope_token_lists(raw_query_tokens: list[str]) -> list[list[str]]:
         canonical = canonical_token(token)
         if canonical not in NEGATION_QUERY_TOKENS:
             continue
+        if (
+            canonical == "without"
+            and index >= 2
+            and canonical_token(raw_query_tokens[index - 2]) == "with"
+            and canonical_token(raw_query_tokens[index - 1]) == "or"
+        ):
+            continue
         start = index + 1
         if canonical == "no" and raw_query_tokens[index + 1 : index + 3] == ["evidence", "of"]:
             start = index + 3

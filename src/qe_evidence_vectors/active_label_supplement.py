@@ -24,9 +24,11 @@ REQUIRED_COLUMNS = {
 ALLOWED_FIELDS = {
     "assessment",
     "condition",
+    "context",
     "drug",
     "drug_alias",
     "finding",
+    "gene",
     "lab",
     "organism",
     "procedure",

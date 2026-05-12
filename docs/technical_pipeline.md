@@ -679,14 +679,23 @@ when it exists. The detailed mining plan is in
 `docs/ohdsi_relationship_mining.md`. Mine public or shareable aggregate
 artifacts first; do not ingest patient-level EHR data into this path.
 
-The server also exposes:
+The server exposes a documented HTTP API for the browser UI and external
+clients. The API guide is `docs/api.md`, and the machine-readable contract is
+available from a running server at `/api/openapi.json`. The main endpoints are:
 
-- `/api/resolve?q=...`: returns candidate CUIs for direct CUI, source-code, or
+- `/api/health`: cheap liveness/readiness check.
+- `/api/status`: loaded artifact paths, record counts, backend, cache counters,
+  and relationship/index availability.
+- `/api/search?q=...`: ranked concept search with `balanced`, `exact`, and
+  `comprehensive` modes plus custom semantic bucket filtering.
+- `/api/detail?doc_id=...` or `/api/detail?cui=...`: lazy detail hydration for
+  one search hit.
+- `/api/resolve?q=...`: candidate CUIs for direct CUI, source-code, or
   text-label inputs.
-- `/api/related?cui=C0004238&k=10&vocab=ICD10CM`: returns evidence-first
-  related concepts, full evidence-vector neighbors from the seed CUI's own
-  CUI/view vectors, MRREL graph neighbors, cross-semantic research relations,
-  and source vocabulary mappings for the requested vocabularies.
+- `/api/related?cui=C0004238&k=10&vocab=ICD10CM`: evidence-first related
+  concepts, full evidence-vector neighbors from the seed CUI's own CUI/view
+  vectors, MRREL graph neighbors, cross-semantic research relations, and source
+  vocabulary mappings for requested vocabularies.
 
 ### 8. Review Search Quality
 

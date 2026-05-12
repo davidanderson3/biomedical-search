@@ -24,6 +24,10 @@
       line-height: 1.45;
     }
 
+    body.has-modal {
+      overflow: hidden;
+    }
+
     header {
       background: #fff;
       border-bottom: 1px solid var(--line);
@@ -90,7 +94,7 @@
     }
 
     .query-grid {
-      grid-template-columns: minmax(320px, 1fr) 120px minmax(220px, 0.45fr) 120px 140px;
+      grid-template-columns: minmax(320px, 1fr) 120px minmax(150px, 0.26fr) minmax(190px, 0.36fr) 120px 140px;
       align-items: end;
     }
 
@@ -223,16 +227,10 @@
       margin: 0;
     }
 
-    .filter-help {
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.25;
-      margin-top: 4px;
-    }
-
     #semanticGroupFilter {
-      min-height: 88px;
-      padding: 5px 8px;
+      height: 38px;
+      min-height: 38px;
+      padding: 8px 10px;
     }
 
     .actions {
@@ -252,6 +250,66 @@
 
     .suggestion-picker {
       min-width: 0;
+    }
+
+    .license-dialog-backdrop {
+      align-items: center;
+      background: rgb(15 23 42 / 0.48);
+      display: flex;
+      inset: 0;
+      justify-content: center;
+      padding: 20px;
+      position: fixed;
+      z-index: 1000;
+    }
+
+    .license-dialog-backdrop[hidden] {
+      display: none;
+    }
+
+    .license-dialog {
+      background: #fff;
+      border: 1px solid #9aa7b5;
+      border-radius: 8px;
+      box-shadow: 0 18px 48px rgb(15 23 42 / 0.22);
+      display: grid;
+      gap: 12px;
+      max-width: 620px;
+      padding: 18px;
+      width: min(100%, 620px);
+    }
+
+    .license-dialog h2 {
+      margin-bottom: 0;
+    }
+
+    .license-dialog-body {
+      color: #24313f;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .license-dialog-check {
+      align-items: flex-start;
+      color: #24313f;
+      display: flex;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.35;
+      margin-bottom: 0;
+    }
+
+    .license-dialog-check input {
+      flex: 0 0 auto;
+      margin-top: 2px;
+      min-height: 0;
+      width: auto;
+    }
+
+    .license-dialog-actions {
+      display: flex;
+      justify-content: flex-end;
     }
 
     .statement-panel {
@@ -636,50 +694,6 @@
       scrollbar-gutter: stable;
       scrollbar-color: #94a3b8 #eef2f7;
       scrollbar-width: thin;
-    }
-
-    .cohort-group {
-      border-color: #94a3b8;
-      background: #f8fafc;
-    }
-
-    .cohort-group-items {
-      max-height: none;
-      overflow: visible;
-    }
-
-    .cohort-item {
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 6px;
-      display: grid;
-      gap: 4px;
-      padding: 7px 8px;
-    }
-
-    .cohort-item-main {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(120px, 0.35fr);
-      gap: 8px;
-      align-items: baseline;
-    }
-
-    .cohort-item-title {
-      color: var(--ink);
-      font-size: 13px;
-      font-weight: 850;
-      line-height: 1.25;
-      min-width: 0;
-      overflow-wrap: anywhere;
-    }
-
-    .cohort-concept-chips {
-      margin: 0;
-    }
-
-    .cohort-concept-chip {
-      color: #1d4ed8;
-      text-decoration: none;
     }
 
     .result-group-scrollable .result-group-items {
@@ -1376,7 +1390,10 @@
       background: transparent;
       color: #7f1d1d;
       display: -webkit-box;
+      font-size: 11px;
+      font-weight: 850;
       gap: 0;
+      line-height: 1.15;
       padding: 0;
       text-align: left;
       width: 100%;

@@ -58,6 +58,10 @@ For external rebuilds and artifact boundaries, see
 artifacts from licensed/local inputs such as UMLS, LOINC, SNOMED CT, external
 CUI vectors, and any credentialed clinical data.
 
+For the HTTP contract used by external clients and the browser UI, see
+[Biomedical Concept Search API](docs/api.md). The server also exposes a
+machine-readable OpenAPI document at `/api/openapi.json`.
+
 The public-first rebuild entrypoint is:
 
 ```sh

@@ -102,11 +102,14 @@ LOCAL_EXTENSION_SEMANTIC_TYPES = {
     },
     "medical device": {"tui": "T074", "stn": "A1.3", "name": "Medical Device"},
     "clinical attribute": {"tui": "T201", "stn": "A2.3.3", "name": "Clinical Attribute"},
+    "gene or genome": {"tui": "T028", "stn": "A1.2.3.5", "name": "Gene or Genome"},
 }
 LOCAL_EXTENSION_FIELD_SEMANTIC_TYPES = {
     "condition": "Disease or Syndrome",
     "complication": "Pathologic Function",
+    "context": "Finding",
     "finding": "Finding",
+    "gene": "Gene or Genome",
     "result": "Finding",
     "symptom": "Sign or Symptom",
     "procedure": "Therapeutic or Preventive Procedure",
