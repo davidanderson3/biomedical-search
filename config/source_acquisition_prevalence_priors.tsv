@@ -1,0 +1,45 @@
+cui	label	category	prevalence_weight	rationale
+C0011849	Diabetes mellitus	condition	2.40	Common chronic condition; high retrieval utility across medication, lab, renal, cardiovascular, and inpatient paragraphs.
+C0011860	Type 2 diabetes mellitus	condition	2.40	Common chronic condition; prioritize drug, lab, kidney, and complication associations.
+C0020538	Hypertensive disease	condition	2.35	Common chronic condition and frequent comorbidity in clinical search.
+C0018801	Heart failure	condition	2.15	Common high-acuity and chronic condition; frequent medication, lab, and imaging associations.
+C0004238	Atrial fibrillation	condition	2.00	Common cardiovascular condition; frequent anticoagulation, rate-control, and procedure associations.
+C2609414	Acute kidney injury	condition	1.95	Common inpatient complication; high utility for creatinine, fluids, contrast, nephrotoxin, and electrolyte evidence.
+C0022658	Renal disease	condition	1.90	Common condition family; useful bridge for kidney labs and chronic disease associations.
+C0034065	Pulmonary embolism	condition	1.85	Common acute diagnosis; high utility for CTA, DVT, anticoagulant, and risk evidence.
+C0149871	Deep vein thrombosis	condition	1.80	Common vascular diagnosis; high utility for ultrasound, anticoagulant, and pulmonary embolism associations.
+C0004626	Bacterial pneumonia	condition	1.80	Common infection; high utility for culture, procalcitonin, hypoxia, and antibiotic evidence.
+C0243026	Sepsis	condition	1.80	Common high-acuity syndrome; high utility for blood culture, lactate, antibiotics, and vasopressor evidence.
+C0036983	Septic shock	condition	1.75	Common high-acuity syndrome in inpatient evidence; prioritize vasopressor and lactate associations.
+C0024117	Chronic obstructive pulmonary disease	condition	1.75	Common chronic respiratory condition; frequent steroid, bronchodilator, infection, and oxygen evidence.
+C0349790	Asthma exacerbation	condition	1.75	Common acute respiratory presentation; frequent albuterol, steroid, oxygen, and monitoring evidence.
+C0948008	Acute ischemic stroke	condition	1.70	Common emergency diagnosis; high utility for CTA, thrombolytic, thrombectomy, and neurologic deficit evidence.
+C0004096	Asthma	condition	1.65	Common chronic condition and frequent target for drug/symptom associations.
+C1269683	Major depressive disorder	condition	1.60	Common behavioral health condition; useful for medication and screening-questionnaire evidence.
+C0149931	Migraine	condition	1.55	Common neurologic condition; useful for triptan, NSAID, symptom, and imaging associations.
+C0020461	Hyperkalemia	condition	1.55	Common electrolyte disorder; high utility for ECG, potassium, medication, and dialysis evidence.
+C0020625	Hyponatremia	condition	1.50	Common electrolyte disorder; high utility for sodium, seizure, SIADH, and fluid restriction evidence.
+C0019018	Hemoglobin A1c	lab_test	2.10	Common diabetes monitoring lab; high utility for diabetes and drug-response evidence.
+C0201975	Creatinine measurement	lab_test	2.05	Common kidney function lab; high utility for AKI, CKD, contrast, and nephrotoxin evidence.
+C0200949	Blood culture	lab_test	1.95	Common infection test; high utility for sepsis, bacteremia, and antibiotic evidence.
+C0525032	International normalized ratio	lab_test	1.90	Common anticoagulation lab; high utility for warfarin and bleeding evidence.
+C0202115	Lactate measurement	lab_test	1.85	Common sepsis/shock marker; high utility for shock and monitoring associations.
+C0392201	Blood glucose measurement	lab_test	1.85	Common diabetes and acute-care lab; high utility for insulin, hypoglycemia, and DKA evidence.
+C0042014	Urinalysis	lab_test	1.75	Common urine test; high utility for UTI, pyelonephritis, AKI, and casts evidence.
+C0086511	D-dimer	lab_test	1.70	Common thrombosis test; high utility for DVT/PE associations.
+C0200382	Lipid panel	lab_test	1.65	Common cardiometabolic lab; useful for medication monitoring and risk evidence.
+C1623258	Electrocardiogram	procedure_test	1.95	Common cardiac test; high utility for arrhythmia, MI, electrolyte, and chest-pain evidence.
+C1536105	Computed tomography angiography	procedure_test	1.85	Common vascular imaging test; high utility for PE and stroke associations.
+C0013516	Echocardiography	procedure_test	1.80	Common cardiovascular imaging test; high utility for heart failure and strain evidence.
+C0009378	Colonoscopy	procedure_test	1.70	Common GI procedure; high utility for bleeding, colitis, screening, and inflammatory bowel disease evidence.
+C0041618	Ultrasonography	procedure_test	1.65	Common imaging modality; high utility across abscess, DVT, liver, gallbladder, and line procedure evidence.
+C0021641	Insulin	drug	2.05	Common diabetes drug; high utility for diabetes, hypoglycemia, DKA, and glucose associations.
+C0065374	Lisinopril	drug	1.95	Common antihypertensive/renal drug; high utility for AKI, hyperkalemia, and medication-hold evidence.
+C0043031	Warfarin	drug	1.90	Common anticoagulant; high utility for INR and bleeding associations.
+C0001927	Albuterol	drug	1.85	Common respiratory drug; high utility for asthma, COPD, wheezing, and pulse oximetry associations.
+C0032952	Prednisone	drug	1.80	Common steroid; high utility for COPD, asthma, autoimmune, and inflammation evidence.
+C0001617	Corticosteroids	drug	1.80	Common drug class; high utility for inflammation, asthma/COPD, colitis, and immune-toxicity evidence.
+C0042313	Vancomycin	drug	1.75	Common inpatient antibiotic; high utility for MRSA, bacteremia, meningitis, and C. difficile evidence.
+C0007561	Ceftriaxone	drug	1.75	Common antibiotic; high utility for pneumonia, UTI, meningitis, and cellulitis evidence.
+C1831808	Apixaban	drug	1.70	Common anticoagulant; high utility for DVT/PE and atrial fibrillation evidence.
+C0039286	Tamoxifen	drug	1.45	Common oncology/endocrine therapy; useful for breast cancer associations.

@@ -59,7 +59,10 @@ exec python3 scripts/search_quality_server.py \
   --max-seq-length 128 \
   --elastic-url "$ELASTIC_URL" \
   --elastic-index "$ELASTIC_INDEX" \
-  --elastic-num-candidates 300 \
+  --elastic-num-candidates 50 \
+  --require-elasticsearch \
+  --label-fallback-limit 120 \
+  --definition-fallback-limit 80 \
   --label-index build/umls_biomedicine_search_label_index.sqlite \
   --code-index build/cui_code_index.sqlite \
   --relation-index build/umls_related_concepts.sqlite \

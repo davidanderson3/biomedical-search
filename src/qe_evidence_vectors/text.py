@@ -11,6 +11,7 @@ def ascii_fold(text: str) -> str:
 
 def clean_text(text: str) -> str:
     text = re.sub(r"\s+", " ", text.replace("\x00", " ")).strip()
+    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
     return text
 
 
@@ -29,4 +30,3 @@ def feature_tokens(text: str) -> list[str]:
         if len(compact) >= size:
             features.extend(compact[i : i + size] for i in range(len(compact) - size + 1))
     return features
-

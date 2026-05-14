@@ -8,22 +8,21 @@
 </head>
 <body>
   <main class="wrap">
-    <section class="panel">
+    <section class="panel search-panel">
       <h2>Find Concepts</h2>
       <div class="grid query-grid">
         <div>
-          <input id="query" type="text" aria-label="Text, CUI, or code" value="heart failure with reduced ejection fraction">
+          <textarea id="query" aria-label="Search query">heart failure with reduced ejection fraction</textarea>
         </div>
         <div>
           <label for="topK">Search pool</label>
-          <input id="topK" type="number" min="18" max="100" value="60">
+          <input id="topK" type="number" min="18" max="100" value="30">
         </div>
         <div>
           <label for="searchMode">Search mode</label>
           <select id="searchMode" aria-label="Search mode">
-            <option value="balanced" selected>Balanced</option>
+            <option value="balanced" selected>Expanded</option>
             <option value="exact">Exact</option>
-            <option value="comprehensive">Comprehensive</option>
           </select>
         </div>
         <div>
@@ -38,7 +37,10 @@
           </label>
         </div>
         <div>
-          <button id="searchBtn" class="primary">Search</button>
+          <div class="search-button-row">
+            <button id="searchBtn" class="primary">Search</button>
+            <button id="randomQueryBtn" type="button">Random</button>
+          </div>
         </div>
       </div>
       <div id="searchProgress" class="search-progress" role="status" aria-live="polite" hidden>
@@ -48,22 +50,45 @@
         </div>
       </div>
       <div id="searchFeedback" class="search-feedback" role="alert" hidden></div>
-      <div class="suggestion-pickers">
-        <div class="suggestion-picker">
-          <label for="clinicalSuggestionSelect">Clinical note suggestions</label>
-          <select id="clinicalSuggestionSelect"></select>
-        </div>
-        <div class="suggestion-picker">
-          <label for="paragraphTestSelect">Paragraph tests</label>
-          <select id="paragraphTestSelect"></select>
-        </div>
-      </div>
     </section>
 
-    <section class="panel">
-      <h2>Returned CUIs</h2>
+    <section class="panel results-panel">
       <div id="results" class="muted">Run a query to see candidate CUIs.</div>
     </section>
+
+    <details class="panel attribution-panel">
+      <summary>Source attribution and licensing</summary>
+      <div class="attribution-copy">
+        <p>
+          This local search app uses UMLS CUIs as concept identifiers and may use
+          locally supplied UMLS, SNOMED CT, LOINC, RxNorm, and other vocabulary
+          indexes only where the deployment has the necessary rights.
+        </p>
+        <p>
+          Public evidence and enrichment may come from
+          <a href="https://www.ncbi.nlm.nih.gov/books/NBK25497/" target="_blank" rel="noopener">NCBI E-utilities for PubMed and PMC</a>,
+          <a href="https://europepmc.org/" target="_blank" rel="noopener">Europe PMC</a>,
+          <a href="https://clinicaltrials.gov/data-api/api" target="_blank" rel="noopener">ClinicalTrials.gov</a>,
+          <a href="https://medlineplus.gov/xml.html" target="_blank" rel="noopener">MedlinePlus</a>,
+          <a href="https://medlineplus.gov/genetics/" target="_blank" rel="noopener">MedlinePlus Genetics</a>,
+          <a href="https://dailymed.nlm.nih.gov/dailymed/" target="_blank" rel="noopener">DailyMed</a>,
+          <a href="https://www.cancer.gov/policies/copyright-reuse" target="_blank" rel="noopener">NCI</a>,
+          <a href="https://www.cdc.gov/other/agencymaterials.html" target="_blank" rel="noopener">CDC</a>,
+          <a href="https://www.fda.gov/about-fda/about-website/website-policies" target="_blank" rel="noopener">FDA</a>,
+          <a href="https://www.niddk.nih.gov/copyright" target="_blank" rel="noopener">NIDDK</a>,
+          <a href="https://developers.openalex.org/api-reference/introduction" target="_blank" rel="noopener">OpenAlex</a>,
+          and open Wikipedia/Wikimedia content when compatible with the source license.
+        </p>
+        <p>
+          SNOMED CT content is subject to the
+          <a href="https://www.nlm.nih.gov/research/umls/knowledge_sources/metathesaurus/release/license_agreement_snomed.html" target="_blank" rel="noopener">NLM SNOMED CT Affiliate License Agreement</a>.
+          LOINC content, when present, is copyrighted by Regenstrief Institute,
+          Inc. and the LOINC Committee and is governed by the
+          <a href="https://loinc.org/kb/license/" target="_blank" rel="noopener">LOINC license</a>.
+          Wikimedia images include per-file source and license information where available.
+        </p>
+      </div>
+    </details>
 
     <details class="panel utility-panel">
       <summary>Evaluation tools and system details</summary>
@@ -97,6 +122,12 @@ appendectomy surgical procedure</textarea>
         <table><tbody><tr><td class="muted">No query set has been run.</td></tr></tbody></table>
       </div>
     </details>
+
+    <section class="panel search-purpose-footer" aria-label="Search purpose">
+      <p>
+        Ultimately, we are trying to find what we are looking for. The purpose of the UMLS - whether you call it interoperability or NLP or a crosswalk or a thesaurus - is to find the right concepts. Find the right concepts. How do we test whether the UMLS can find the right concepts? The best test is to search. If we focus on search instead of synonymy, we will be closer to real use cases, because every use case involves search of some kind or another. Identifying the right identifier or string or concept.
+      </p>
+    </section>
   </main>
 
   <div id="snomedLicenseDialog" class="license-dialog-backdrop" role="presentation" hidden>

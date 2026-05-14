@@ -58,7 +58,7 @@ def wikipedia_document_from_spec(spec: dict[str, Any]) -> ConceptDocument:
             relation_text = relation.get("rela") or relation.get("relation") or "related_to"
             lines.append(f"- {label} ({relation['cui']}): {relation_text}")
     if evidence:
-        lines.append("Real-world evidence:")
+        lines.append("Open literature evidence:")
         lines.extend(f"- {item} (weight {weight:g})" for item in evidence)
 
     metadata = {

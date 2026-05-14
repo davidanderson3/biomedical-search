@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import json
 import random
 import sys
+from dataclasses import asdict, replace
 from pathlib import Path
 
 
@@ -35,21 +37,35 @@ from qe_evidence_vectors.elastic_export import (
 )
 from qe_evidence_vectors.embeddings import (
     DEFAULT_BIOMEDICAL_BERT_MODEL,
+    IdfHashingEmbedder,
+    build_hashing_idf_weights,
     iter_embed_documents,
     make_embedder,
+    write_hashing_idf_weights,
 )
 from qe_evidence_vectors.evidence import iter_filtered_evidence_files
 from qe_evidence_vectors.external_cui_vectors import build_external_cui_vector_index
 from qe_evidence_vectors.corpus import merge_corpus_documents, read_tabular_corpus
 from qe_evidence_vectors.code_index import build_code_index
 from qe_evidence_vectors.fetchers import (
+    fetch_clinicaltrials_documents,
+    fetch_dailymed_documents,
+    fetch_bookshelf_oa_documents,
     fetch_europepmc_documents,
     fetch_europepmc_topic_documents,
+    fetch_medlineplus_genetics_documents,
+    fetch_medlineplus_health_topic_documents,
     fetch_pmc_oa_documents,
     fetch_pmc_oa_topic_documents,
     fetch_pubmed_documents,
     fetch_pubmed_topic_documents,
+    fetch_obo_ontology_documents,
+    fetch_reference_page_documents,
+    ontology_source_policies,
+    read_dailymed_setids_from_mrsat,
     read_pubmed_topics,
+    reference_page_source_policies,
+    reference_source_policies,
 )
 from qe_evidence_vectors.ingest import read_query_log_tsv, read_snippet_tsv
 from qe_evidence_vectors.label_index import LabelIndex, build_label_index
@@ -67,10 +83,22 @@ from qe_evidence_vectors.provenance_index import build_provenance_index
 from qe_evidence_vectors.relation_index import build_relation_index
 from qe_evidence_vectors.relationship_edge_index import build_relationship_edge_index
 from qe_evidence_vectors.research_relations import build_research_relation_index
-from qe_evidence_vectors.schema import write_jsonl
+from qe_evidence_vectors.schema import iter_jsonl, write_jsonl
 from qe_evidence_vectors.search import search_vector_file
 from qe_evidence_vectors.semantic_type_index import build_semantic_type_index
 from qe_evidence_vectors.semantic_profiles import biomedicine_profile_names, profile_names
+from qe_evidence_vectors.source_acquisition import (
+    plan_markdown,
+    plan_source_acquisition_from_files,
+    write_acquisition_bundle,
+    write_association_review_jsonl,
+    write_association_review_tsv,
+    write_association_candidates_jsonl,
+    write_association_candidates_tsv,
+    write_plan_json,
+    write_plan_tsv,
+    write_reviewed_association_edges_jsonl,
+)
 from qe_evidence_vectors.trie_linker import LabelTrie, iter_linked_corpus_evidence_trie
 
 
@@ -189,6 +217,473 @@ def cmd_fetch_pmc_oa_topics(args: argparse.Namespace) -> int:
     )
     count = write_jsonl(args.out, documents)
     print(f"Wrote {count:,} de-duplicated PMC OA full-text corpus documents from {len(topics):,} topics to {args.out}")
+    return 0
+
+
+def cmd_fetch_clinicaltrials(args: argparse.Namespace) -> int:
+    documents = fetch_clinicaltrials_documents(
+        query=args.query,
+        max_records=args.max_records,
+        page_size=args.page_size,
+    )
+    count = write_jsonl(args.out, documents)
+    print(f"Wrote {count:,} ClinicalTrials.gov corpus documents to {args.out}")
+    return 0
+
+
+def cmd_fetch_medlineplus(args: argparse.Namespace) -> int:
+    documents = fetch_medlineplus_health_topic_documents(
+        source_url=args.source_url,
+        max_records=args.max_records,
+        include_spanish=args.include_spanish,
+        prefer_compressed=not args.prefer_xml,
+    )
+    count = write_jsonl(args.out, documents)
+    print(f"Wrote {count:,} MedlinePlus health topic corpus documents to {args.out}")
+    return 0
+
+
+def cmd_fetch_medlineplus_genetics(args: argparse.Namespace) -> int:
+    documents = fetch_medlineplus_genetics_documents(
+        source_url=args.source_url,
+        max_records=args.max_records,
+        include_types=args.include_type,
+    )
+    count = write_jsonl(args.out, documents)
+    print(f"Wrote {count:,} MedlinePlus Genetics corpus documents to {args.out}")
+    return 0
+
+
+def cmd_fetch_dailymed(args: argparse.Namespace) -> int:
+    setids = list(args.setid or [])
+    for mrsat in args.mrsat or []:
+        setids.extend(
+            read_dailymed_setids_from_mrsat(
+                mrsat,
+                max_records=args.max_setids_from_mrsat,
+            )
+        )
+    if not args.drug_name and not setids:
+        raise SystemExit("fetch-dailymed requires --drug-name, --setid, or --mrsat")
+    documents = fetch_dailymed_documents(
+        args.drug_name,
+        setids=setids,
+        max_labels_per_drug=args.max_labels_per_drug,
+        max_records=args.max_records,
+        page_size=args.page_size,
+        max_chars=args.max_chars,
+    )
+    count = write_jsonl(args.out, documents)
+    print(f"Wrote {count:,} DailyMed label corpus documents to {args.out}")
+    return 0
+
+
+def cmd_fetch_bookshelf_oa(args: argparse.Namespace) -> int:
+    documents = fetch_bookshelf_oa_documents(
+        file_list_url=args.file_list_url,
+        package_base_url=args.package_base_url,
+        terms=args.term or [],
+        accession_ids=args.accession_id or [],
+        max_books=args.max_books,
+        max_records=args.max_records,
+        max_chars=args.max_chars,
+        min_chars=args.min_chars,
+    )
+    count = write_jsonl(args.out, documents)
+    print(f"Wrote {count:,} NCBI Bookshelf Open Access corpus documents to {args.out}")
+    return 0
+
+
+def cmd_fetch_obo_ontology(args: argparse.Namespace) -> int:
+    documents = fetch_obo_ontology_documents(
+        args.source,
+        source_url=args.source_url,
+        max_records=args.max_records,
+        max_chars=args.max_chars,
+        include_obsolete=args.include_obsolete,
+    )
+    count = write_jsonl(args.out, documents)
+    print(f"Wrote {count:,} {args.source} OBO ontology corpus documents to {args.out}")
+    return 0
+
+
+def cmd_fetch_reference_pages(args: argparse.Namespace) -> int:
+    documents = fetch_reference_page_documents(
+        args.source,
+        urls=args.url or [],
+        max_records=args.max_records,
+        max_chars=args.max_chars,
+        allow_restricted=args.allow_restricted_reference_source,
+    )
+    count = write_jsonl(args.out, documents)
+    print(f"Wrote {count:,} {args.source} reference page corpus documents to {args.out}")
+    return 0
+
+
+def cmd_reference_source_policy(args: argparse.Namespace) -> int:
+    policies = reference_source_policies()
+    if args.source:
+        source_key = args.source.replace("-", "_")
+        policies = {source_key: policies[source_key]}
+    if args.format == "json":
+        print(json.dumps(policies, indent=2, sort_keys=True))
+        return 0
+    print("source\tlabel\tfetch_policy\tterms_url\tlicense")
+    for source, policy in sorted(policies.items()):
+        print(
+            "\t".join(
+                [
+                    source,
+                    str(policy.get("label") or ""),
+                    str(policy.get("fetch_policy") or ""),
+                    str(policy.get("terms_url") or ""),
+                    str(policy.get("license") or ""),
+                ]
+            )
+        )
+    return 0
+
+
+def cmd_plan_source_acquisition(args: argparse.Namespace) -> int:
+    default_query_specs = ROOT / "config" / "search_quality_paragraph_queries.tsv"
+    default_prevalence_prior = ROOT / "config" / "source_acquisition_prevalence_priors.tsv"
+    query_specs = list(args.queries or [])
+    if not query_specs and default_query_specs.exists():
+        query_specs = [str(default_query_specs)]
+    prevalence_priors = list(args.prevalence_prior or [])
+    if (
+        not args.no_default_prevalence_prior
+        and default_prevalence_prior.exists()
+        and str(default_prevalence_prior) not in prevalence_priors
+    ):
+        prevalence_priors.append(str(default_prevalence_prior))
+    relation_indexes = list(args.relation_index or [])
+    for default_relation_index in (
+        ROOT / "build" / "umls_related_concepts.sqlite",
+        ROOT / "build" / "umls_research_relations.sqlite",
+        ROOT / "build" / "relationship_edges.sqlite",
+    ):
+        if default_relation_index.exists() and str(default_relation_index) not in relation_indexes:
+            relation_indexes.append(str(default_relation_index))
+    label_indexes = list(args.label_index or [])
+    for default_label_index in (
+        ROOT / "build" / "cui_code_index.sqlite",
+        ROOT / "build" / "umls_biomedicine_search_label_index.sqlite",
+        ROOT / "build" / "umls_clinical_label_index.sqlite",
+    ):
+        if default_label_index.exists() and str(default_label_index) not in label_indexes:
+            label_indexes.append(str(default_label_index))
+    semantic_type_indexes = list(args.semantic_type_index or [])
+    for default_semantic_type_index in (
+        ROOT / "build" / "umls_semantic_type_index.sqlite",
+        ROOT / "build" / "semantic_type_index.sqlite",
+    ):
+        if default_semantic_type_index.exists() and str(default_semantic_type_index) not in semantic_type_indexes:
+            semantic_type_indexes.append(str(default_semantic_type_index))
+    plan = plan_source_acquisition_from_files(
+        args.quality_summary,
+        query_spec_paths=query_specs,
+        relation_index_paths=relation_indexes,
+        label_index_paths=label_indexes,
+        semantic_type_index_paths=semantic_type_indexes,
+        prevalence_prior_paths=prevalence_priors,
+        max_recommendations=args.max_recommendations,
+        max_association_candidates=args.max_association_candidates,
+        include_public_default_only=not args.include_non_default_candidates,
+        minimum_score=args.minimum_score,
+        infer_disallowed=not args.no_infer_disallowed,
+        candidate_disallowed_rank_limit=args.candidate_disallowed_rank_limit,
+        infer_associations=not args.no_infer_associations,
+        max_association_pairs_per_query=args.max_association_pairs_per_query,
+    )
+    if args.out_json:
+        write_plan_json(plan, args.out_json)
+    if args.out_tsv:
+        write_plan_tsv(plan, args.out_tsv)
+    if args.out_associations_jsonl:
+        write_association_candidates_jsonl(plan, args.out_associations_jsonl)
+    if args.out_associations_tsv:
+        write_association_candidates_tsv(plan, args.out_associations_tsv)
+    if args.out_association_review_jsonl:
+        write_association_review_jsonl(plan, args.out_association_review_jsonl)
+    if args.out_association_review_tsv:
+        write_association_review_tsv(plan, args.out_association_review_tsv)
+    if args.out_bundle_dir:
+        write_acquisition_bundle(plan, args.out_bundle_dir)
+    markdown = plan_markdown(plan)
+    if args.out_md:
+        Path(args.out_md).expanduser().parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out_md).expanduser().write_text(markdown, encoding="utf-8")
+    if not (
+        args.out_json
+        or args.out_tsv
+        or args.out_md
+        or args.out_associations_jsonl
+        or args.out_associations_tsv
+        or args.out_association_review_jsonl
+        or args.out_association_review_tsv
+        or args.out_bundle_dir
+    ):
+        print(markdown)
+    else:
+        print(
+            f"Planned {len(plan.get('recommendations') or []):,} source acquisition recommendation(s) "
+            f"and {len(plan.get('association_candidates') or []):,} association candidate(s) "
+            f"from {len(args.quality_summary):,} quality summary file(s)"
+        )
+    return 0
+
+
+def cmd_build_reviewed_association_edges(args: argparse.Namespace) -> int:
+    count = write_reviewed_association_edges_jsonl(
+        args.review,
+        args.out,
+        allow_missing_evidence=args.allow_missing_evidence,
+    )
+    print(f"Wrote {count:,} reviewed association edge(s) to {args.out}")
+    return 0
+
+
+def _jsonl_payload(record):
+    return asdict(record) if hasattr(record, "__dataclass_fields__") else dict(record)
+
+
+def upsert_jsonl_by_doc_id(path: str | Path, records) -> dict:
+    path = Path(path).expanduser()
+    payloads: dict[str, dict] = {}
+    if path.exists():
+        for payload in iter_jsonl(path):
+            doc_id = str(payload.get("doc_id") or "")
+            if doc_id:
+                payloads[doc_id] = payload
+    incoming = 0
+    for record in records:
+        payload = _jsonl_payload(record)
+        doc_id = str(payload.get("doc_id") or "")
+        if not doc_id:
+            continue
+        payloads[doc_id] = payload
+        incoming += 1
+    count = write_jsonl(path, [payloads[key] for key in sorted(payloads)])
+    return {"incoming": incoming, "total": count, "path": str(path)}
+
+
+def source_subset_prefix(source: str, prefix: str = "") -> str:
+    raw = prefix or source
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in raw).strip("_")
+    return cleaned or "source_subset"
+
+
+def fetch_source_subset_documents(args: argparse.Namespace):
+    if args.source == "clinicaltrials":
+        return list(
+            fetch_clinicaltrials_documents(
+                query=args.query,
+                max_records=args.max_records,
+                page_size=args.page_size,
+            )
+        )
+    if args.source == "medlineplus":
+        return list(
+            fetch_medlineplus_health_topic_documents(
+                source_url=args.source_url,
+                max_records=args.max_records,
+                include_spanish=args.include_spanish,
+                prefer_compressed=not args.prefer_xml,
+            )
+        )
+    if args.source == "medlineplus_genetics":
+        return list(
+            fetch_medlineplus_genetics_documents(
+                source_url=args.source_url or "https://medlineplus.gov/download/ghr-summaries.xml",
+                max_records=args.max_records,
+                include_types=args.include_type or ["health-condition", "gene", "chromosome"],
+            )
+        )
+    if args.source == "dailymed":
+        setids = list(args.setid or [])
+        for mrsat in args.mrsat or []:
+            setids.extend(
+                read_dailymed_setids_from_mrsat(
+                    mrsat,
+                    max_records=args.max_setids_from_mrsat,
+                )
+            )
+        if not args.drug_name and not setids:
+            raise SystemExit("build-source-subset --source dailymed requires --drug-name, --setid, or --mrsat")
+        return list(
+            fetch_dailymed_documents(
+                args.drug_name,
+                setids=setids,
+                max_labels_per_drug=args.max_labels_per_drug,
+                max_records=args.max_records,
+                page_size=args.page_size,
+                max_chars=args.max_chars,
+            )
+        )
+    if args.source == "ncbi_bookshelf_oa":
+        return list(
+            fetch_bookshelf_oa_documents(
+                file_list_url=args.file_list_url,
+                package_base_url=args.package_base_url,
+                terms=args.term or [],
+                accession_ids=args.accession_id or [],
+                max_books=args.max_books,
+                max_records=args.max_records,
+                max_chars=args.max_chars,
+                min_chars=args.min_chars,
+            )
+        )
+    if args.source in ontology_source_policies():
+        return list(
+            fetch_obo_ontology_documents(
+                args.source,
+                source_url=args.source_url,
+                max_records=args.max_records,
+                max_chars=args.max_chars,
+                include_obsolete=args.include_obsolete,
+            )
+        )
+    if args.source in reference_page_source_policies():
+        return list(
+            fetch_reference_page_documents(
+                args.source,
+                urls=args.url or [],
+                max_records=args.max_records,
+                max_chars=args.max_chars,
+                allow_restricted=args.allow_restricted_reference_source,
+            )
+        )
+    raise SystemExit(f"unsupported source: {args.source}")
+
+
+def cmd_build_source_subset(args: argparse.Namespace) -> int:
+    out_dir = Path(args.out_dir).expanduser()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    prefix = source_subset_prefix(args.source, args.prefix)
+    provider_key = args.provider.replace("-", "_")
+    corpus_path = out_dir / f"{prefix}_corpus.jsonl"
+    evidence_path = out_dir / f"{prefix}_evidence.jsonl"
+    docs_path = out_dir / f"{prefix}_concept_documents.jsonl"
+    vectors_path = out_dir / f"{prefix}_concept_vectors.{provider_key}.jsonl"
+    manifest_path = out_dir / f"{prefix}_source_build_manifest.json"
+
+    corpus_documents = fetch_source_subset_documents(args)
+    corpus_count = write_jsonl(corpus_path, corpus_documents)
+
+    corpus_iter = merge_corpus_documents([str(corpus_path)])
+    if args.matcher == "trie":
+        trie = LabelTrie.from_sqlite(args.label_index, max_label_tokens=args.max_label_tokens)
+        evidence_iter = iter_linked_corpus_evidence_trie(
+            corpus_iter,
+            trie,
+            max_label_tokens=args.max_label_tokens,
+            context_chars=args.context_chars,
+            max_ambiguity=args.max_ambiguity,
+            max_mentions_per_cui=args.max_mentions_per_cui,
+            evidence_tag=args.evidence_tag or args.source,
+        )
+        evidence_count = write_jsonl(evidence_path, evidence_iter)
+    else:
+        with LabelIndex(args.label_index) as index:
+            evidence_iter = iter_linked_corpus_evidence(
+                corpus_iter,
+                index,
+                max_label_tokens=args.max_label_tokens,
+                context_chars=args.context_chars,
+                max_ambiguity=args.max_ambiguity,
+                max_mentions_per_cui=args.max_mentions_per_cui,
+                evidence_tag=args.evidence_tag or args.source,
+            )
+            evidence_count = write_jsonl(evidence_path, evidence_iter)
+
+    evidence = evidence_from_jsonl(evidence_path)
+    documents = build_documents(
+        evidence,
+        mrconso_path=args.mrconso,
+        max_labels=args.max_labels,
+        max_items_per_doc=args.max_items_per_doc,
+    )
+    documents = [
+        replace(
+            document,
+            metadata={
+                **document.metadata,
+                "source_bundle": args.source,
+                "source_subset_prefix": prefix,
+                "source_corpus_path": str(corpus_path),
+                "source_evidence_path": str(evidence_path),
+            },
+        )
+        for document in documents
+    ]
+    doc_count = write_jsonl(docs_path, documents)
+
+    idf_arg = getattr(args, "idf_path", None)
+    idf_path = None
+    if args.provider == "hashing-idf" and not idf_arg:
+        idf_path = out_dir / f"{prefix}_hashing_idf.json"
+        idf_weights = build_hashing_idf_weights(document.text for document in documents)
+        write_hashing_idf_weights(idf_path, idf_weights)
+        embedder = IdfHashingEmbedder(dim=args.dim, idf_weights=idf_weights, idf_path=idf_path)
+    else:
+        idf_path = idf_arg
+        embedder = make_embedder(
+            args.provider,
+            model=args.model,
+            dim=args.dim,
+            idf_path=idf_arg,
+            local_files_only=args.local_files_only,
+            max_seq_length=args.max_seq_length,
+            device=args.device,
+        )
+    vectors = list(
+        iter_embed_documents(
+            documents,
+            embedder,
+            batch_size=args.batch_size,
+            include_document_metadata=args.include_document_metadata,
+            vector_precision=None if args.vector_precision < 0 else args.vector_precision,
+            omit_text=args.omit_text,
+        )
+    )
+    vector_count = write_jsonl(vectors_path, vectors)
+
+    updates = {}
+    if args.update_docs:
+        updates["docs"] = upsert_jsonl_by_doc_id(args.update_docs, documents)
+    if args.update_vectors:
+        updates["vectors"] = upsert_jsonl_by_doc_id(args.update_vectors, vectors)
+
+    manifest = {
+        "source": args.source,
+        "source_subset_prefix": prefix,
+        "counts": {
+            "corpus_documents": corpus_count,
+            "evidence_records": evidence_count,
+            "concept_documents": doc_count,
+            "vectors": vector_count,
+        },
+        "outputs": {
+            "corpus": str(corpus_path),
+            "evidence": str(evidence_path),
+            "docs": str(docs_path),
+            "vectors": str(vectors_path),
+            "idf": str(idf_path or ""),
+        },
+        "updates": updates,
+        "embedding": {
+            "provider": embedder.provider_name,
+            "model": embedder.model_name,
+            "dim": args.dim,
+        },
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(
+        f"Built {vector_count:,} vector(s) from {doc_count:,} concept document(s), "
+        f"{evidence_count:,} evidence record(s), and {corpus_count:,} {args.source} corpus document(s)"
+    )
+    print(f"Wrote source subset manifest to {manifest_path}")
     return 0
 
 
@@ -607,19 +1102,42 @@ def cmd_build_provenance_index(args: argparse.Namespace) -> int:
 def cmd_embed(args: argparse.Namespace) -> int:
     if args.max_docs is not None and args.sample_docs is not None:
         raise ValueError("use only one of --max-docs or --sample-docs")
-    embedder = make_embedder(
-        args.provider,
-        model=args.model,
-        dim=args.dim,
-        local_files_only=args.local_files_only,
-        max_seq_length=args.max_seq_length,
-        device=args.device,
-    )
     documents = iter_documents_jsonl(args.docs)
     if args.max_docs is not None:
         documents = itertools.islice(documents, args.max_docs)
     elif args.sample_docs is not None:
         documents = iter(_reservoir_sample(documents, args.sample_docs, seed=args.seed))
+    if args.provider == "hashing-idf":
+        documents = list(documents)
+        if args.idf_path:
+            embedder = make_embedder(
+                args.provider,
+                model=args.model,
+                dim=args.dim,
+                idf_path=args.idf_path,
+                local_files_only=args.local_files_only,
+                max_seq_length=args.max_seq_length,
+                device=args.device,
+            )
+        else:
+            idf_out = Path(args.idf_out or Path(args.out).with_suffix(".idf.json")).expanduser()
+            idf_weights = build_hashing_idf_weights(document.text for document in documents)
+            write_hashing_idf_weights(idf_out, idf_weights)
+            embedder = IdfHashingEmbedder(
+                dim=args.dim,
+                idf_weights=idf_weights,
+                idf_path=idf_out,
+            )
+            print(f"Wrote hashing IDF weights for {idf_weights.doc_count:,} docs to {idf_out}")
+    else:
+        embedder = make_embedder(
+            args.provider,
+            model=args.model,
+            dim=args.dim,
+            local_files_only=args.local_files_only,
+            max_seq_length=args.max_seq_length,
+            device=args.device,
+        )
     vectors = iter_embed_documents(
         documents,
         embedder,
@@ -665,6 +1183,7 @@ def cmd_search(args: argparse.Namespace) -> int:
         args.provider,
         model=args.model,
         dim=args.dim,
+        idf_path=args.idf_path,
         local_files_only=args.local_files_only,
         max_seq_length=args.max_seq_length,
         device=args.device,
@@ -762,6 +1281,7 @@ def cmd_search_elastic(args: argparse.Namespace) -> int:
         args.provider,
         model=args.model,
         dim=args.dim,
+        idf_path=args.idf_path,
         local_files_only=args.local_files_only,
         max_seq_length=args.max_seq_length,
         device=args.device,
@@ -790,6 +1310,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Build evidence-backed vector inputs for UMLS CUIs and reviewed extension concepts."
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+    embedding_providers = ["hashing", "hashing-idf", "sentence-transformers", "transformers-cls", "bert-cls", "sapbert"]
 
     pubmed_parser = subparsers.add_parser("fetch-pubmed")
     pubmed_parser.add_argument("--term", required=True, help="PubMed search term")
@@ -904,6 +1425,324 @@ def build_parser() -> argparse.ArgumentParser:
     pmc_oa_topics_parser.add_argument("--batch-size", type=int, default=50)
     pmc_oa_topics_parser.add_argument("--max-chars", type=int, help="Optional maximum full-text characters retained per article")
     pmc_oa_topics_parser.set_defaults(func=cmd_fetch_pmc_oa_topics)
+
+    clinicaltrials_parser = subparsers.add_parser("fetch-clinicaltrials")
+    clinicaltrials_parser.add_argument("--query", required=True, help="ClinicalTrials.gov API v2 query.term value")
+    clinicaltrials_parser.add_argument("--out", required=True, help="Output corpus JSONL")
+    clinicaltrials_parser.add_argument("--max-records", type=int, default=100)
+    clinicaltrials_parser.add_argument("--page-size", type=int, default=25)
+    clinicaltrials_parser.set_defaults(func=cmd_fetch_clinicaltrials)
+
+    medlineplus_parser = subparsers.add_parser("fetch-medlineplus")
+    medlineplus_parser.add_argument("--out", required=True, help="Output corpus JSONL")
+    medlineplus_parser.add_argument(
+        "--source-url",
+        help="Optional MedlinePlus health topic XML or ZIP URL. Defaults to the current link discovered from medlineplus.gov/xml.html.",
+    )
+    medlineplus_parser.add_argument("--max-records", type=int, default=500, help="0 means no limit")
+    medlineplus_parser.add_argument("--include-spanish", action="store_true")
+    medlineplus_parser.add_argument("--prefer-xml", action="store_true", help="Prefer the uncompressed XML link when discovering the current source URL")
+    medlineplus_parser.set_defaults(func=cmd_fetch_medlineplus)
+
+    medlineplus_genetics_parser = subparsers.add_parser("fetch-medlineplus-genetics")
+    medlineplus_genetics_parser.add_argument("--out", required=True, help="Output corpus JSONL")
+    medlineplus_genetics_parser.add_argument(
+        "--source-url",
+        default="https://medlineplus.gov/download/ghr-summaries.xml",
+        help="MedlinePlus Genetics summaries XML URL.",
+    )
+    medlineplus_genetics_parser.add_argument("--max-records", type=int, default=500, help="0 means no limit")
+    medlineplus_genetics_parser.add_argument(
+        "--include-type",
+        action="append",
+        default=["health-condition", "gene", "chromosome"],
+        choices=["health-condition", "gene", "chromosome"],
+        help="Summary type to include. Repeat as needed.",
+    )
+    medlineplus_genetics_parser.set_defaults(func=cmd_fetch_medlineplus_genetics)
+
+    dailymed_parser = subparsers.add_parser("fetch-dailymed")
+    dailymed_parser.add_argument("--drug-name", action="append", default=[], help="Drug name to search in DailyMed. Repeat as needed.")
+    dailymed_parser.add_argument("--setid", action="append", default=[], help="DailyMed SPL set ID. Repeat as needed.")
+    dailymed_parser.add_argument("--mrsat", action="append", default=[], help="Optional UMLS MRSAT.RRF path to extract DailyMed SPL set IDs from.")
+    dailymed_parser.add_argument("--max-setids-from-mrsat", type=int, default=100)
+    dailymed_parser.add_argument("--out", required=True, help="Output corpus JSONL")
+    dailymed_parser.add_argument("--max-labels-per-drug", type=int, default=2)
+    dailymed_parser.add_argument("--max-records", type=int, default=20, help="0 means no limit")
+    dailymed_parser.add_argument("--page-size", type=int, default=20)
+    dailymed_parser.add_argument("--max-chars", type=int, default=20000)
+    dailymed_parser.set_defaults(func=cmd_fetch_dailymed)
+
+    bookshelf_oa_parser = subparsers.add_parser("fetch-bookshelf-oa")
+    bookshelf_oa_parser.add_argument("--out", required=True, help="Output corpus JSONL")
+    bookshelf_oa_parser.add_argument(
+        "--file-list-url",
+        default="https://ftp.ncbi.nlm.nih.gov/pub/litarch/file_list.csv",
+        help="NLM LitArch Open Access file_list.csv URL or local CSV path.",
+    )
+    bookshelf_oa_parser.add_argument(
+        "--package-base-url",
+        default="https://ftp.ncbi.nlm.nih.gov/pub/litarch/",
+        help="Base URL or local directory for NLM LitArch Open Access tar.gz packages.",
+    )
+    bookshelf_oa_parser.add_argument("--term", action="append", default=[], help="Case-insensitive title/publisher filter. Repeat as needed.")
+    bookshelf_oa_parser.add_argument("--accession-id", action="append", default=[], help="Bookshelf accession ID such as NBK7232. Repeat as needed.")
+    bookshelf_oa_parser.add_argument("--max-books", type=int, default=3, help="0 means no book-package limit")
+    bookshelf_oa_parser.add_argument("--max-records", type=int, default=100, help="0 means no corpus-document limit")
+    bookshelf_oa_parser.add_argument("--max-chars", type=int, default=30000)
+    bookshelf_oa_parser.add_argument("--min-chars", type=int, default=300)
+    bookshelf_oa_parser.set_defaults(func=cmd_fetch_bookshelf_oa)
+
+    ontology_sources = sorted(ontology_source_policies())
+    obo_parser = subparsers.add_parser("fetch-obo-ontology")
+    obo_parser.add_argument("--source", required=True, choices=ontology_sources)
+    obo_parser.add_argument("--out", required=True, help="Output corpus JSONL")
+    obo_parser.add_argument("--source-url", help="OBO URL or local OBO file. Defaults to the source policy PURL.")
+    obo_parser.add_argument("--max-records", type=int, default=0, help="0 means no limit")
+    obo_parser.add_argument("--max-chars", type=int, default=8000)
+    obo_parser.add_argument("--include-obsolete", action="store_true")
+    obo_parser.set_defaults(func=cmd_fetch_obo_ontology)
+
+    reference_sources = sorted(reference_source_policies())
+    reference_page_sources = sorted(reference_page_source_policies())
+    reference_policy_parser = subparsers.add_parser("reference-source-policy")
+    reference_policy_parser.add_argument("--source", choices=reference_sources)
+    reference_policy_parser.add_argument("--format", choices=["tsv", "json"], default="tsv")
+    reference_policy_parser.set_defaults(func=cmd_reference_source_policy)
+
+    acquisition_parser = subparsers.add_parser("plan-source-acquisition")
+    acquisition_parser.add_argument(
+        "--quality-summary",
+        required=True,
+        action="append",
+        help=(
+            "paragraph_quality_summary.tsv file from evaluate_paragraph_quality.py. "
+            "Repeat to combine measured runs."
+        ),
+    )
+    acquisition_parser.add_argument("--out-json", help="Optional JSON plan output path.")
+    acquisition_parser.add_argument("--out-tsv", help="Optional TSV recommendation output path.")
+    acquisition_parser.add_argument("--out-md", help="Optional Markdown report output path.")
+    acquisition_parser.add_argument(
+        "--out-associations-jsonl",
+        help="Optional JSONL output path for ranked missing association evidence candidates.",
+    )
+    acquisition_parser.add_argument(
+        "--out-associations-tsv",
+        help="Optional TSV output path for ranked missing association evidence candidates.",
+    )
+    acquisition_parser.add_argument(
+        "--out-association-review-jsonl",
+        help=(
+            "Optional JSONL review template for top association candidates. "
+            "Uses proposed_* fields so unreviewed rows are not directly indexable."
+        ),
+    )
+    acquisition_parser.add_argument(
+        "--out-association-review-tsv",
+        help="Optional TSV review template for top association candidates.",
+    )
+    acquisition_parser.add_argument(
+        "--out-bundle-dir",
+        help=(
+            "Optional directory for a complete acquisition bundle: plan, TSV/JSONL association queues, "
+            "source/literature seed TSVs, and a command checklist."
+        ),
+    )
+    acquisition_parser.add_argument(
+        "--queries",
+        action="append",
+        default=[],
+        help=(
+            "Benchmark query TSV with id, expected_cuis, and optional disallowed_cuis. "
+            "Defaults to config/search_quality_paragraph_queries.tsv when present. Repeat as needed."
+        ),
+    )
+    acquisition_parser.add_argument(
+        "--relation-index",
+        action="append",
+        default=[],
+        help=(
+            "SQLite relation index used to filter association pairs already available from existing sources. "
+            "Defaults to existing build/umls_related_concepts.sqlite, build/umls_research_relations.sqlite, "
+            "and build/relationship_edges.sqlite when present. Repeat as needed."
+        ),
+    )
+    acquisition_parser.add_argument(
+        "--label-index",
+        action="append",
+        default=[],
+        help=(
+            "SQLite label/code index used to label CUI association candidates. Defaults to existing "
+            "build/cui_code_index.sqlite, build/umls_biomedicine_search_label_index.sqlite, and "
+            "build/umls_clinical_label_index.sqlite when present."
+        ),
+    )
+    acquisition_parser.add_argument(
+        "--semantic-type-index",
+        action="append",
+        default=[],
+        help=(
+            "SQLite semantic_type index used to classify CUI association candidates. Defaults to existing "
+            "build/umls_semantic_type_index.sqlite and build/semantic_type_index.sqlite when present."
+        ),
+    )
+    acquisition_parser.add_argument(
+        "--prevalence-prior",
+        action="append",
+        default=[],
+        help=(
+            "Optional TSV with cui and prevalence_weight/utility_weight/commonness/priority/weight columns. "
+            "Defaults to config/source_acquisition_prevalence_priors.tsv when present. Repeat as needed."
+        ),
+    )
+    acquisition_parser.add_argument(
+        "--no-default-prevalence-prior",
+        action="store_true",
+        help="Do not load config/source_acquisition_prevalence_priors.tsv automatically.",
+    )
+    acquisition_parser.add_argument("--max-recommendations", type=int, default=25)
+    acquisition_parser.add_argument("--max-association-candidates", type=int, default=50)
+    acquisition_parser.add_argument("--minimum-score", type=float, default=0.01)
+    acquisition_parser.add_argument("--candidate-disallowed-rank-limit", type=int, default=10)
+    acquisition_parser.add_argument("--max-association-pairs-per-query", type=int, default=12)
+    acquisition_parser.add_argument(
+        "--no-infer-disallowed",
+        action="store_true",
+        help="Do not infer candidate disallowed CUIs from high-ranking non-expected hits.",
+    )
+    acquisition_parser.add_argument(
+        "--no-infer-associations",
+        action="store_true",
+        help="Do not infer unavailable expected-CUI association pairs from benchmark rows.",
+    )
+    acquisition_parser.add_argument(
+        "--include-non-default-candidates",
+        action="store_true",
+        help="Include policy profiles that are not enabled for the public/default acquisition queue.",
+    )
+    acquisition_parser.set_defaults(func=cmd_plan_source_acquisition)
+
+    reviewed_edges_parser = subparsers.add_parser("build-reviewed-association-edges")
+    reviewed_edges_parser.add_argument(
+        "--review",
+        required=True,
+        action="append",
+        help="Reviewed association template TSV/JSONL. Repeat to combine review files.",
+    )
+    reviewed_edges_parser.add_argument("--out", required=True, help="Output relationship-edge JSONL")
+    reviewed_edges_parser.add_argument(
+        "--allow-missing-evidence",
+        action="store_true",
+        help="Allow approved rows without evidence_text, source_url, supporting_pmids, or supporting_doc_ids.",
+    )
+    reviewed_edges_parser.set_defaults(func=cmd_build_reviewed_association_edges)
+
+    reference_pages_parser = subparsers.add_parser("fetch-reference-pages")
+    reference_pages_parser.add_argument("--source", required=True, choices=reference_page_sources)
+    reference_pages_parser.add_argument("--url", action="append", default=[], help="Reference page URL or local HTML file. Repeat as needed.")
+    reference_pages_parser.add_argument("--out", required=True, help="Output corpus JSONL")
+    reference_pages_parser.add_argument("--max-records", type=int, default=25)
+    reference_pages_parser.add_argument("--max-chars", type=int, default=25000)
+    reference_pages_parser.add_argument(
+        "--allow-restricted-reference-source",
+        action="store_true",
+        help="Allow restricted reference sources for private, licensed deployments only.",
+    )
+    reference_pages_parser.set_defaults(func=cmd_fetch_reference_pages)
+
+    source_subset_parser = subparsers.add_parser("build-source-subset")
+    source_subset_parser.add_argument(
+        "--source",
+        required=True,
+        choices=[
+            "clinicaltrials",
+            "medlineplus",
+            "medlineplus_genetics",
+            "dailymed",
+            "ncbi_bookshelf_oa",
+            *ontology_sources,
+            *reference_page_sources,
+        ],
+        help="Public/permitted source subset to fetch, link, document, and embed.",
+    )
+    source_subset_parser.add_argument("--out-dir", required=True, help="Output directory for source-specific artifacts.")
+    source_subset_parser.add_argument("--prefix", default="", help="Optional output filename prefix. Defaults to --source.")
+    source_subset_parser.add_argument("--label-index", required=True, help="SQLite label index used for CUI assignment.")
+    source_subset_parser.add_argument("--mrconso", help="Optional MRCONSO.RRF for labels on evidence-bearing CUIs.")
+    source_subset_parser.add_argument("--query", default="cancer OR diabetes OR migraine OR sepsis OR pneumonia", help="ClinicalTrials.gov query.term value.")
+    source_subset_parser.add_argument("--source-url", help="Source XML/ZIP URL for MedlinePlus or MedlinePlus Genetics.")
+    source_subset_parser.add_argument("--include-spanish", action="store_true")
+    source_subset_parser.add_argument("--prefer-xml", action="store_true")
+    source_subset_parser.add_argument("--url", action="append", default=[], help="Reference page URL or local HTML file. Repeat as needed.")
+    source_subset_parser.add_argument(
+        "--include-type",
+        action="append",
+        choices=["health-condition", "gene", "chromosome"],
+        help="MedlinePlus Genetics summary type to include. Repeat as needed.",
+    )
+    source_subset_parser.add_argument("--drug-name", action="append", default=[], help="DailyMed drug name seed. Repeat as needed.")
+    source_subset_parser.add_argument("--setid", action="append", default=[], help="DailyMed SPL set ID. Repeat as needed.")
+    source_subset_parser.add_argument("--mrsat", action="append", default=[], help="Optional UMLS MRSAT.RRF path for DailyMed SPL set IDs.")
+    source_subset_parser.add_argument("--max-setids-from-mrsat", type=int, default=100)
+    source_subset_parser.add_argument("--max-records", type=int, default=100, help="0 means no source-specific limit where supported.")
+    source_subset_parser.add_argument("--page-size", type=int, default=25)
+    source_subset_parser.add_argument("--max-labels-per-drug", type=int, default=2)
+    source_subset_parser.add_argument("--max-chars", type=int, default=20000)
+    source_subset_parser.add_argument("--include-obsolete", action="store_true", help="Include obsolete OBO ontology terms.")
+    source_subset_parser.add_argument(
+        "--file-list-url",
+        default="https://ftp.ncbi.nlm.nih.gov/pub/litarch/file_list.csv",
+        help="NLM LitArch Open Access file_list.csv URL or local CSV path.",
+    )
+    source_subset_parser.add_argument(
+        "--package-base-url",
+        default="https://ftp.ncbi.nlm.nih.gov/pub/litarch/",
+        help="Base URL or local directory for NLM LitArch Open Access tar.gz packages.",
+    )
+    source_subset_parser.add_argument("--term", action="append", default=[], help="Bookshelf OA title/publisher filter. Repeat as needed.")
+    source_subset_parser.add_argument("--accession-id", action="append", default=[], help="Bookshelf accession ID such as NBK7232. Repeat as needed.")
+    source_subset_parser.add_argument("--max-books", type=int, default=3, help="Bookshelf OA book-package cap; 0 means no limit.")
+    source_subset_parser.add_argument("--min-chars", type=int, default=300, help="Minimum corpus-document text length for Bookshelf OA parts.")
+    source_subset_parser.add_argument(
+        "--allow-restricted-reference-source",
+        action="store_true",
+        help="Allow restricted reference sources for private, licensed deployments only.",
+    )
+    source_subset_parser.add_argument("--matcher", choices=["sqlite", "trie"], default="trie")
+    source_subset_parser.add_argument("--max-label-tokens", type=int, default=8)
+    source_subset_parser.add_argument("--context-chars", type=int, default=320)
+    source_subset_parser.add_argument("--max-ambiguity", type=int, default=1)
+    source_subset_parser.add_argument("--max-mentions-per-cui", type=int, default=8)
+    source_subset_parser.add_argument("--evidence-tag", default="", help="Optional tag inserted into evidence_type. Defaults to --source.")
+    source_subset_parser.add_argument("--max-labels", type=int, default=8)
+    source_subset_parser.add_argument("--max-items-per-doc", type=int, default=100)
+    source_subset_parser.add_argument("--provider", choices=embedding_providers, default="hashing")
+    source_subset_parser.add_argument(
+        "--idf-path",
+        help=(
+            "Hashing IDF JSON for --provider hashing-idf. If omitted, a source-local "
+            "IDF file is written next to the source subset artifacts."
+        ),
+    )
+    source_subset_parser.add_argument(
+        "--model",
+        help=(
+            "Embedding model name. For transformers-cls/sapbert, defaults to "
+            f"{DEFAULT_BIOMEDICAL_BERT_MODEL}."
+        ),
+    )
+    source_subset_parser.add_argument("--dim", type=int, default=384)
+    source_subset_parser.add_argument("--batch-size", type=int, default=64)
+    source_subset_parser.add_argument("--vector-precision", type=int, default=6)
+    source_subset_parser.add_argument("--omit-text", action="store_true")
+    source_subset_parser.add_argument("--include-document-metadata", action="store_true")
+    source_subset_parser.add_argument("--local-files-only", action="store_true")
+    source_subset_parser.add_argument("--max-seq-length", type=int)
+    source_subset_parser.add_argument("--device", default="auto")
+    source_subset_parser.add_argument("--update-docs", help="Optional aggregate concept-doc JSONL to upsert with this source subset.")
+    source_subset_parser.add_argument("--update-vectors", help="Optional aggregate vector JSONL to upsert with this source subset.")
+    source_subset_parser.set_defaults(func=cmd_build_source_subset)
 
     tabular_parser = subparsers.add_parser("ingest-tabular-corpus")
     tabular_parser.add_argument("--input", required=True, help="Input CSV/TSV, optionally .gz")
@@ -1329,8 +2168,15 @@ def build_parser() -> argparse.ArgumentParser:
     embed_parser = subparsers.add_parser("embed")
     embed_parser.add_argument("--docs", required=True, help="Concept document JSONL")
     embed_parser.add_argument("--out", required=True, help="Output vector JSONL")
-    embedding_providers = ["hashing", "sentence-transformers", "transformers-cls", "bert-cls", "sapbert"]
     embed_parser.add_argument("--provider", choices=embedding_providers, default="hashing")
+    embed_parser.add_argument("--idf-path", help="Existing hashing IDF JSON for --provider hashing-idf.")
+    embed_parser.add_argument(
+        "--idf-out",
+        help=(
+            "Where to write hashing IDF JSON when --provider hashing-idf and "
+            "--idf-path is omitted. Defaults to --out with .idf.json suffix."
+        ),
+    )
     embed_parser.add_argument(
         "--model",
         help=(
@@ -1385,6 +2231,7 @@ def build_parser() -> argparse.ArgumentParser:
     search_parser.add_argument("--vectors", required=True, help="Vector JSONL")
     search_parser.add_argument("--query", required=True)
     search_parser.add_argument("--provider", choices=embedding_providers, default="hashing")
+    search_parser.add_argument("--idf-path", help="Hashing IDF JSON for --provider hashing-idf.")
     search_parser.add_argument(
         "--model",
         help=(
@@ -1464,6 +2311,7 @@ def build_parser() -> argparse.ArgumentParser:
     search_elastic_parser.add_argument("--k", type=int, default=10)
     search_elastic_parser.add_argument("--num-candidates", type=int, default=100)
     search_elastic_parser.add_argument("--provider", choices=embedding_providers, default="hashing")
+    search_elastic_parser.add_argument("--idf-path", help="Hashing IDF JSON for --provider hashing-idf.")
     search_elastic_parser.add_argument(
         "--model",
         help=(

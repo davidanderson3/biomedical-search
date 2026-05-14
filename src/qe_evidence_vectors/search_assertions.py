@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from qe_evidence_vectors.search_hit_features import semantic_type_names
+from qe_evidence_vectors.search_denial import (
+    DENIAL_SCOPE_BOUNDARY_TOKEN,
+    scope_sensitive_token_list,
+)
 from qe_evidence_vectors.search_tokens import canonical_token, content_tokens
 from qe_evidence_vectors.text import normalized_key
 
@@ -145,7 +149,7 @@ PROCEDURE_ASSERTION_TYPES = {
 
 
 def assertion_context_for_hit(*, query: str, labels: list[str], hit: dict) -> dict:
-    query_tokens = normalized_key(query).split()
+    query_tokens = scope_sensitive_token_list(query)
     if not query_tokens:
         return {"status": ASSERTION_CURRENT}
     canonical_query = [canonical_token(token) for token in query_tokens]
@@ -240,7 +244,7 @@ def cue_candidates(
             for pos in find_subsequence_positions(canonical_query, list(phrase)):
                 phrase_end = pos + len(phrase)
                 distance = start - phrase_end
-                if 0 <= distance <= max_before_distance(status) and not cue_scope_blocked(
+                if 0 <= distance <= max_before_distance(status, phrase=phrase) and not cue_scope_blocked(
                     canonical_query,
                     phrase_end,
                     start,
@@ -271,7 +275,9 @@ def candidate(status: str, phrase: tuple[str, ...], distance: int, direction: st
     }
 
 
-def max_before_distance(status: str) -> int:
+def max_before_distance(status: str, *, phrase: tuple[str, ...] | None = None) -> int:
+    if status == ASSERTION_NEGATED and phrase in {("no",), ("not",)}:
+        return 6
     if status == ASSERTION_FAMILY_HISTORY:
         return 8
     if status == ASSERTION_HISTORICAL:
@@ -311,6 +317,8 @@ def cue_scope_blocked(
     status: str,
 ) -> bool:
     between = set(canonical_query[start:end])
+    if DENIAL_SCOPE_BOUNDARY_TOKEN in between:
+        return True
     if between & {"but", "however", "though", "although", "except", "unless", "while"}:
         return True
     if status in {ASSERTION_HISTORICAL, ASSERTION_FAMILY_HISTORY} and between & {

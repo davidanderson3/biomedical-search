@@ -66,3 +66,13 @@ C1654909	C0021344	Human papillomavirus	The HPV organism concept is clinically ac
 C0042029	C0577708	Urinary tract infection caused by Escherichia coli	Specific E. coli urinary tract infection is clinically acceptable for UTI in an ESBL E. coli UTI search.
 C0019046	C1561562	Hemoglobin finding	Hemoglobin finding is clinically acceptable when a postpartum hemorrhage paragraph says hemoglobin dropped.
 C0740304	C3508933	Chronic obstructive pulmonary disease exacerbation	Specific COPD exacerbation CUI is clinically acceptable when chart-review wording says COPD exacerbation.
+C4523945	C4728082	Severe hypoglycaemia	Spelling and source-specific CUI variant is clinically acceptable when the paragraph explicitly says severe hypoglycemia.
+C0232856	C0489132	Urine output	Urine output is clinically acceptable for the urine volume target when the paragraph says urine output declined.
+C4049282	C0010380	Croup	The standard croup CUI is clinically acceptable for the HPO/subglottic-laryngitis croup target.
+C0451306	C2960235	Mini-mental state examination score	MMSE score is clinically acceptable when the paragraph explicitly discusses a declining Mini-Mental State Examination score.
+C0006434	C0332687	Second degree burn injury	Second degree burn injury is the more specific burn concept when the paragraph says partial thickness second degree burn.
+C0030293	C0267963	Exocrine pancreatic insufficiency	Exocrine pancreatic insufficiency is clinically acceptable for pancreatic insufficiency in cystic fibrosis.
+C0338831	C0349208	Manic Episode	Manic episode is clinically acceptable when the paragraph says manic episode and mania persisted.
+C1280474	C3517157	Measurement of lung diffusing capacity	Lung diffusing capacity measurement is clinically acceptable for reduced diffusing capacity in interstitial lung disease.
+C1414313	C3889117	EGFR exon 19 deletion	EGFR exon 19 deletion is clinically acceptable for the EGFR target when oncology wording explicitly names that mutation.
+C3845231	C4545439	CYP2C19 poor metabolizer	CYP2C19 poor metabolizer is clinically acceptable for the poor-metabolizer pharmacogenomic result.

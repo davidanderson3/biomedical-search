@@ -380,7 +380,7 @@
 
     function selectedSearchMode() {
       const mode = String(els.searchMode?.value || "balanced").trim().toLowerCase();
-      if (mode === "exact" || mode === "comprehensive") return mode;
+      if (mode === "exact") return mode;
       return "balanced";
     }
 
@@ -441,10 +441,9 @@
 
     const els = {};
     for (const id of [
-      "status", "query", "topK", "searchMode", "semanticGroupFilter", "searchBtn", "querySet", "runSetBtn",
+      "status", "query", "topK", "searchMode", "semanticGroupFilter", "searchBtn", "randomQueryBtn", "querySet", "runSetBtn",
       "includeRelated", "saveJudgmentsBtn", "clearJudgmentsBtn", "exportBtn", "metrics", "results", "setResults",
       "searchProgress", "searchFeedback", "querySetFeedback",
-      "clinicalSuggestionSelect", "paragraphTestSelect",
       "snomedLicenseDialog", "snomedLicenseCheckbox", "snomedLicenseAcceptBtn"
     ]) {
       els[id] = document.getElementById(id);
@@ -496,31 +495,37 @@
       return String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     }
 
-    function renderClinicalNoteSuggestions() {
-      if (!els.clinicalSuggestionSelect) return;
-      els.clinicalSuggestionSelect.innerHTML = [
-        '<option value="">Select a clinical note...</option>',
-        ...clinicalNoteSuggestions.map((query, index) => `
-          <option value="${esc(index)}">${esc(query)}</option>`)
-      ].join("");
+    function combinedSuggestionQueries() {
+      const seen = new Set();
+      return [...clinicalNoteSuggestions, ...paragraphTests]
+        .map((query) => String(query || "").trim())
+        .filter((query) => {
+          const key = normalizedPhrase(query);
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
     }
 
-    function renderParagraphTests() {
-      if (!els.paragraphTestSelect) return;
-      els.paragraphTestSelect.innerHTML = [
-        '<option value="">Select a paragraph test...</option>',
-        ...paragraphTests.map((query, index) => `
-          <option value="${esc(index)}">${fmtNum(index + 1)}. ${esc(query)}</option>`)
-      ].join("");
+    function updateRandomQueryButton() {
+      if (!els.randomQueryBtn) return;
+      els.randomQueryBtn.disabled = !combinedSuggestionQueries().length;
     }
 
-    function runSelectedDropdownQuery(select, items) {
-      if (!select) return;
-      if (select.value === "") return;
-      const index = Number(select.value);
-      if (!Number.isInteger(index) || index < 0 || index >= items.length) return;
-      els.query.value = items[index];
-      select.value = "";
+    function selectRandomQuery() {
+      const queries = combinedSuggestionQueries();
+      if (!queries.length) return;
+      const current = String(els.query?.value || "").trim();
+      let selected = queries[Math.floor(Math.random() * queries.length)];
+      if (queries.length > 1) {
+        let attempts = 0;
+        while (selected === current && attempts < 8) {
+          selected = queries[Math.floor(Math.random() * queries.length)];
+          attempts += 1;
+        }
+      }
+      els.query.value = selected;
+      els.query.focus();
       runSearch();
     }
 
@@ -1010,15 +1015,15 @@
     function clinicalAttributeDisplayName(hit, labels) {
       const readable = (labels || []).find((label) => isReadableClinicalAttributeLabel(label));
       if (readable) return readable;
-      const name = String(hit.name || labels?.[0] || hit.cui || "").trim();
+      const name = String(hit.name || labels?.[0] || "").trim();
       const prefix = name.split(":")[0].trim();
-      return prefix || name || hit.cui;
+      return prefix || name || "Unnamed concept";
     }
 
     function displayNameForHit(hit) {
       const labels = hit.labels || [];
       if (isClinicalAttributeHit(hit)) return clinicalAttributeDisplayName(hit, labels);
-      return hit.name || labels[0] || hit.cui;
+      return hit.name || labels[0] || "Unnamed concept";
     }
 
     function imageSourceLabel(image) {
@@ -1971,7 +1976,7 @@
     function resultShownLabel(group) {
       if (!group.total && !group.relatedTotal) return "0 returned";
       if (!group.relatedTotal) return `${fmtNum(group.items.length)} of ${fmtNum(group.total)} returned`;
-      return `${fmtNum(group.total)} returned · ${fmtNum(group.relatedTotal)} related`;
+      return `${fmtNum(group.total)} returned · ${fmtNum(group.relatedTotal)} possibly related`;
     }
 
     function renderResultBucket(group) {
@@ -1997,13 +2002,13 @@
     function renderRelatedResultBucket(group) {
       const hasOverflow = group.items.length > 4;
       return `
-        <section class="result-group result-group-related${hasOverflow ? " result-group-scrollable" : ""}" aria-label="${esc(group.label)} related results">
+        <section class="result-group result-group-related${hasOverflow ? " result-group-scrollable" : ""}" aria-label="${esc(group.label)} possibly related results">
           <div class="result-group-head">
             <div>
               <span class="result-group-title">${esc(group.label)}</span>
-              <span class="result-group-code">related</span>
+              <span class="result-group-code">possibly related</span>
             </div>
-            <div class="result-group-count">${fmtNum(group.items.length)} related</div>
+            <div class="result-group-count">${fmtNum(group.items.length)} possibly related</div>
           </div>
           <div class="result-group-items"${hasOverflow ? ' tabindex="0"' : ""}>
             ${group.items.map((item) => renderCompactRelatedSuggestionCard(item.relation)).join("")}
@@ -2011,11 +2016,41 @@
         </section>`;
     }
 
+    function rawRelatedResultItems(relatedGroups, hits) {
+      const seen = new Set();
+      for (const hit of hits || []) {
+        const cui = String(hit.cui || "").trim();
+        const docId = String(hit.doc_id || "").trim();
+        if (cui) seen.add(cui);
+        if (docId) seen.add(docId);
+      }
+      const rows = [];
+      for (const group of relatedGroups || []) {
+        for (const item of group.items || []) {
+          const relation = item.relation || item;
+          const key = String(relation.cui || relation.label || "").trim();
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          const [strength, confidence] = relationStrengthConfidence(relation);
+          rows.push({
+            group,
+            relation,
+            score: Math.max(strength, confidence)
+          });
+        }
+      }
+      return rows.sort((a, b) =>
+        Number(b.score || 0) - Number(a.score || 0) ||
+        bucketPreferredOrder(a.group) - bucketPreferredOrder(b.group) ||
+        String(a.relation.label || a.relation.cui || "").localeCompare(String(b.relation.label || b.relation.cui || ""))
+      );
+    }
+
     function renderCompactRelatedSuggestionCard(item) {
-      const label = item.label || item.cui || "Related concept";
+      const label = item.label || "Possibly related concept";
       const sourceText = item.source_name
         ? (item.source_rank ? `from #${fmtNum(item.source_rank)} ${item.source_name}` : `from ${item.source_name}`)
-        : "related";
+        : "possibly related";
       return `
         <div class="result result-compact result-related-suggestion">
           <details class="result-details compact-card-details">
@@ -2024,18 +2059,18 @@
                 ${esc(label)}
               </button>
               <span class="result-semantic-type related-result-type">
-                <span class="related-marker">Related</span>
-                <span>${esc(item.semantic_type || item.semantic_group_label || "related")}</span>
+                <span class="related-marker">Possibly related</span>
+                <span>${esc(item.semantic_type || item.semantic_group_label || "possibly related")}</span>
               </span>
               <span class="compact-details-label">Details</span>
             </summary>
             <div class="compact-details-body">
               <div class="detail-section">
-                <div class="detail-title">Related Concept Metadata</div>
+                <div class="detail-title">Possibly Related Concept Metadata</div>
                 <div class="chips">
                   <span class="chip">rank ${fmtNum(item.source_rank || 0)}</span>
                   <span class="chip mono">${esc(item.cui || "")}</span>
-                  <span class="chip">related</span>
+                  <span class="chip">possibly related</span>
                   <span class="chip">${esc(item.relation_group ? item.relation_group.replaceAll("_", " ") : "MRREL")}</span>
                   <span class="chip">${esc(sourceText)}</span>
                   ${item.source ? `<span class="chip">${esc(item.source)}</span>` : ""}
@@ -2293,31 +2328,70 @@
         </div>`;
     }
 
+    function renderRawResultCard(hit, rankNumber) {
+      return `
+        <div class="raw-result-row">
+          <div class="raw-result-rank">${fmtNum(rankNumber)}</div>
+          ${renderCompactResultCard(hit, rankNumber)}
+        </div>`;
+    }
+
+    function renderRawRelatedResultCard(item) {
+      const relation = {
+        ...(item.relation || {}),
+        semantic_group_label: item.relation?.semantic_group_label || item.group?.label || ""
+      };
+      return `
+        <div class="raw-result-row raw-related-result-row">
+          <div class="raw-result-rank raw-related-rank" title="Possibly related result">+</div>
+          ${renderCompactRelatedSuggestionCard(relation)}
+        </div>`;
+    }
+
     function renderResults() {
       if (!state.lastResults.length) {
         els.results.innerHTML = '<span class="muted">No results yet.</span>';
         return;
       }
+      const relatedGroups = relatedResultBuckets();
       const resultGroups = mergeRelatedIntoResultBuckets(
         semanticResultBuckets(state.lastResults),
-        relatedResultBuckets()
+        relatedGroups
       );
+      const rawRelatedItems = rawRelatedResultItems(relatedGroups, state.lastResults);
+      const rawRelatedHtml = rawRelatedItems
+        .map((item) => renderRawRelatedResultCard(item))
+        .join("");
       const hitHtml = resultGroups
         .map((group) => renderResultBucket(group))
         .join("");
-      if (!hitHtml) {
-        const filterText = (state.selectedSemanticBucketKeys || []).length
-          ? "No results matched the selected semantic group filter."
-          : "No semantic result groups matched these results.";
-        els.results.innerHTML = `<span class="muted">${esc(filterText)}</span>`;
-        return;
-      }
+      const rawHitHtml = state.lastResults
+        .map((hit, index) => renderRawResultCard(hit, index + 1))
+        .join("");
+      const rawRelatedCount = rawRelatedItems.length;
+      const filterText = (state.selectedSemanticBucketKeys || []).length
+        ? "No results matched the selected semantic group filter."
+        : "No semantic result groups matched these results.";
+      const semanticHtml = hitHtml || `<div class="results-empty muted">${esc(filterText)}</div>`;
       const statement = buildStructuredStatement(state.lastQuery || "", state.lastResults);
       const statementHtml = renderStructuredStatementPanel(statement);
       els.results.innerHTML = `
         ${statementHtml}
-        <div class="results-layout results-layout-full">
-          <div class="results-main">${hitHtml}</div>
+        <div class="results-split">
+          <section class="results-column raw-results-column" aria-label="All ranked results">
+            <div class="results-column-head">
+              <h3>All Results</h3>
+              <div class="results-column-count">${resultCountLabel(state.lastResults.length)}${rawRelatedCount ? ` · ${fmtNum(rawRelatedCount)} possibly related` : ""}</div>
+            </div>
+            <div class="raw-results-list">${rawHitHtml}${rawRelatedHtml}</div>
+          </section>
+          <section class="results-column semantic-results-column" aria-label="Semantic grouped results">
+            <div class="results-column-head">
+              <h3>Semantic Groups</h3>
+              <div class="results-column-count">${fmtNum(resultGroups.length)} ${resultGroups.length === 1 ? "group" : "groups"}</div>
+            </div>
+            <div class="semantic-results-list">${semanticHtml}</div>
+          </section>
         </div>`;
 
       bindResultInteractions(els.results);
@@ -2370,7 +2444,7 @@
           <div class="semantic-source-head">
             <div class="semantic-source-rank">${fmtNum(source.rank || 0)}</div>
             <div>
-              <div class="semantic-source-name">${esc(source.source_name || source.source_cui || "Result")}</div>
+              <div class="semantic-source-name">${esc(source.source_name || "Result")}</div>
               <div class="semantic-source-meta">
                 <span class="mono">${esc(source.source_cui || "")}</span>
                 ${source.source_semantic_group_label ? ` · ${esc(source.source_semantic_group_label)}` : ""}
@@ -2417,9 +2491,9 @@
     }
 
     function semanticViewSourceLine(view, visibleCount) {
-      if (view.source_name || view.source_cui) {
+      if (view.source_name) {
         const sourceGroup = view.source_semantic_group_label ? ` · ${view.source_semantic_group_label}` : "";
-        return `from ${view.source_name || view.source_cui}${sourceGroup}`;
+        return `from ${view.source_name}${sourceGroup}`;
       }
       const ranks = (view.source_ranks || []).slice(0, 5).map((rank) => `#${rank}`).join(", ");
       if (ranks) {
@@ -2458,8 +2532,8 @@
       const related = hit.related_concepts || [];
       if (!related.length) return "";
       const title = hit.related_source === "evidence_vectors"
-        ? "Evidence-Related Concepts"
-        : (hit.related_source === "external_embeddings" ? "External Embedding Neighbors" : "MRREL Related Concepts");
+        ? "Possibly Related Evidence Concepts"
+        : (hit.related_source === "external_embeddings" ? "Possibly Related Embedding Neighbors" : "Possibly Related MRREL Concepts");
       return `
         <div class="related-list" style="border-top: 0; padding-top: 0; margin-top: 0;">
           <div class="detail-title">${esc(title)}</div>
@@ -2496,7 +2570,7 @@
       }
       return `
         <div class="related-list" style="border-top: 0; padding-top: 0; margin-top: 0;">
-          <div class="detail-title">External Embedding Neighbors</div>
+          <div class="detail-title">Possibly Related Embedding Neighbors</div>
           ${Array.from(grouped.entries()).map(([source, items]) => `
             <div class="small muted" style="margin-top: 6px;">${esc(source)}</div>
             <div class="related-items">
@@ -2521,7 +2595,7 @@
       }
       return `
         <div class="related-list" style="border-top: 0; padding-top: 0; margin-top: 0;">
-          <div class="detail-title">Research Cross-Type Relations</div>
+          <div class="detail-title">Possibly Related Research Relations</div>
           ${Array.from(grouped.entries()).map(([category, items]) => `
             <div class="small muted" style="margin-top: 6px;">${esc(category)}</div>
             <div class="related-items">
@@ -2540,7 +2614,7 @@
       if (!related.length || hit.related_source === "mrrel") return "";
       return `
         <details class="result-details" style="border-top: 0; margin-top: 8px; padding-top: 0;">
-          <summary>MRREL graph support</summary>
+          <summary>Possibly related MRREL graph support</summary>
           <div class="related-items" style="margin-top: 8px;">
             ${related.slice(0, 8).map((item) => `
               <button class="related-concept" data-query="${esc(item.label || item.cui)}" title="${esc(item.cui)}">
@@ -2622,12 +2696,12 @@
       }
       if (item.relation_group) {
         const group = item.relation_group.replaceAll("_", " ");
-        const relation = item.rela || item.relation || "related";
+        const relation = item.rela || item.relation || "possibly related";
         const source = item.source ? ` · ${item.source}` : "";
         const semanticType = item.semantic_type ? ` · ${item.semantic_type}` : "";
         return `${group}: ${relation}${source}${semanticType}`;
       }
-      const relation = item.rela || item.relation || "related";
+      const relation = item.rela || item.relation || "possibly related";
       const source = item.source ? ` · ${item.source}` : "";
       return `${relation}${source}`;
     }
@@ -3125,7 +3199,7 @@
       els.metrics.innerHTML = [
         metric("Vectors", fmtNum(state.status?.records || 0), `${fmtNum(state.status?.docs || 0)} docs, ${fmtNum(state.status?.evidence_sources || 0)} source refs${provenanceMode}`),
         metric("Backend", state.status?.search_backend || "n/a", state.status?.elastic_index || "local vector scan"),
-        metric("Search mode", scoring.search_mode || state.searchMode || "balanced", scoring.search_mode_description || "Balanced hybrid search"),
+        metric("Search mode", scoring.search_mode || state.searchMode || "balanced", scoring.search_mode_description || "Expanded hybrid search"),
         metric("Model", state.status?.embedding_provider || "n/a", state.status?.embedding_model || "n/a"),
         metric("Resolver", fmtNum(codeMappings), codeMappings ? "CUI/code mappings loaded" : "No code index loaded"),
         metric("Definitions", fmtNum(definitionRows), definitionRows ? `${fmtNum(state.status?.definition_cuis || 0)} CUIs with MRDEF text` : "No MRDEF index loaded"),
@@ -3322,7 +3396,10 @@
 
     els.searchBtn.addEventListener("click", runSearch);
     els.query.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") runSearch();
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        runSearch();
+      }
     });
     if (els.snomedLicenseCheckbox && els.snomedLicenseAcceptBtn) {
       els.snomedLicenseCheckbox.addEventListener("change", () => {
@@ -3336,16 +3413,7 @@
       });
     }
     if (!hasSnomedLicenseAcknowledgement()) showSnomedLicenseDialog();
-    if (els.clinicalSuggestionSelect) {
-      els.clinicalSuggestionSelect.addEventListener("change", () => {
-        runSelectedDropdownQuery(els.clinicalSuggestionSelect, clinicalNoteSuggestions);
-      });
-    }
-    if (els.paragraphTestSelect) {
-      els.paragraphTestSelect.addEventListener("change", () => {
-        runSelectedDropdownQuery(els.paragraphTestSelect, paragraphTests);
-      });
-    }
+    if (els.randomQueryBtn) els.randomQueryBtn.addEventListener("click", selectRandomQuery);
     if (els.semanticGroupFilter) {
       els.semanticGroupFilter.addEventListener("change", () => {
         state.selectedSemanticBucketKeys = selectedSemanticBucketKeys();
@@ -3369,8 +3437,9 @@
     });
     els.exportBtn.addEventListener("click", exportJudgments);
 
-    loadClinicalNoteSuggestions().then(renderClinicalNoteSuggestions);
-    loadParagraphTests().then(renderParagraphTests);
+    updateRandomQueryButton();
+    loadClinicalNoteSuggestions().then(updateRandomQueryButton);
+    loadParagraphTests().then(updateRandomQueryButton);
     semanticResultBucketsReady = loadSemanticResultBuckets().then(renderSemanticGroupFilter);
     semanticExpansionProfilesReady = loadSemanticExpansionProfiles();
     renderMetrics();

@@ -5,6 +5,7 @@ import re
 from qe_evidence_vectors.text import normalized_key
 from qe_evidence_vectors.generic_filters import is_blocked_generic_concept
 from qe_evidence_vectors.search_denial import (
+    DENIAL_SCOPE_BOUNDARY_TOKEN,
     denied_context_mismatch_penalty_for_hit,
     denied_positive_finding_penalty_for_hit,
     denied_scope_specific_token_set,
@@ -12,6 +13,7 @@ from qe_evidence_vectors.search_denial import (
     has_denial_context,
     label_is_negated,
     label_is_low_quality_negated_fragment,
+    scope_sensitive_token_list,
 )
 from qe_evidence_vectors.search_assertions import (
     assertion_context_for_hit,
@@ -72,6 +74,7 @@ from qe_evidence_vectors.search_ranking_constants import (
     MODIFIER_FRAGMENT_LABEL_TOKENS,
     MODIFIER_FRAGMENT_PENALTY,
     MODIFIER_FRAGMENT_SEMANTIC_TYPES,
+    NEGATED_LABEL_TOKENS,
     NEGATION_QUERY_TOKENS,
     NORMAL_EXAM_ALLOWED_LABEL_TOKENS,
     NORMAL_EXAM_CONTEXT_TOKENS,
@@ -441,7 +444,10 @@ def rank_hits(query: str, hits: list[SearchHit], *, top_k: int) -> list[SearchHi
     query_tokens = content_tokens(query)
     query_set = set(query_tokens)
     raw_query_token_list = normalized_key(query).split()
-    raw_query_tokens = set(raw_query_token_list)
+    denial_query_token_list = scope_sensitive_token_list(query)
+    denial_query_tokens = {
+        token for token in denial_query_token_list if token != DENIAL_SCOPE_BOUNDARY_TOKEN
+    }
     negative_adherence_context = bool(
         {"inconsistent", "unable", "recall", "poor", "missed", "forget", "forgot", "nonadherence"}
         & query_set
@@ -452,8 +458,8 @@ def rank_hits(query: str, hits: list[SearchHit], *, top_k: int) -> list[SearchHi
             query=query,
             query_tokens=query_tokens,
             query_set=query_set,
-            raw_query_tokens=raw_query_tokens,
-            raw_query_token_list=raw_query_token_list,
+            raw_query_tokens=denial_query_tokens,
+            raw_query_token_list=denial_query_token_list,
             negative_adherence_context=negative_adherence_context,
             hit=hit,
         )
@@ -497,12 +503,13 @@ def relative_specificity_penalty_for_hit(
     hit_sets = query_aligned_label_token_sets(hit, specific_tokens=specific_tokens)
     if not hit_sets:
         return 0.0
-    if is_exact_query_hit(hit):
+    component_only = is_component_only_broad_result(hit, query_tokens=query_tokens)
+    if is_exact_query_hit(hit) and not component_only:
         return 0.0
     primary_broad = is_broad_primary_label(hit)
     strongest_penalty = 0.0
     for matched_tokens in hit_sets:
-        if len(matched_tokens) > 1 and not primary_broad:
+        if len(matched_tokens) > 1 and not primary_broad and not component_only:
             continue
         for candidate in ranked_hits:
             if candidate is hit:
@@ -521,9 +528,11 @@ def relative_specificity_penalty_for_hit(
                     penalty += 0.16
                 if primary_broad:
                     penalty += 0.16
+                if component_only:
+                    penalty += 0.22
                 if not semantic_groups_compatible_for_specificity(hit, candidate):
                     penalty += 0.06
-                strongest_penalty = max(strongest_penalty, min(penalty, 0.62))
+                strongest_penalty = max(strongest_penalty, min(penalty, 0.74))
     return strongest_penalty
 
 
@@ -575,6 +584,114 @@ def is_exact_query_hit(hit: SearchHit) -> bool:
         or float(breakdown.get("exact_label_component") or 0.0) > 0.0
         or float(breakdown.get("exact_span_component") or 0.0) > 0.0
     )
+
+
+COMPONENT_ONLY_SEMANTIC_TYPES = {
+    "clinical attribute",
+    "functional concept",
+    "qualitative concept",
+    "quantitative concept",
+}
+COMPONENT_ONLY_CORE_TOKENS = {
+    "above",
+    "amount",
+    "below",
+    "black",
+    "blue",
+    "brown",
+    "color",
+    "count",
+    "counts",
+    "elevated",
+    "green",
+    "grey",
+    "gray",
+    "high",
+    "higher",
+    "increase",
+    "increased",
+    "level",
+    "levels",
+    "low",
+    "lower",
+    "number",
+    "percent",
+    "percentage",
+    "predominance",
+    "proportion",
+    "quantity",
+    "ratio",
+    "red",
+    "white",
+    "yellow",
+}
+COMPONENT_ONLY_FILLER_TOKENS = {
+    "attribute",
+    "entity",
+    "entities",
+    "finding",
+    "findings",
+    "measurement",
+    "qualifier",
+    "qualitative",
+    "quantitative",
+    "value",
+}
+
+
+def is_component_only_broad_result(hit: SearchHit, *, query_tokens: list[str]) -> bool:
+    if not (semantic_type_names(hit) & COMPONENT_ONLY_SEMANTIC_TYPES):
+        return False
+    query_specific = specific_query_token_set(query_tokens)
+    if len(query_specific) < 2:
+        return False
+    if any(label_tokens_exactly_match_query(label, query_tokens) for label in labels_for_hit(hit)):
+        return False
+    for label in labels_for_hit(hit):
+        tokens = set(content_tokens(label))
+        if not tokens:
+            continue
+        core = tokens - COMPONENT_ONLY_FILLER_TOKENS
+        if core and core <= COMPONENT_ONLY_CORE_TOKENS and core & query_specific:
+            return True
+    return False
+
+
+def is_subsumed_component_only_result(
+    hit: SearchHit,
+    ranked_hits: list[SearchHit],
+    *,
+    query_tokens: list[str],
+) -> bool:
+    if not is_component_only_broad_result(hit, query_tokens=query_tokens):
+        return False
+    specific_tokens = specific_query_token_set(query_tokens)
+    hit_sets = query_aligned_label_token_sets(hit, specific_tokens=specific_tokens)
+    if not hit_sets:
+        return False
+    for matched_tokens in hit_sets:
+        for candidate in ranked_hits:
+            if candidate is hit:
+                continue
+            if is_component_only_broad_result(candidate, query_tokens=query_tokens):
+                continue
+            candidate_sets = query_aligned_label_token_sets(candidate, specific_tokens=specific_tokens)
+            for candidate_tokens in candidate_sets:
+                if matched_tokens < candidate_tokens and len(candidate_tokens) >= min(3, len(specific_tokens)):
+                    return True
+    return False
+
+
+def labels_for_hit(hit: SearchHit) -> list[str]:
+    labels = [str(label or "") for label in hit.get("labels") or []]
+    if hit.get("name"):
+        labels.insert(0, str(hit["name"]))
+    return labels
+
+
+def label_tokens_exactly_match_query(label: str, query_tokens: list[str]) -> bool:
+    tokens = content_tokens(label)
+    return bool(tokens) and tokens == query_tokens
 
 
 USEFUL_EXACT_SPAN_GROUPS = {
@@ -852,7 +969,7 @@ def curated_exact_label_component_for_hit(
     span_tokens = content_tokens(str(hit.get("matched_query_span") or ""))
     if not span_tokens:
         return 0.0
-    return 0.30 if len(span_tokens) == 1 else 0.22
+    return 0.42 if len(span_tokens) == 1 else 0.34
 
 
 def apply_evidence_aware_cutoff(
@@ -865,7 +982,24 @@ def apply_evidence_aware_cutoff(
         hit
         for hit in ranked_hits
         if not is_blocked_generic_result(hit)
+        and not is_contextless_common_word_gene_result(hit, query_tokens=query_tokens)
     ]
+    context_filtered = [
+        hit
+        for hit in ranked_hits
+        if not is_contextual_false_positive_result(hit, query_tokens=query_tokens)
+    ]
+    if context_filtered:
+        ranked_hits = context_filtered
+    filtered = []
+    for hit in ranked_hits:
+        if is_weak_zero_evidence_label_fallback(hit, query_tokens=query_tokens):
+            continue
+        if is_zero_evidence_overqualified_label_fallback(hit, query_tokens=query_tokens):
+            continue
+        filtered.append(hit)
+    if filtered:
+        ranked_hits = filtered
     signal_hits = [
         hit
         for hit in ranked_hits
@@ -873,17 +1007,39 @@ def apply_evidence_aware_cutoff(
     ]
     if signal_hits:
         ranked_hits = signal_hits
-    evidence_hits = sum(1 for hit in ranked_hits if int(hit.get("evidence_count") or 0) > 0)
-    if evidence_hits < min(top_k, 3):
-        return ranked_hits[:top_k]
-    filtered = []
-    for hit in ranked_hits:
-        if is_weak_zero_evidence_label_fallback(hit, query_tokens=query_tokens):
-            continue
-        if is_generic_status_noise_result(hit, query_tokens=query_tokens):
-            continue
-        filtered.append(hit)
-    return select_anchor_diverse_hits(filtered, query_tokens=query_tokens, top_k=top_k)
+    modifier_filtered = [
+        hit
+        for hit in ranked_hits
+        if not is_modifier_only_semantic_noise(hit, query_tokens=query_tokens)
+    ]
+    if modifier_filtered:
+        ranked_hits = modifier_filtered
+    status_filtered = [
+        hit
+        for hit in ranked_hits
+        if not is_generic_status_noise_result(hit, query_tokens=query_tokens)
+    ]
+    if status_filtered:
+        ranked_hits = status_filtered
+    component_filtered = [
+        hit
+        for hit in ranked_hits
+        if not is_subsumed_component_only_result(
+            hit,
+            ranked_hits,
+            query_tokens=query_tokens,
+        )
+    ]
+    if component_filtered:
+        ranked_hits = component_filtered
+    semantic_filtered = [
+        hit
+        for hit in ranked_hits
+        if not is_low_rank_unanchored_semantic_noise(hit, query_tokens=query_tokens)
+    ]
+    if semantic_filtered:
+        ranked_hits = semantic_filtered
+    return select_anchor_diverse_hits(ranked_hits, query_tokens=query_tokens, top_k=top_k)
 
 
 def is_blocked_generic_result(hit: SearchHit) -> bool:
@@ -898,13 +1054,549 @@ def is_blocked_generic_result(hit: SearchHit) -> bool:
     return False
 
 
+def is_low_rank_unanchored_semantic_noise(hit: SearchHit, *, query_tokens: list[str]) -> bool:
+    if hit.get("match_type"):
+        return False
+    rank_score = float(hit.get("rank_score") or 0.0)
+    if rank_score < -0.30 and int(hit.get("evidence_count") or 0) <= 4:
+        return True
+    if rank_score >= 0.65:
+        return False
+    query_specific = specific_query_token_set(query_tokens) - LOW_SPECIFICITY_QUERY_TOKENS - {
+        "disease",
+        "diseases",
+        "acute",
+        "follow",
+        "imaging",
+        "inflammatory",
+        "management",
+        "ovarian",
+        "patient",
+        "persistent",
+        "should",
+        "studies",
+        "study",
+        "subcutaneou",
+        "subcutaneous",
+        "symptom",
+        "symptoms",
+        "take",
+        "up",
+    }
+    if label_tokens_for_hit(hit) & query_specific:
+        return False
+    return True
+
+
+FERTILITY_CONTEXT_TOKENS = {
+    "conceive",
+    "conceiving",
+    "conception",
+    "fertile",
+    "fertility",
+    "infertile",
+    "infertility",
+    "pregnancy",
+    "pregnant",
+    "reproductive",
+    "sterility",
+}
+GYNECOLOGIC_DISCHARGE_CONTEXT_TOKENS = {
+    "cervical",
+    "gynecologic",
+    "gynecology",
+    "pelvic",
+    "urethral",
+    "vaginal",
+    "vagina",
+    "vulvar",
+}
+PSA_CONTEXT_TOKENS = {
+    "antigen",
+    "prostate",
+    "prostatic",
+    "psa",
+    "screen",
+    "screening",
+    "urology",
+}
+PAIN_LOCATION_ONLY_TOKENS = {
+    "abdomen",
+    "abdominal",
+    "left",
+    "lower",
+    "pelvic",
+    "quadrant",
+    "right",
+    "upper",
+}
+NORMAL_CRANIAL_EXAM_NOISE_TOKENS = {
+    "abnormal",
+    "abnormality",
+    "bone",
+    "compression",
+    "cranium",
+    "disease",
+    "diseases",
+    "dysfunction",
+    "fiber",
+    "fibers",
+    "hypoplasia",
+    "lesion",
+    "necrotic",
+    "optic",
+    "physiology",
+    "vascular",
+}
+
+
+def query_has_non_st_elevation_mi_context(query_set: set[str]) -> bool:
+    return bool(
+        query_set & {"nstemi", "nonstemi"}
+        or ({"non", "stemi"} <= query_set)
+        or (
+            {"non", "st", "myocardial", "infarction"} <= query_set
+            and bool(query_set & {"elevated", "elevation"})
+        )
+    )
+
+
+def label_is_st_elevation_mi_without_non(*, label_tokens: set[str]) -> bool:
+    if label_tokens & {"non", "nstemi", "nonstemi"}:
+        return False
+    return bool(
+        "stemi" in label_tokens
+        or ({"st", "elevation", "myocardial", "infarction"} <= label_tokens)
+    )
+
+
+def query_has_myocardial_infarction_context(query_set: set[str]) -> bool:
+    return bool(
+        query_set & {"infarction", "myocardial", "stemi", "nstemi", "nonstemi"}
+        or {"heart", "attack"} <= query_set
+    )
+
+
+def is_contextual_false_positive_result(hit: SearchHit, *, query_tokens: list[str]) -> bool:
+    query_set = set(query_tokens)
+    labels = [str(hit.get("name") or ""), *[str(label or "") for label in hit.get("labels") or []]]
+    label_token_sets = [set(content_tokens(label)) for label in labels if label]
+    label_tokens = set().union(*label_token_sets) if label_token_sets else set()
+    label_has_secondary_word = any("secondary" in normalized_key(label).split() for label in labels)
+    matched_span_tokens = set(content_tokens(str(hit.get("matched_query_span") or "")))
+    if query_has_non_st_elevation_mi_context(query_set) and label_is_st_elevation_mi_without_non(
+        label_tokens=label_tokens,
+    ):
+        return True
+    if (
+        not hit.get("match_type")
+        and {"myocardial", "infarction"} <= label_tokens
+        and not query_has_myocardial_infarction_context(query_set)
+    ):
+        return True
+    if (
+        not hit.get("match_type")
+        and {"coronary", "artery", "dissection"} <= label_tokens
+        and "dissection" not in query_set
+        and "dissect" not in query_set
+    ):
+        return True
+    if (
+        not hit.get("match_type")
+        and {"tachycardia", "ventricular"} <= label_tokens
+        and not (
+            {"tachycardia", "ventricular"} <= query_set
+            or query_set & {"vt", "v-tach"}
+        )
+    ):
+        return True
+    if (
+        not hit.get("match_type")
+        and {"lymph", "node", "cellular", "b", "cell", "marker", "expression"} <= label_tokens
+        and not (
+            query_set
+            & {"b", "cellular", "expression", "expressed", "lymph", "lymphoma", "marker", "markers"}
+        )
+    ):
+        return True
+    if (
+        not hit.get("match_type")
+        and {"kangaroo", "care"} <= label_tokens
+        and not (
+            query_set
+            & {
+                "birth",
+                "infant",
+                "maternal",
+                "mother",
+                "neonatal",
+                "neonate",
+                "newborn",
+                "postpartum",
+                "premature",
+                "preterm",
+                "skin",
+            }
+        )
+    ):
+        return True
+    if (
+        not hit.get("match_type")
+        and {"increase", "blood", "pressure"} <= label_tokens
+        and "pressure" in query_set
+        and "blood" not in query_set
+    ):
+        return True
+    if (
+        not hit.get("match_type")
+        and {"gastric", "ulcer"} <= label_tokens
+        and not (
+            query_set
+            & {"duodenal", "gastric", "gastrointestinal", "gi", "peptic", "stomach"}
+        )
+    ):
+        return True
+    if (
+        not hit.get("match_type")
+        and label_is_susceptibility_context(label_tokens=label_tokens)
+        and not query_asks_for_susceptibility(query_set)
+    ):
+        return True
+    if (
+        not hit.get("match_type")
+        and label_is_susceptibility_context(label_tokens=label_tokens)
+        and query_asks_for_family_history(query_set)
+        and not query_explicitly_asks_for_susceptibility(query_set)
+    ):
+        return True
+    if hit_is_family_history_context(labels=labels, label_tokens=label_tokens) and "family" not in query_set:
+        return True
+    if {"history", "physical", "examination"} <= label_tokens and not {"history", "physical"} <= query_set:
+        return True
+    if (
+        not hit.get("match_type")
+        and label_tokens & {"prevent", "prevention", "preventive"}
+        and not (query_set & {"prevent", "prevention", "preventive", "prophylaxis", "risk", "risks"})
+    ):
+        return True
+    if {"infertility"} & label_tokens and {"sterile", "sterility"} & query_set:
+        return not bool(query_set & FERTILITY_CONTEXT_TOKENS)
+    if {"vaginal", "discharge"} <= label_tokens and "discharge" in query_set:
+        return not bool(query_set & GYNECOLOGIC_DISCHARGE_CONTEXT_TOKENS)
+    if {"prostate", "specific", "antigen"} <= label_tokens:
+        return not bool(query_set & PSA_CONTEXT_TOKENS)
+    if "strain" in matched_span_tokens and {"organism", "strain"} <= label_tokens:
+        return not bool(
+            query_set
+            & {
+                "bacterial",
+                "culture",
+                "cultures",
+                "microbial",
+                "microbiology",
+                "organism",
+                "strain",
+                "strains",
+                "typing",
+            }
+        )
+    if {"small", "brain"} <= label_tokens and {"brain", "metastases"} <= query_set:
+        return True
+    if (
+        "cervical" in query_set
+        and query_has_cervical_gynecology_context(query_set)
+        and not query_has_cervical_spine_context(query_set)
+        and label_is_cervical_spine_or_neck_context(label_tokens=label_tokens)
+        and label_tokens != {"cervical", "spine"}
+    ):
+        return True
+    if (
+        query_set & {"bleeding", "hemorrhage", "endoscopy", "melena"}
+        and {"upper", "gastrointestinal", "tract"} <= label_tokens
+        and "tract" not in query_set
+    ):
+        return True
+    if "fracture" in query_set and {"structure", "neck", "femur"} <= label_tokens:
+        return True
+    if query_set & {"pneumonia", "crackle", "crackles", "infiltrate", "cough", "nodule", "nodules"}:
+        if {"structure", "lobe", "lung"} <= label_tokens and "structure" not in query_set:
+            return True
+    if query_set & {"thrombosis", "ultrasound", "duplex"}:
+        if {"structure", "deep", "vein"} <= label_tokens and "structure" not in query_set:
+            return True
+    if query_set & {"pregnancy", "pregnant"} and {"currently", "pregnant"} <= label_tokens:
+        if query_set & {"blood", "eclampsia", "fetal", "headache", "monitoring", "preeclampsia", "pressure"}:
+            return True
+    if {"pulmonary", "nodule"} <= query_set and {"pulmonary", "dysgenesi"} <= label_tokens:
+        return True
+    if {"unilateral", "leg"} <= query_set and query_set & {"edema", "swelling", "calf"}:
+        if label_tokens & {"dysgenesi", "pulmonary"}:
+            return True
+    if {"heat", "intolerance"} <= query_set and "intolerance" in label_tokens and "heat" not in label_tokens:
+        return True
+    if {"urine", "output"} <= query_set and {"cardiac", "output"} <= label_tokens and "cardiac" not in query_set:
+        return True
+    if {"chest", "pain"} <= query_set and {"restricted", "chest", "movement"} <= label_tokens and "movement" not in query_set:
+        return True
+    if "monitor" in query_set and {"monitoring", "device"} <= label_tokens and "device" not in query_set:
+        return True
+    if "documentation" in query_set and {"act", "documentation"} <= label_tokens:
+        if query_set - {"clinical", "documentation", "linked"} - LOW_SPECIFICITY_QUERY_TOKENS:
+            return True
+    if label_tokens == {"spiculated"} and query_set & {"lesion", "nodule", "nodules"}:
+        return True
+    if {"encounter", "examination", "skin"} <= label_tokens and "encounter" not in query_set:
+        return True
+    if label_tokens == {"extensor"} and query_set & {"erythematou", "plaque", "psoriasis", "surface"}:
+        return True
+    if {"senile", "plaque"} <= label_tokens and "plaque" in query_set:
+        if not (query_set & {"alzheimer", "amyloid", "brain", "dementia", "neuro", "senile"}):
+            return True
+    if {"mild", "anemia"} <= label_tokens and "anemia" in query_set and "mild" not in query_set:
+        return True
+    if (
+        label_has_secondary_word
+        and query_set & {"analyse", "analyses", "analysi", "analysis", "endpoint", "endpoints", "outcome", "outcomes"}
+        and not (
+            (
+                label_tokens
+                - {
+                    "anemia",
+                    "anaemia",
+                    "disease",
+                    "disorder",
+                    "finding",
+                    "findings",
+                    "syndrome",
+                }
+            )
+            <= query_set
+        )
+        and not (query_set & {"metastasis", "metastatic"})
+    ):
+        return True
+    if (
+        "secondary" in matched_span_tokens
+        and query_set & {"analyse", "analyses", "analysi", "analysis", "endpoint", "endpoints", "outcome", "outcomes"}
+        and label_tokens & {"metastasis", "metastatic", "neoplasm", "neoplasms", "cancer", "carcinoma"}
+        and not (query_set & {"metastasis", "metastatic"})
+    ):
+        return True
+    if (
+        "sensitivity" in query_set
+        and query_set & {"analyse", "analyses", "analysi", "analysis"}
+        and (
+            label_tokens & {"hypersensitivity", "sensitivity", "susceptibility"}
+            or "sensitivity" in matched_span_tokens
+        )
+        and not (label_tokens & {"analyse", "analysis", "analysi"})
+    ):
+        return True
+    if "distress" in label_tokens and "distress" in query_set and (
+        (hit.get("assertion") or {}).get("status") == "negated" or has_denial_context(query_set)
+    ):
+        if not (label_tokens & NEGATED_LABEL_TOKENS):
+            return True
+    if "deficit" in label_tokens and (hit.get("assertion") or {}).get("status") == "negated":
+        if not (label_tokens & NEGATED_LABEL_TOKENS):
+            return True
+    if (
+        {"normal", "cranial"} <= query_set
+        and query_set & {"nerve", "nerves"}
+        and query_set & {"deficit", "deficits"}
+        and label_tokens & {"bone", "cranium"}
+    ):
+        return True
+    if (
+        {"normal", "cranial"} <= query_set
+        and query_set & {"nerve", "nerves"}
+        and query_set & {"deficit", "deficits"}
+        and label_tokens & NORMAL_CRANIAL_EXAM_NOISE_TOKENS
+        and not hit.get("match_type")
+    ):
+        return True
+    if (
+        {"normal", "cranial"} <= query_set
+        and query_set & {"nerve", "nerves"}
+        and label_tokens <= {"nerve"}
+    ):
+        return True
+    if "distress" in label_tokens and {"respiratory", "distress"} <= query_set:
+        if "respiratory" not in label_tokens:
+            return True
+    if (
+        query_set & {"pain", "sore", "tender", "tenderness"}
+        and semantic_type_names(hit) & FRAGMENT_SEMANTIC_TYPES
+        and label_tokens & query_set
+        and any(token_set <= query_set for token_set in label_token_sets)
+        and not (label_tokens & {"pain", "sore", "tender", "tenderness"})
+    ):
+        return True
+    if query_set & {"pain", "sore", "tender", "tenderness"} and not hit.get("match_type"):
+        overlap = label_tokens & query_set
+        if overlap and overlap <= PAIN_LOCATION_ONLY_TOKENS:
+            return True
+    if {"large", "vessel"} <= query_set and "large" in label_tokens:
+        if not (
+            label_tokens
+            & {
+                "artery",
+                "arterial",
+                "blood",
+                "occlusion",
+                "vascular",
+                "vein",
+                "vessel",
+            }
+        ):
+            return True
+    if {"central", "line"} <= query_set and {"jugular", "lymphatic", "sacs"} <= label_tokens:
+        return True
+    if {"internal", "jugular"} <= query_set and label_tokens == {"internal"}:
+        return True
+    if (
+        {"clostridioide", "difficile"} <= query_set
+        or {"clostridioides", "difficile"} <= query_set
+    ) and "barbiturate" in label_tokens:
+        return True
+    if (
+        {"clostridioide", "difficile"} <= query_set
+        or {"clostridioides", "difficile"} <= query_set
+    ) and {"fecal", "occult", "blood"} <= label_tokens:
+        return True
+    if "infection" in query_set and query_set & {"bladder", "kidney", "urinary", "urine"}:
+        if {"urinary", "tract", "infection"} <= query_set and label_tokens in (
+            {"tract"},
+            {"urinary"},
+        ):
+            return True
+        if not (query_set & {"lung", "pulmonary", "respiratory"}) and {
+            "infection",
+            "respiratory",
+        } <= label_tokens:
+            return True
+        if {"urinary", "tract"} <= label_tokens and "infection" not in label_tokens:
+            if label_tokens & {"abnormality", "structure"}:
+                return True
+        if "urinary" in label_tokens and "infection" not in label_tokens:
+            if label_tokens & {"abnormality", "elevated", "increased", "level", "mucus"}:
+                return True
+    if "infection" in query_set and (label_tokens & query_set) <= {"acute"}:
+        if "acute" in label_tokens:
+            return True
+    if "stool" in query_set and {"test", "testing", "toxin"} & query_set:
+        if "seat" in label_tokens and "seat" not in query_set:
+            return True
+    if {"baseline", "seizure"} <= query_set and (query_set & {"abstract", "cancer", "oncology", "participants", "subgroup", "trial"}):
+        if (hit.get("assertion") or {}).get("status") == "negated" and label_tokens <= {
+            "disorder",
+            "seizure",
+        }:
+            return True
+    if {"prevent", "blood", "clot"} <= query_set and "coagulation" in label_tokens and "factor" in label_tokens:
+        if not (label_tokens & {"anticoagulant", "anticoagulants", "antithrombotic"}):
+            return True
+    if query_set & DRUG_ROLE_QUERY_TOKENS and not hit_has_pharmacologic_role(
+        label_tokens=label_tokens,
+        hit=hit,
+    ):
+        if {"cellsave", "blood", "collection", "tube"} <= label_tokens:
+            return True
+        if any(
+            token_set
+            in (
+                {"hematological", "disease"},
+                {"vascular", "disease"},
+                {"vena", "cava", "filter"},
+            )
+            for token_set in label_token_sets
+        ):
+            return True
+    if {"physical", "therapy"} <= query_set and "therapy" in label_tokens and "physical" not in label_tokens:
+        if not (label_tokens & query_set - {"therapy"}):
+            return True
+    if {"respiratory", "distress", "syndrome"} <= query_set:
+        if "newborn" in label_tokens and not (query_set & {"newborn", "neonatal", "infant"}):
+            return True
+        if label_tokens <= {"acute", "respiratory", "distress", "syndrome"} and label_tokens != {
+            "acute",
+            "respiratory",
+            "distress",
+            "syndrome",
+        }:
+            return True
+    if label_tokens == {"shock"} and "shock" in query_set and (query_set & {"sepsis", "septic"}):
+        return True
+    if {"kidney", "failure", "acute"} <= label_tokens and {"kidney", "injury"} <= query_set:
+        return True
+    return False
+
+
+COMMON_WORD_GENE_SYMBOL_MATCHES = {
+    "large",
+}
+GENE_CONTEXT_QUERY_TOKENS = {
+    "allele",
+    "alleles",
+    "expression",
+    "gene",
+    "genes",
+    "genetic",
+    "genetics",
+    "genomic",
+    "genomics",
+    "genome",
+    "mutation",
+    "mutations",
+    "mutated",
+    "protein",
+    "proteins",
+    "sequence",
+    "sequencing",
+    "variant",
+    "variants",
+}
+
+
+def is_contextless_common_word_gene_result(hit: SearchHit, *, query_tokens: list[str]) -> bool:
+    if not (semantic_type_names(hit) & GENE_PROTEIN_VIEW_SEMANTIC_TYPES):
+        return False
+    if set(query_tokens) & GENE_CONTEXT_QUERY_TOKENS:
+        return False
+    matched = " ".join(content_tokens(str(hit.get("matched_query_span") or "")))
+    if not matched:
+        matched = " ".join(content_tokens(str(hit.get("matched_label") or "")))
+    if matched not in COMMON_WORD_GENE_SYMBOL_MATCHES:
+        return False
+    return True
+
+
+def is_modifier_only_semantic_noise(hit: SearchHit, *, query_tokens: list[str]) -> bool:
+    if hit.get("match_type"):
+        return False
+    query_specific = specific_query_token_set(query_tokens)
+    if not (query_specific & MODIFIER_FRAGMENT_LABEL_TOKENS):
+        return False
+    if not (query_specific - MODIFIER_FRAGMENT_LABEL_TOKENS):
+        return False
+    overlap = label_tokens_for_hit(hit) & query_specific
+    if not overlap:
+        return False
+    return overlap <= MODIFIER_FRAGMENT_LABEL_TOKENS
+
+
 LOW_VALUE_ADMIN_STATUS_RESULT_LABELS = {
     "after delivery",
     "active",
+    "aftercare",
     "baseline",
     "biospecimen collection",
     "body substance discharge",
+    "cancer care",
+    "clinical trials",
+    "clinical trials phase ii",
     "cohort studies",
+    "cohort study",
     "compatible",
     "complete",
     "critical",
@@ -913,9 +1605,13 @@ LOW_VALUE_ADMIN_STATUS_RESULT_LABELS = {
     "dosage",
     "education",
     "empiric",
+    "enrolled",
+    "ever told by doctor or nurse that you have high blood pressure",
     "ever told you have or had atrial fibrillation",
+    "event unit",
     "every qualifier",
     "forty four",
+    "functional status",
     "granular",
     "general mechanism of the forces which caused the injury",
     "had no pain",
@@ -932,27 +1628,47 @@ LOW_VALUE_ADMIN_STATUS_RESULT_LABELS = {
     "patient discharge",
     "pending day type",
     "per 4 0 milliliters",
+    "phase 3 clinical trials",
+    "clinical trial phase ii",
     "chart review",
     "drug utilization review",
     "medical chart review",
+    "medical care",
     "medical records review",
+    "mutation abnormality",
     "not reviewed",
+    "observation method magnetic resonance",
+    "oncology services",
+    "multicenter study",
+    "multicenter studies",
     "peer review",
     "peer reviewed",
+    "percent of predicted value",
+    "placebo controlled trial",
+    "placebo-controlled trial",
+    "primary health care",
+    "prospective cohort study",
     "reviewed",
     "reviewed by",
+    "randomized controlled clinical trial",
+    "randomized controlled trial",
     "second ordinal",
     "second unit of plane angle",
     "scheduled procedure status",
     "sixty four",
     "singular",
+    "small amount",
+    "sufficiently defined concept definition status core metadata concept",
     "symptom score",
     "symptom severe",
     "suspected diagnosis",
     "suspicious",
+    "systematic review",
     "teaching",
     "thyroid hormones",
     "update",
+    "usual",
+    "usual care",
     "vitamins",
     "volume",
     "wound status",
@@ -969,6 +1685,7 @@ LOW_VALUE_CONTEXT_STATUS_RESULT_LABELS = {
     "benefit",
     "expression negative",
     "had no pain",
+    "improved",
     "negative",
     "negative predictive value",
     "no pain",
@@ -981,6 +1698,14 @@ LOW_VALUE_CONTEXT_STATUS_RESULT_LABELS = {
     "relieved",
     "relieved qualifier value",
     "risks and benefits",
+    "seizure free",
+    "severities",
+    "severity",
+    "did not receive therapy or drug for",
+    "disease progression",
+    "gene variant positive",
+    "kidney function tests",
+    "treatment outcome",
 }
 LOW_VALUE_CONTEXT_STATUS_RESULT_TOKEN_SETS = {
     frozenset(content_tokens(label)) for label in LOW_VALUE_CONTEXT_STATUS_RESULT_LABELS
@@ -1045,9 +1770,11 @@ LOW_VALUE_CONTEXT_ANCHOR_TOKENS = {
     "volume",
 }
 LOW_VALUE_PROCEDURE_FRAGMENT_TOKENS = {
+    "assessment",
     "computed",
     "diagnostic",
     "disease",
+    "drainage",
     "imaging",
     "infection",
     "pharmacotherapy",
@@ -1078,6 +1805,11 @@ def is_generic_status_noise_result(hit: SearchHit, *, query_tokens: list[str]) -
     for label in labels:
         label_tokens.update(content_tokens(label))
     primary_token_sets = hit_primary_label_token_sets(hit=hit, labels=labels)
+    if (query_set & DRUG_ROLE_QUERY_TOKENS) and hit_has_pharmacologic_role(
+        label_tokens=label_tokens,
+        hit=hit,
+    ):
+        return False
     if query_has_context_beyond_primary_label(query_set, primary_token_sets, label_tokens):
         if any(token_set in LOW_VALUE_CONTEXT_STATUS_RESULT_TOKEN_SETS for token_set in primary_token_sets):
             return True
@@ -1102,6 +1834,13 @@ def is_generic_status_noise_result(hit: SearchHit, *, query_tokens: list[str]) -
         if hit_has_broad_symptom_aggregate_context(
             hit=hit,
             labels=labels,
+            semantic_types=semantic_type_names(hit),
+        ):
+            return True
+        if hit_has_study_subgroup_organism_noise(
+            hit=hit,
+            labels=labels,
+            query_tokens=query_set,
             semantic_types=semantic_type_names(hit),
         ):
             return True
@@ -1134,6 +1873,12 @@ def is_generic_status_noise_result(hit: SearchHit, *, query_tokens: list[str]) -
         or hit_has_broad_organism_context(
             hit=hit,
             labels=labels,
+            semantic_types=semantic_type_names(hit),
+        )
+        or hit_has_study_subgroup_organism_noise(
+            hit=hit,
+            labels=labels,
+            query_tokens=query_set,
             semantic_types=semantic_type_names(hit),
         )
         or hit_has_broad_infection_disease_context(
@@ -1192,6 +1937,7 @@ def hit_is_low_value_procedure_fragment(
     semantic_types = semantic_type_names(hit)
     if not (
         semantic_types & PROCEDURE_SEMANTIC_TYPES
+        or semantic_types & {"laboratory procedure", "laboratory or test result"}
         or str(hit.get("semantic_group") or "") == "PROC"
     ):
         return False
@@ -1325,6 +2071,32 @@ def is_weak_zero_evidence_label_fallback(hit: SearchHit, *, query_tokens: list[s
         return False
     span_tokens = set(content_tokens(span))
     return 0 < len(span_tokens) <= 1 and bool(span_tokens & query_unique)
+
+
+def is_zero_evidence_overqualified_label_fallback(hit: SearchHit, *, query_tokens: list[str]) -> bool:
+    if hit.get("match_type") != "umls_label":
+        return False
+    if "active_label_supplement" in {str(source) for source in hit.get("sources") or []}:
+        return False
+    if int(hit.get("evidence_count") or 0) > 0:
+        return False
+    query_set = set(query_tokens)
+    if len(query_set) < 3:
+        return False
+    span_tokens = set(content_tokens(str(hit.get("matched_query_span") or "")))
+    if len(span_tokens) != 1 or not (span_tokens & query_set):
+        return False
+    primary_token_sets = hit_primary_label_token_sets(
+        hit=hit,
+        labels=[str(label or "") for label in hit.get("labels") or []],
+    )
+    for token_set in primary_token_sets:
+        if not token_set or token_set <= span_tokens:
+            continue
+        extra_tokens = token_set - span_tokens - LOW_SPECIFICITY_QUERY_TOKENS
+        if extra_tokens and not (extra_tokens <= query_set):
+            return True
+    return False
 
 
 def is_zero_evidence_single_anchor_label(hit: SearchHit, *, query_tokens: list[str]) -> bool:
@@ -2149,7 +2921,7 @@ def query_role_mismatch_penalty(
         if hit_is_first_statement_condition_anchor(query=query, labels=labels, hit=hit):
             return 0.0
         non_role_specific = specific_tokens - DRUG_ROLE_QUERY_TOKENS - THERAPEUTIC_ACTION_QUERY_TOKENS
-        return 0.65 if label_tokens & non_role_specific else 0.45
+        return 0.95 if label_tokens & non_role_specific else 0.45
     if label_tokens & specific_tokens:
         return 0.0
     if query_set & PROCEDURE_ROLE_TOKENS:
@@ -2469,6 +3241,24 @@ def query_asks_for_susceptibility(query_tokens: set[str]) -> bool:
         & {
             "family",
             "familial",
+            "gene",
+            "genes",
+            "genetic",
+            "genetics",
+            "predisposition",
+            "risk",
+            "susceptibility",
+            "susceptible",
+            "variant",
+            "variants",
+        }
+    )
+
+
+def query_explicitly_asks_for_susceptibility(query_tokens: set[str]) -> bool:
+    return bool(
+        query_tokens
+        & {
             "gene",
             "genes",
             "genetic",
@@ -3201,15 +3991,19 @@ BROAD_INFECTION_DISEASE_CONTEXT_SEMANTIC_TYPES = {
     "pathologic function",
 }
 BROAD_INFECTION_DISEASE_LABEL_TOKEN_SETS = {
+    frozenset({"acute", "infection", "disease"}),
+    frozenset({"acute", "respiratory", "infection"}),
     frozenset({"communicable", "disease"}),
     frozenset({"viral", "illness"}),
     frozenset({"viru", "disease"}),
 }
 BROAD_INFECTION_DISEASE_QUERY_TOKENS = {
+    "acute",
     "communicable",
     "disease",
     "illness",
     "infection",
+    "respiratory",
     "viral",
     "viru",
 }
@@ -3224,6 +4018,21 @@ BROAD_ORGANISM_QUERY_TOKENS = {
     "bacterial",
     "organism",
     "organisms",
+}
+STUDY_SUBGROUP_QUERY_TOKENS = {
+    "analysis",
+    "analyses",
+    "cohort",
+    "group",
+    "high",
+    "participant",
+    "participants",
+    "risk",
+    "study",
+    "studies",
+    "subgroup",
+    "subjects",
+    "trial",
 }
 YES_NO_ANSWER_LABELS = {"no", "yes"}
 RESISTANT_ORGANISM_LABEL_TOKENS = {"resistance", "resistant"}
@@ -3271,6 +4080,25 @@ def hit_has_broad_organism_context(
 def query_asks_for_broad_organism(query_tokens: set[str]) -> bool:
     useful_tokens = query_tokens - LOW_SPECIFICITY_QUERY_TOKENS
     return bool(useful_tokens) and useful_tokens <= BROAD_ORGANISM_QUERY_TOKENS
+
+
+def hit_has_study_subgroup_organism_noise(
+    *,
+    hit: dict,
+    labels: list[str],
+    query_tokens: set[str],
+    semantic_types: set[str],
+) -> bool:
+    if not (semantic_types & ORGANISM_CONTEXT_SEMANTIC_TYPES):
+        return False
+    if not {"subgroup"} <= query_tokens:
+        return False
+    if not query_tokens & STUDY_SUBGROUP_QUERY_TOKENS:
+        return False
+    for token_set in hit_primary_label_token_sets(hit=hit, labels=labels, label_limit=2):
+        if "subgroup" in token_set:
+            return True
+    return False
 
 
 def hit_has_broad_infection_disease_context(

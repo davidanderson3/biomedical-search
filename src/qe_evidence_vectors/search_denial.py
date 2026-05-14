@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from qe_evidence_vectors.search_hit_features import semantic_type_names
 from qe_evidence_vectors.search_ranking_constants import (
     DENIAL_SCOPE_BREAK_AFTER_WITHOUT_AND,
@@ -14,6 +16,25 @@ from qe_evidence_vectors.search_ranking_constants import (
 )
 from qe_evidence_vectors.search_tokens import canonical_token, content_tokens
 from qe_evidence_vectors.text import normalized_key
+
+
+DENIAL_SCOPE_BOUNDARY_TOKEN = "__scope_boundary__"
+
+
+def scope_sensitive_token_list(query: str) -> list[str]:
+    tokens: list[str] = []
+    parts = re.split(r"([.;!?]+|\n+)", str(query or ""))
+    for part in parts:
+        if not part:
+            continue
+        if re.fullmatch(r"[.;!?]+|\n+", part):
+            if tokens and tokens[-1] != DENIAL_SCOPE_BOUNDARY_TOKEN:
+                tokens.append(DENIAL_SCOPE_BOUNDARY_TOKEN)
+            continue
+        tokens.extend(normalized_key(part).split())
+    if tokens and tokens[-1] == DENIAL_SCOPE_BOUNDARY_TOKEN:
+        tokens.pop()
+    return tokens
 
 
 def has_denial_context(raw_query_tokens: set[str]) -> bool:
@@ -135,6 +156,8 @@ def denial_scope_token_lists(raw_query_tokens: list[str]) -> list[list[str]]:
     scopes = []
     for index, token in enumerate(raw_query_tokens):
         canonical = canonical_token(token)
+        if canonical == DENIAL_SCOPE_BOUNDARY_TOKEN:
+            continue
         if canonical not in NEGATION_QUERY_TOKENS:
             continue
         if (
@@ -147,10 +170,12 @@ def denial_scope_token_lists(raw_query_tokens: list[str]) -> list[list[str]]:
         start = index + 1
         if canonical == "no" and raw_query_tokens[index + 1 : index + 3] == ["evidence", "of"]:
             start = index + 3
-        max_scope_tokens = None if canonical in {"deny", "denied", "denies", "without"} else 8
+        max_scope_tokens = None if canonical in {"deny", "denied", "denies", "without"} else 6
         scope = []
         for offset, scope_token in enumerate(raw_query_tokens[start:], start=start):
             scope_canonical = canonical_token(scope_token)
+            if scope_canonical == DENIAL_SCOPE_BOUNDARY_TOKEN:
+                break
             if scope_canonical in {"but", "however", "though", "although", "except", "unless", "while"}:
                 break
             next_canonical = (

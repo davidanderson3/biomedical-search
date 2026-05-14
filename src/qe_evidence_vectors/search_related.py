@@ -156,7 +156,9 @@ class SearchRelatedMixin:
                 str(row.get("relation") or ""),
                 str(row.get("rela") or ""),
             )
-            label = self.preferred_label_for_cui(target_cui) or self.record_label_for_cui(target_cui) or target_cui
+            label = self.display_label_for_cui(target_cui, [self.record_label_for_cui(target_cui)])
+            if not label:
+                continue
             item = {
                 "cui": target_cui,
                 "relation": relation,
@@ -181,7 +183,7 @@ class SearchRelatedMixin:
         record = self.best_record_for_cui(cui)
         if not record:
             return ""
-        return str(record.labels[0] if record.labels else "")
+        return self.display_label_for_cui(cui, list(record.labels or []))
 
     def research_relations_for_cui(
         self,
@@ -320,11 +322,9 @@ class SearchRelatedMixin:
             if key in seen_targets:
                 continue
             seen_targets.add(key)
-            label = (
-                self.preferred_label_for_cui(target_cui)
-                or str(raw_relation.get("label") or "").strip()
-                or target_cui
-            )
+            label = self.display_label_for_cui(target_cui, [str(raw_relation.get("label") or "").strip()])
+            if not label:
+                continue
             semantic_type = (
                 target_semantic_types[0].get("name")
                 or target_semantic_types[0].get("sty")
@@ -397,10 +397,13 @@ class SearchRelatedMixin:
                     str(raw_relation.get("rela") or ""),
                 )
                 reverse_relation = dict(raw_relation)
+                label = self.display_label_for_cui(record.cui, list(record.labels or []))
+                if not label:
+                    continue
                 reverse_relation.update(
                     {
                         "cui": record.cui,
-                        "label": str(record.labels[0] if record.labels else record.cui),
+                        "label": label,
                         "category": "",
                         "relation": relation,
                         "rela": rela,
@@ -439,6 +442,12 @@ class SearchRelatedMixin:
                 str(row.get("relation") or ""),
                 str(row.get("rela") or ""),
             )
+            label = self.display_label_for_cui(
+                target_cui,
+                [self.record_label_for_cui(target_cui)],
+            )
+            if not label:
+                continue
             semantic_type = (
                 target_semantic_types[0].get("name")
                 or target_semantic_types[0].get("sty")
@@ -458,9 +467,7 @@ class SearchRelatedMixin:
                 "source": row.get("source") or "",
                 "direction": "bidirectional",
                 "raw_direction": row.get("direction") or "",
-                "label": self.preferred_label_for_cui(target_cui)
-                or self.record_label_for_cui(target_cui)
-                or target_cui,
+                "label": label,
                 "semantic_type": semantic_type,
                 "target_semantic_group": target_group,
                 "rank": int(row.get("rank") or 0),
@@ -507,11 +514,9 @@ class SearchRelatedMixin:
             rela = str(raw_relation.get("rela") or relation)
             if str(raw_relation.get("direction") or "") == "incoming":
                 relation, rela = inverse_relation_labels(relation, rela)
-            label = (
-                self.preferred_label_for_cui(target_cui)
-                or str(raw_relation.get("label") or "").strip()
-                or target_cui
-            )
+            label = self.display_label_for_cui(target_cui, [str(raw_relation.get("label") or "").strip()])
+            if not label:
+                continue
             semantic_type = (
                 target_semantic_types[0].get("name")
                 or target_semantic_types[0].get("sty")
@@ -638,7 +643,9 @@ class SearchRelatedMixin:
         return "pharmacologic substance" in names and "clinical drug" not in names
 
     def drug_rollup_sources_for_cui(self, cui: str, *, seed_relations: list[dict]) -> list[dict]:
-        base_label = self.preferred_label_for_cui(cui) or self.record_label_for_cui(cui) or cui
+        base_label = self.display_label_for_cui(cui, [self.record_label_for_cui(cui)])
+        if not base_label:
+            return []
         candidate_rows: list[dict] = []
         if self.relation_index:
             candidate_rows.extend(
@@ -662,14 +669,17 @@ class SearchRelatedMixin:
             role = self.drug_rollup_role(cui, source_cui, row, base_label=base_label)
             if not role:
                 continue
+            label = self.display_label_for_cui(
+                source_cui,
+                [str(row.get("label") or "").strip(), self.record_label_for_cui(source_cui)],
+            )
+            if not label:
+                continue
             seen.add(source_cui)
             sources.append(
                 {
                     "cui": source_cui,
-                    "label": self.preferred_label_for_cui(source_cui)
-                    or str(row.get("label") or "").strip()
-                    or self.record_label_for_cui(source_cui)
-                    or source_cui,
+                    "label": label,
                     "rollup_role": role,
                     "rollup_relation": str(row.get("relation") or ""),
                     "rollup_rela": str(row.get("rela") or ""),
@@ -688,12 +698,12 @@ class SearchRelatedMixin:
         *,
         base_label: str,
     ) -> str:
-        label = (
-            self.preferred_label_for_cui(source_cui)
-            or str(row.get("label") or "").strip()
-            or self.record_label_for_cui(source_cui)
-            or source_cui
+        label = self.display_label_for_cui(
+            source_cui,
+            [str(row.get("label") or "").strip(), self.record_label_for_cui(source_cui)],
         )
+        if not label:
+            return "related drug concept"
         label_key = normalized_key(label)
         base_key = normalized_key(base_label)
         label_mentions_drug = bool(base_key and base_key in label_key)
@@ -709,9 +719,10 @@ class SearchRelatedMixin:
         }
         if rxnorm_ttys & DRUG_ROLLUP_BRAND_TTYS or "brand" in relation_key:
             return "brand"
-        if semantic_group == "PROC" and label_mentions_drug:
+        if semantic_group in {"OBS", "PROC"} and label_mentions_drug:
             if any(term in label_key for term in DRUG_ROLLUP_MEASUREMENT_TERMS):
                 return "measurement"
+        if semantic_group == "PROC" and label_mentions_drug:
             if any(term in label_key for term in DRUG_ROLLUP_THERAPY_TERMS):
                 return "therapy"
         if rxnorm_ttys & DRUG_ROLLUP_PRECISE_TTYS and (
@@ -777,7 +788,7 @@ class SearchRelatedMixin:
                 {
                     "rollup": True,
                     "rollup_source_cui": source_cui,
-                    "rollup_source_label": str(source.get("label") or source_cui),
+                    "rollup_source_label": str(source.get("label") or ""),
                     "rollup_role": str(source.get("rollup_role") or ""),
                     "rollup_via_relation": str(source.get("rollup_relation") or ""),
                     "rollup_via_rela": str(source.get("rollup_rela") or ""),
@@ -795,7 +806,10 @@ class SearchRelatedMixin:
     def should_skip_drug_rollup_target(self, ingredient_cui: str, row: dict) -> bool:
         category = str(row.get("category") or "").strip()
         label_key = normalized_key(str(row.get("label") or ""))
-        ingredient_label = self.preferred_label_for_cui(ingredient_cui) or self.record_label_for_cui(ingredient_cui)
+        ingredient_label = self.display_label_for_cui(
+            ingredient_cui,
+            [self.record_label_for_cui(ingredient_cui)],
+        )
         ingredient_key = normalized_key(ingredient_label)
         if category == "drug_chemical":
             return True
@@ -817,7 +831,9 @@ class SearchRelatedMixin:
             semantic_types = self.semantic_types_for_cui(target_cui)
             semantic_group = semantic_group_from_types(semantic_types)
             category = EXTERNAL_EMBEDDING_GROUP_CATEGORIES.get(semantic_group, "embedding_neighbor")
-            label = self.preferred_label_for_cui(target_cui) or str(row.get("label") or target_cui)
+            label = self.display_label_for_cui(target_cui, [str(row.get("label") or "")])
+            if not label:
+                continue
             enriched = dict(row)
             enriched.update(
                 {
@@ -875,7 +891,7 @@ class SearchRelatedMixin:
             views.append(
                 {
                     "source_cui": source_cui,
-                    "source_name": source_hit.get("name") or source_hit.get("label") or source_cui,
+                    "source_name": source_hit.get("name") or source_hit.get("label") or "",
                     "source_semantic_group": source_group,
                     "source_semantic_group_label": SEMANTIC_GROUP_LABELS.get(source_group, "Other"),
                     "category": category,
@@ -928,7 +944,7 @@ class SearchRelatedMixin:
                 {
                     "rank": rank,
                     "source_cui": hit.get("cui") or "",
-                    "source_name": hit.get("name") or hit.get("label") or hit.get("cui") or "",
+                    "source_name": hit.get("name") or hit.get("label") or "",
                     "source_semantic_group": source_group,
                     "source_semantic_group_label": SEMANTIC_GROUP_LABELS.get(source_group, "Other"),
                     "views": views,
@@ -947,7 +963,7 @@ class SearchRelatedMixin:
         for source in sources:
             source_rank = int(source.get("rank") or 0)
             source_cui = str(source.get("source_cui") or "")
-            source_name = str(source.get("source_name") or source_cui)
+            source_name = str(source.get("source_name") or "")
             source_group_label = str(source.get("source_semantic_group_label") or "")
             for view in source.get("views") or []:
                 semantic_group = str(view.get("semantic_group") or "OTHER")
@@ -1038,12 +1054,12 @@ class SearchRelatedMixin:
         related = []
         for hit in hits:
             labels = list(hit.get("labels") or [])
-            label = self.preferred_label_for_cui(str(hit.get("cui") or ""))
-            if not label and labels:
-                label = labels[0]
+            label = self.display_label_for_cui(str(hit.get("cui") or ""), labels)
+            if not label:
+                continue
             item = {
                 "cui": hit.get("cui") or "",
-                "label": label or hit.get("cui") or "",
+                "label": label,
                 "relation": "evidence_vector",
                 "rela": "evidence similarity",
                 "source": "real-world evidence",

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import math
 import sqlite3
@@ -207,6 +208,143 @@ def abstract_from_inverted_index(index: dict[str, list[int]] | None) -> str:
 
 def openalex_short_id(openalex_id: str) -> str:
     return str(openalex_id or "").rstrip("/").split("/")[-1]
+
+
+def normalize_identifier(value: Any, *, prefix: str = "") -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = text.replace("https://doi.org/", "")
+    text = text.replace("https://pubmed.ncbi.nlm.nih.gov/", "")
+    text = text.replace("https://pmc.ncbi.nlm.nih.gov/articles/", "").strip("/")
+    text = text.lower()
+    return f"{prefix}:{text}" if prefix else text
+
+
+def document_identity_keys_from_values(
+    *,
+    doc_id: str,
+    title: str,
+    metadata: dict[str, Any],
+) -> set[str]:
+    keys: set[str] = set()
+    for field, prefix in [
+        ("openalex_id", "openalex"),
+        ("doi", "doi"),
+        ("pmid", "pmid"),
+        ("pmcid", "pmcid"),
+    ]:
+        key = normalize_identifier(metadata.get(field), prefix=prefix)
+        if key:
+            keys.add(key)
+    doc_id_text = str(doc_id or "").strip()
+    if doc_id_text.upper().startswith("PMID:"):
+        keys.add(normalize_identifier(doc_id_text.split(":", 1)[1], prefix="pmid"))
+    if doc_id_text.upper().startswith("OPENALEX:"):
+        keys.add(normalize_identifier(doc_id_text.split(":", 1)[1], prefix="openalex"))
+    title_key = normalized_key(title)
+    if title_key:
+        keys.add(f"title:{title_key}")
+    return keys
+
+
+def document_identity_keys(document: CorpusDocument) -> set[str]:
+    return document_identity_keys_from_values(
+        doc_id=document.doc_id,
+        title=document.title,
+        metadata=document.metadata or {},
+    )
+
+
+def load_existing_document_keys(paths: Iterable[str | Path]) -> set[str]:
+    keys: set[str] = set()
+    for path in paths:
+        path = Path(path).expanduser()
+        if not path.exists():
+            continue
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                payload = json.loads(line)
+                keys.update(
+                    document_identity_keys_from_values(
+                        doc_id=str(payload.get("doc_id") or ""),
+                        title=str(payload.get("title") or ""),
+                        metadata=payload.get("metadata") or {},
+                    )
+                )
+    return keys
+
+
+def filter_existing_documents(
+    documents: Iterable[CorpusDocument],
+    existing_keys: set[str],
+) -> tuple[list[CorpusDocument], int]:
+    if not existing_keys:
+        return list(documents), 0
+    kept: list[CorpusDocument] = []
+    excluded = 0
+    for document in documents:
+        if document_identity_keys(document).intersection(existing_keys):
+            excluded += 1
+            continue
+        kept.append(document)
+    return kept, excluded
+
+
+def read_query_file(path: str | Path) -> list[str]:
+    path = Path(path).expanduser()
+    text = path.read_text(encoding="utf-8")
+    lines = [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+    if not lines:
+        return []
+    if "\t" in lines[0]:
+        reader = csv.DictReader(lines, delimiter="\t")
+        if reader.fieldnames and "query" in reader.fieldnames:
+            return [str(row.get("query") or "").strip() for row in reader if str(row.get("query") or "").strip()]
+    return [line.strip() for line in lines]
+
+
+def write_article_report(path: str | Path, documents: list[CorpusDocument]) -> int:
+    path = Path(path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fields = [
+        "rank",
+        "doc_id",
+        "title",
+        "publication_date",
+        "cited_by_count",
+        "source_name",
+        "doi",
+        "pmid",
+        "openalex_id",
+        "query",
+        "query_rank",
+        "url",
+    ]
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t")
+        writer.writeheader()
+        for rank, document in enumerate(documents, start=1):
+            metadata = document.metadata or {}
+            writer.writerow(
+                {
+                    "rank": rank,
+                    "doc_id": document.doc_id,
+                    "title": document.title,
+                    "publication_date": metadata.get("publication_date") or "",
+                    "cited_by_count": metadata.get("cited_by_count") or 0,
+                    "source_name": metadata.get("source_name") or "",
+                    "doi": metadata.get("doi") or "",
+                    "pmid": metadata.get("pmid") or "",
+                    "openalex_id": metadata.get("openalex_id") or "",
+                    "query": metadata.get("query") or "",
+                    "query_rank": metadata.get("query_rank") or "",
+                    "url": metadata.get("url") or "",
+                }
+            )
+    return len(documents)
 
 
 def first_author_names(work: dict[str, Any], limit: int = 6) -> list[str]:
@@ -494,10 +632,35 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--label-index", type=Path, default=DEFAULT_LABEL_INDEX)
     parser.add_argument("--semantic-type-index", type=Path, default=DEFAULT_SEMANTIC_TYPE_INDEX)
     parser.add_argument("--query", action="append", default=[], help="OpenAlex search query. Repeatable.")
+    parser.add_argument(
+        "--query-file",
+        type=Path,
+        action="append",
+        default=[],
+        help="Plain text or TSV file with a query column. Repeatable; values are appended before --query.",
+    )
     parser.add_argument("--from-date", default=default_from_date())
     parser.add_argument("--to-date", default=date.today().isoformat())
     parser.add_argument("--max-per-query", type=int, default=40)
     parser.add_argument("--per-page", type=int, default=50)
+    parser.add_argument(
+        "--min-cited-by-count",
+        type=int,
+        default=0,
+        help="Drop fetched works below this citation count after query deduplication.",
+    )
+    parser.add_argument(
+        "--exclude-corpus",
+        type=Path,
+        action="append",
+        default=[],
+        help="Existing corpus JSONL to exclude by OpenAlex ID, DOI, PMID/PMCID, doc ID, or normalized title.",
+    )
+    parser.add_argument(
+        "--articles-tsv",
+        type=Path,
+        help="Optional TSV inventory of selected articles after citation and existing-corpus filters.",
+    )
     parser.add_argument("--max-label-tokens", type=int, default=8)
     parser.add_argument("--context-chars", type=int, default=360)
     parser.add_argument("--max-ambiguity", type=int, default=1)
@@ -516,7 +679,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    queries = args.query or DEFAULT_QUERIES
+    query_file_values: list[str] = []
+    for query_file in args.query_file:
+        query_file_values.extend(read_query_file(query_file))
+    query_values = [*query_file_values, *args.query]
+    queries = list(dict.fromkeys(query_values or DEFAULT_QUERIES))
     fetched: list[CorpusDocument] = []
     for query in queries:
         fetched.extend(
@@ -529,7 +696,22 @@ def main() -> int:
                 mailto=args.mailto,
             )
         )
-    corpus_documents = dedupe_documents(fetched)
+    candidate_documents = dedupe_documents(fetched)
+    if args.min_cited_by_count > 0:
+        citation_filtered_documents = [
+            document
+            for document in candidate_documents
+            if int((document.metadata or {}).get("cited_by_count") or 0) >= args.min_cited_by_count
+        ]
+    else:
+        citation_filtered_documents = candidate_documents
+    existing_keys = load_existing_document_keys(args.exclude_corpus)
+    corpus_documents, excluded_existing_count = filter_existing_documents(
+        citation_filtered_documents,
+        existing_keys,
+    )
+    if args.articles_tsv:
+        write_article_report(args.articles_tsv, corpus_documents)
 
     trie = LabelTrie.from_sqlite(args.label_index, max_label_tokens=args.max_label_tokens)
     evidence_records = with_citation_weight(
@@ -578,12 +760,20 @@ def main() -> int:
         "source": "openalex_top_cited",
         "date_window": {"from": args.from_date, "to": args.to_date},
         "queries": queries,
+        "query_files": [str(path) for path in args.query_file],
         "label_index": str(args.label_index),
         "semantic_type_index": str(args.semantic_type_index),
+        "exclude_corpora": [str(path) for path in args.exclude_corpus],
+        "existing_document_identity_keys": len(existing_keys),
+        "candidate_documents": len(candidate_documents),
+        "min_cited_by_count": args.min_cited_by_count,
+        "below_min_cited_by_count_removed": len(candidate_documents) - len(citation_filtered_documents),
+        "existing_documents_removed": excluded_existing_count,
         "corpus": str(corpus_path),
         "evidence": str(evidence_path),
         "documents": str(docs_path),
         "vectors": str(vectors_path),
+        "articles_tsv": str(args.articles_tsv) if args.articles_tsv else "",
         "corpus_documents": corpus_count,
         "raw_evidence_records": raw_evidence_count,
         "low_value_evidence_records_removed": raw_evidence_count - evidence_count,

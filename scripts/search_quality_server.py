@@ -4,6 +4,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -111,6 +114,12 @@ DEFAULT_OPENALEX_CITED_DOCS = (
 DEFAULT_OPENALEX_CITED_VECTORS = (
     ROOT / "build" / "openalex_cited_evidence" / "openalex_top_cited_concept_vectors.hashing.jsonl"
 )
+DEFAULT_PERMITTED_SOURCE_DOCS = (
+    ROOT / "build" / "public" / "permitted_sources_concept_documents.jsonl"
+)
+DEFAULT_PERMITTED_SOURCE_VECTORS = (
+    ROOT / "build" / "public" / "permitted_sources_concept_vectors.hashing.jsonl"
+)
 DEFAULT_HTML = ROOT / "docs" / "search_quality_server.html"
 DEFAULT_PROGRESS_HTML = ROOT / "docs" / "scaling_progress.html"
 DEFAULT_PROGRESS_PLAN = ROOT / "config" / "scaling_chunk_001_gap_topics.plan.json"
@@ -129,6 +138,7 @@ DEFAULT_ELASTIC_INDEX = "qe-umls-biomedicine-hashing-current"
 DEFAULT_EVIDENCE_DIRS = (
     ROOT / "build" / "profile_evidence_literature_expanded",
     ROOT / "build" / "openalex_cited_evidence" / "evidence",
+    ROOT / "build" / "public" / "permitted_source_profile_evidence",
 )
 DEFAULT_VECTOR_PATHS = [
     path
@@ -139,6 +149,7 @@ DEFAULT_VECTOR_PATHS = [
         DEFAULT_DRUG_ENRICHMENT_VECTORS,
         DEFAULT_OPEN_IMAGE_VECTORS,
         DEFAULT_OPENALEX_CITED_VECTORS,
+        DEFAULT_PERMITTED_SOURCE_VECTORS,
     )
     if path.exists()
 ]
@@ -151,6 +162,7 @@ DEFAULT_DOC_PATHS = [
         DEFAULT_DRUG_ENRICHMENT_DOCS,
         DEFAULT_OPEN_IMAGE_DOCS,
         DEFAULT_OPENALEX_CITED_DOCS,
+        DEFAULT_PERMITTED_SOURCE_DOCS,
     )
     if path.exists()
 ]
@@ -218,7 +230,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dim", type=int, default=384)
     parser.add_argument(
         "--provider",
-        choices=["hashing", "sentence-transformers", "transformers-cls", "bert-cls", "sapbert"],
+        choices=["hashing", "hashing-idf", "sentence-transformers", "transformers-cls", "bert-cls", "sapbert"],
         default="hashing",
     )
     parser.add_argument(
@@ -228,6 +240,7 @@ def parse_args() -> argparse.Namespace:
             f"defaults to {DEFAULT_BIOMEDICAL_BERT_MODEL}."
         ),
     )
+    parser.add_argument("--idf-path", type=Path, help="Hashing IDF JSON for --provider hashing-idf.")
     parser.add_argument("--local-files-only", action="store_true")
     parser.add_argument("--max-seq-length", type=int)
     parser.add_argument("--device", default="auto")
@@ -243,6 +256,28 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--elastic-num-candidates", type=int, default=100)
     parser.add_argument(
+        "--require-elasticsearch",
+        action="store_true",
+        help=(
+            "Fail startup and /api/search instead of falling back to local vector scan "
+            "when Elasticsearch is missing or unavailable."
+        ),
+    )
+    parser.add_argument(
+        "--elastic-exclude-source-prefix",
+        action="append",
+        default=None,
+        help=(
+            "Exclude Elasticsearch hits whose sources start with this prefix before "
+            "kNN candidate selection. Repeatable. Defaults to mimic for the public app."
+        ),
+    )
+    parser.add_argument(
+        "--no-default-elastic-source-exclusions",
+        action="store_true",
+        help="Do not apply the default Elasticsearch source-prefix exclusions.",
+    )
+    parser.add_argument(
         "--label-index",
         type=Path,
         action="append",
@@ -250,6 +285,18 @@ def parse_args() -> argparse.Namespace:
         help="Optional SQLite UMLS label index used as an exact-label fallback.",
     )
     parser.add_argument("--label-max-tokens", type=int, default=8)
+    parser.add_argument(
+        "--label-fallback-limit",
+        type=int,
+        default=120,
+        help="Maximum UMLS label fallback candidates hydrated per search. Use 0 for the old uncapped behavior.",
+    )
+    parser.add_argument(
+        "--definition-fallback-limit",
+        type=int,
+        default=80,
+        help="Maximum UMLS definition fallback candidates hydrated per search. Use 0 for the old uncapped behavior.",
+    )
     parser.add_argument(
         "--active-label-supplement",
         type=Path,
@@ -382,6 +429,21 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def require_elasticsearch_available(base_url: str, index: str) -> None:
+    if not base_url or not index:
+        raise SystemExit("--require-elasticsearch requires --elastic-url and --elastic-index")
+    quoted_index = urllib.parse.quote(index, safe=",*")
+    url = f"{base_url.rstrip('/')}/{quoted_index}/_count"
+    try:
+        with urllib.request.urlopen(url, timeout=5) as response:
+            if response.status >= 400:
+                raise SystemExit(f"Elasticsearch check failed: HTTP {response.status} from {url}")
+    except urllib.error.HTTPError as exc:
+        raise SystemExit(f"Elasticsearch check failed: HTTP {exc.code} from {url}") from exc
+    except (OSError, urllib.error.URLError) as exc:
+        raise SystemExit(f"Elasticsearch check failed for {url}: {exc}") from exc
+
+
 def main() -> None:
     args = parse_args()
     for path in args.vectors:
@@ -411,6 +473,11 @@ def main() -> None:
         raise SystemExit(f"missing definition index file: {args.definition_index}")
     if args.provenance_index and not args.provenance_index.exists():
         raise SystemExit(f"missing provenance index file: {args.provenance_index}")
+    if args.provider == "hashing-idf":
+        if not args.idf_path:
+            raise SystemExit("--provider hashing-idf requires --idf-path")
+        if not args.idf_path.exists():
+            raise SystemExit(f"missing hashing IDF file: {args.idf_path}")
     if not args.html.exists():
         raise SystemExit(f"missing HTML file: {args.html}")
     if not args.progress_html.exists():
@@ -419,8 +486,12 @@ def main() -> None:
         raise SystemExit(f"missing progress plan file: {args.progress_plan}")
     if not args.full_progress_plan.exists():
         raise SystemExit(f"missing full progress plan file: {args.full_progress_plan}")
+    if args.require_elasticsearch:
+        require_elasticsearch_available(args.elastic_url, args.elastic_index)
     judgments_path = args.judgments_out or quality_judgment_path(args.progress_plan)
     evidence_paths = list(args.evidence) if args.evidence is not None else default_evidence_paths()
+    elastic_exclude_source_prefixes = [] if args.no_default_elastic_source_exclusions else ["mimic"]
+    elastic_exclude_source_prefixes.extend(args.elastic_exclude_source_prefix or [])
     print("Loading search index...")
     index = SearchIndex(
         vector_paths=list(args.vectors),
@@ -430,14 +501,19 @@ def main() -> None:
         provider=args.provider,
         model=args.model,
         dim=args.dim,
+        idf_path=args.idf_path,
         local_files_only=args.local_files_only,
         max_seq_length=args.max_seq_length,
         device=args.device,
         elastic_url=args.elastic_url,
         elastic_index=args.elastic_index,
         elastic_num_candidates=args.elastic_num_candidates,
+        require_elasticsearch=args.require_elasticsearch,
+        elastic_exclude_source_prefixes=elastic_exclude_source_prefixes,
         label_index_paths=list(args.label_index),
         label_max_tokens=args.label_max_tokens,
+        label_fallback_limit=args.label_fallback_limit,
+        definition_fallback_limit=args.definition_fallback_limit,
         code_index_path=args.code_index,
         semantic_type_index_path=args.semantic_type_index,
         relation_index_path=args.relation_index,

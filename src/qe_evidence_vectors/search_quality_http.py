@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from qe_evidence_vectors.code_index import is_cui
+from qe_evidence_vectors.search_execution import SearchBackendUnavailable
 from qe_evidence_vectors.search_service import SearchIndex
 
 
@@ -80,6 +81,12 @@ OPENAPI_SPEC = {
                         "schema": {"type": "string", "enum": ["balanced", "exact", "comprehensive"]},
                     },
                     {"name": "include_related", "in": "query", "schema": {"type": "boolean"}},
+                    {
+                        "name": "debug",
+                        "in": "query",
+                        "schema": {"type": "boolean"},
+                        "description": "Include vector lineage and retrieval debug fields on hits.",
+                    },
                     {
                         "name": "semantic_bucket",
                         "in": "query",
@@ -449,6 +456,7 @@ def make_handler(
                     "include_related",
                     default=True,
                 )
+                debug = parse_bool_param(params, "debug", default=False)
                 semantic_bucket_keys = parse_multi_param(
                     params,
                     "semantic_bucket",
@@ -471,10 +479,13 @@ def make_handler(
                             include_related=include_related,
                             semantic_bucket_keys=semantic_bucket_keys,
                             search_mode=search_mode,
+                            debug=debug,
                         )
                     )
                 except ValueError as exc:
                     self.send_error_json("invalid_parameter", str(exc), status=400)
+                except SearchBackendUnavailable as exc:
+                    self.send_error_json("backend_unavailable", str(exc), status=503)
                 return
             self.send_error_json("not_found", "not found", status=404)
 

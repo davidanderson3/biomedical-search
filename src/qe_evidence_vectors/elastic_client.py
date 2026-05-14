@@ -142,6 +142,7 @@ def build_knn_search_body(
     k: int = 10,
     num_candidates: int = 100,
     source_fields: list[str] | None = None,
+    exclude_source_prefixes: Iterable[str] | None = None,
 ) -> dict:
     if source_fields is None:
         source_fields = [
@@ -156,14 +157,25 @@ def build_knn_search_body(
             "embedding_provider",
             "embedding_model",
         ]
+    knn = {
+        "field": vector_field,
+        "query_vector": vector,
+        "k": k,
+        "num_candidates": num_candidates,
+    }
+    source_prefixes = sorted({prefix.strip() for prefix in (exclude_source_prefixes or []) if prefix.strip()})
+    if source_prefixes:
+        knn["filter"] = {
+            "bool": {
+                "must_not": [
+                    {"prefix": {"sources": prefix}}
+                    for prefix in source_prefixes
+                ]
+            }
+        }
     return {
         "size": k,
-        "knn": {
-            "field": vector_field,
-            "query_vector": vector,
-            "k": k,
-            "num_candidates": num_candidates,
-        },
+        "knn": knn,
         "_source": source_fields,
     }
 
@@ -176,12 +188,14 @@ def search_knn(
     vector_field: str = "vector",
     k: int = 10,
     num_candidates: int = 100,
+    exclude_source_prefixes: Iterable[str] | None = None,
 ) -> list[dict]:
     body = build_knn_search_body(
         vector=vector,
         vector_field=vector_field,
         k=k,
         num_candidates=num_candidates,
+        exclude_source_prefixes=exclude_source_prefixes,
     )
     response = request_json(
         method="POST",

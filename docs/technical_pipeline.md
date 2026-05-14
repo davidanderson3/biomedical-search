@@ -615,7 +615,7 @@ Build command pattern:
 
 ```sh
 python3 scripts/evidence_vectors.py build-code-index \
-  --mrconso ~/Downloads/2026AA/META/MRCONSO.RRF \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
   --out build/cui_code_index.sqlite \
   --replace
 ```
@@ -624,8 +624,8 @@ Build relation index command pattern:
 
 ```sh
 python3 scripts/evidence_vectors.py build-relation-index \
-  --mrrel ~/Downloads/2026AA/META/MRREL.RRF \
-  --mrconso ~/Downloads/2026AA/META/MRCONSO.RRF \
+  --mrrel /path/to/UMLS/META/MRREL.RRF \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
   --docs ...concept_documents.jsonl \
   --out build/umls_related_concepts.sqlite \
   --max-relations-per-cui 8 \
@@ -776,7 +776,10 @@ python3 scripts/search_quality_server.py \
   --max-seq-length 128 \
   --elastic-url http://localhost:9200 \
   --elastic-index qe-scaling-sapbert-cls \
-  --elastic-num-candidates 300 \
+  --elastic-num-candidates 50 \
+  --require-elasticsearch \
+  --label-fallback-limit 120 \
+  --definition-fallback-limit 80 \
   --label-index build/umls_biomedicine_search_label_index.sqlite \
   --code-index build/cui_code_index.sqlite \
   --relation-index build/umls_related_concepts.sqlite \

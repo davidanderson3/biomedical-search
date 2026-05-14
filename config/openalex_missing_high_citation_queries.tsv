@@ -1,0 +1,15 @@
+query_id	query	rationale
+diabetes_obesity	diabetes obesity semaglutide cardiovascular kidney outcomes	High-prevalence diabetes/obesity drug and outcomes evidence.
+heart_kidney	heart failure chronic kidney disease SGLT2 inhibitors	High-prevalence cardiometabolic and kidney disease evidence.
+hypertension_lipids	hypertension lipid cardiovascular prevention statin	High-prevalence cardiovascular prevention and medication evidence.
+infection_sepsis	sepsis pneumonia antimicrobial resistance antibiotics	High-acuity infection and antibiotic evidence.
+thrombosis_stroke	anticoagulation atrial fibrillation stroke thrombosis	High-prevalence anticoagulation, vascular, and stroke evidence.
+oncology_egfr	non small cell lung cancer EGFR osimertinib brain metastases	Targeted oncology evidence for current acquisition gaps.
+immunotherapy_colitis	immune checkpoint inhibitor colitis colonoscopy inflammatory bowel disease	Immune-toxicity and GI diagnostic evidence for current association gaps.
+ibd_biologics	inflammatory bowel disease Crohn ulcerative colitis biologic therapy colonoscopy	Common GI condition, drug, and procedure evidence.
+migraine_acute	migraine triptan emergency department status migrainosus	Acute migraine medication evidence for current acquisition gaps.
+aki_labs	acute kidney injury creatinine chronic kidney disease biomarkers	Common kidney-condition and lab-test evidence.
+respiratory_common	COPD asthma exacerbation bronchodilator corticosteroids pneumonia	Common respiratory condition and drug evidence.
+alzheimers_amyloid	Alzheimer disease amyloid lecanemab donanemab	Recent high-impact neurology therapeutics evidence.
+covid_recent	COVID-19 long COVID vaccination antiviral	Recent high-impact infectious disease evidence.
+mental_health	depression anxiety treatment adolescents	Common behavioral health treatment evidence.

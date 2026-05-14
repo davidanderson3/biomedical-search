@@ -12,14 +12,61 @@ from qe_evidence_vectors.search_utils import (
     merge_labels,
     source_mix_from_evidence_items,
 )
+from qe_evidence_vectors.text import normalized_key
 
 
 class SearchHydrationMixin:
-    def hit_from_record(self, record: SearchRecord, *, score: float) -> dict:
+    def concept_has_active_atoms(self, cui: str) -> bool:
+        cui = str(cui or "").strip().upper()
+        if not cui:
+            return False
+        if not is_cui(cui):
+            return True
+        if cui in getattr(self, "extension_semantic_types_by_cui", {}):
+            return True
+        if cui in getattr(self, "active_label_semantic_types_by_cui", {}):
+            return True
+        if not self.code_index:
+            return True
+        return self.code_index.has_active_cui(cui)
+
+    def display_label_for_cui(self, cui: str, labels: list[str]) -> str:
+        cui = str(cui or "").strip().upper()
+        if not self.concept_has_active_atoms(cui):
+            return ""
+        preferred = self.preferred_label_for_cui(cui)
+        if preferred:
+            return preferred
+        cui_norm = normalized_key(cui)
+        filtered_labels = [
+            str(label).strip()
+            for label in labels
+            if str(label).strip()
+            and not is_cui(str(label).strip())
+            and normalized_key(str(label)) != cui_norm
+        ]
+        return concept_display_name(filtered_labels, fallback="")
+
+    def concept_is_displayable(self, cui: str, labels: list[str] | None = None) -> bool:
+        return bool(self.display_label_for_cui(cui, list(labels or [])))
+
+    def hit_from_record(
+        self,
+        record: SearchRecord,
+        *,
+        score: float,
+        hydrate_details: bool = True,
+    ) -> dict:
         labels = self.labels_for_cui(record.cui, record.labels)
-        name = self.preferred_label_for_cui(record.cui) or concept_display_name(labels, fallback=record.cui)
-        evidence_items = self.evidence_items_for_record(record)
+        name = self.display_label_for_cui(record.cui, labels)
+        evidence_items = (
+            self.evidence_items_for_record(record)
+            if hydrate_details
+            else [dict(item) for item in record.evidence_items]
+        )
         semantic_types = self.semantic_types_for_cui(record.cui)
+        definitions = self.definitions_for_cui(record.cui) if hydrate_details else []
+        images = self.images_for_cui(record.cui) if hydrate_details else []
         return {
             "doc_id": record.doc_id,
             "cui": record.cui,
@@ -29,6 +76,17 @@ class SearchHydrationMixin:
             "labels": labels,
             "sources": record.sources,
             "evidence_count": record.evidence_count,
+            "source_bundle": record.source_bundle,
+            "vector_path": record.vector_path,
+            "vector_row": record.vector_row,
+            "vector_lineage": {
+                "vector_path": record.vector_path,
+                "vector_row": record.vector_row,
+                "source_bundle": record.source_bundle,
+                "doc_id": record.doc_id,
+                "cui": record.cui,
+                "view": record.view,
+            },
             "source_mix": source_mix_from_evidence_items(
                 evidence_items,
                 declared_sources=record.sources,
@@ -36,8 +94,8 @@ class SearchHydrationMixin:
             ),
             "semantic_types": semantic_types,
             **semantic_group_metadata(semantic_types),
-            "definitions": self.definitions_for_cui(record.cui),
-            "images": self.images_for_cui(record.cui),
+            "definitions": definitions,
+            "images": images,
             "text": record.text,
             "evidence_items": evidence_items,
             "related_concepts": [],
@@ -60,11 +118,18 @@ class SearchHydrationMixin:
     def preferred_label_for_cui(self, cui: str) -> str:
         if not self.code_index or not cui:
             return ""
+        cui = cui.strip().upper()
+        cached = self.preferred_label_cache.get(cui)
+        if cached is not None:
+            return cached
         if self.is_clinical_attribute_cui(cui):
             loinc_lc_label = self.loinc_lc_label_for_cui(cui)
             if loinc_lc_label:
+                self.preferred_label_cache[cui] = loinc_lc_label
                 return loinc_lc_label
-        return self.code_index.preferred_label(cui)
+        label = self.code_index.preferred_label(cui)
+        self.preferred_label_cache[cui] = label
+        return label
 
     def is_clinical_attribute_cui(self, cui: str) -> bool:
         return any(
@@ -118,14 +183,19 @@ class SearchHydrationMixin:
     def semantic_types_for_cui(self, cui: str) -> list[dict]:
         if not cui:
             return []
+        cui = cui.strip().upper()
+        cached = self.semantic_types_cache.get(cui)
+        if cached is not None:
+            return [dict(row) for row in cached]
         supplement_rows = list(
-            getattr(self, "active_label_semantic_types_by_cui", {}).get(cui.strip().upper(), [])
+            getattr(self, "active_label_semantic_types_by_cui", {}).get(cui, [])
         )
         if self.semantic_type_index:
             rows = self.semantic_type_index.lookup(cui)
             if rows:
                 if not supplement_rows:
-                    return rows
+                    self.semantic_types_cache[cui] = [dict(row) for row in rows]
+                    return [dict(row) for row in rows]
                 seen = {
                     (
                         str(row.get("tui") or ""),
@@ -145,15 +215,25 @@ class SearchHydrationMixin:
                         continue
                     seen.add(key)
                     merged.append(row)
-                return merged
+                self.semantic_types_cache[cui] = [dict(row) for row in merged]
+                return [dict(row) for row in merged]
         if supplement_rows:
-            return supplement_rows
-        return list(getattr(self, "extension_semantic_types_by_cui", {}).get(cui.strip().upper(), []))
+            self.semantic_types_cache[cui] = [dict(row) for row in supplement_rows]
+            return [dict(row) for row in supplement_rows]
+        rows = list(getattr(self, "extension_semantic_types_by_cui", {}).get(cui, []))
+        self.semantic_types_cache[cui] = [dict(row) for row in rows]
+        return [dict(row) for row in rows]
 
     def definitions_for_cui(self, cui: str, *, limit: int = 3) -> list[dict]:
         if not self.definition_index or not cui:
             return []
-        return self.definition_index.lookup(cui, limit=limit)
+        key = (cui.strip().upper(), int(limit))
+        cached = self.definitions_cache.get(key)
+        if cached is not None:
+            return [dict(row) for row in cached]
+        rows = self.definition_index.lookup(key[0], limit=limit)
+        self.definitions_cache[key] = [dict(row) for row in rows]
+        return [dict(row) for row in rows]
 
     def images_for_cui(self, cui: str, *, limit: int = 4) -> list[dict]:
         if not cui:
@@ -179,14 +259,17 @@ class SearchHydrationMixin:
             hit = self.hit_from_record(record, score=0.0)
         elif cui:
             labels = self.labels_for_cui(cui, [])
+            name = self.display_label_for_cui(cui, labels)
+            if not name:
+                return {"error": "concept has no active display label", "doc_id": doc_id, "cui": cui}
             semantic_types = self.semantic_types_for_cui(cui)
             hit = {
                 "doc_id": doc_id or f"{cui}:detail",
                 "cui": cui,
-                "name": self.preferred_label_for_cui(cui) or concept_display_name(labels, fallback=cui),
+                "name": name,
                 "view": "detail",
                 "score": 0.0,
-                "labels": labels or [cui],
+                "labels": labels,
                 "sources": [],
                 "evidence_count": 0,
                 "source_mix": source_mix_from_evidence_items([], declared_sources=[], evidence_count=0),
@@ -232,13 +315,16 @@ class SearchHydrationMixin:
                 continue
             seen_labels.add(key)
             deduped_labels.append(str(item))
+        name = self.display_label_for_cui(cui, deduped_labels)
+        if not name:
+            return {}
         return {
             "cui": cui,
-            "name": self.preferred_label_for_cui(cui) or concept_display_name(deduped_labels, fallback=cui),
+            "name": name,
             "score": score,
             "source": source,
             "matched": matched,
-            "label": self.preferred_label_for_cui(cui) or concept_display_name(deduped_labels, fallback=cui),
+            "label": name,
             "labels": deduped_labels[:8],
             "has_evidence": bool(record),
             "evidence_count": record.evidence_count if record else 0,
@@ -266,16 +352,16 @@ class SearchHydrationMixin:
             if not cui:
                 continue
             best = mappings[0]
-            candidates.append(
-                self.candidate_from_cui(
-                    cui,
-                    score=1.3 if source == "system_code" else 1.2,
-                    source=source,
-                    matched=matched,
-                    mappings=mappings,
-                    label=str(best.get("label") or ""),
-                )
+            candidate = self.candidate_from_cui(
+                cui,
+                score=1.3 if source == "system_code" else 1.2,
+                source=source,
+                matched=matched,
+                mappings=mappings,
+                label=str(best.get("label") or ""),
             )
+            if candidate:
+                candidates.append(candidate)
         sorted_candidates = sorted(
             candidates,
             key=lambda item: (
@@ -337,6 +423,8 @@ class SearchHydrationMixin:
                         matched=matched_span,
                         label=str(labels[0] if labels else ""),
                     )
+                    if not broadened_candidate:
+                        continue
                     broadened_candidate["broadened_from_cui"] = seed_cui
                     broadened_candidate["broadened_from_label"] = seed_label
                     seen_cuis.add(cui)
@@ -351,24 +439,22 @@ class SearchHydrationMixin:
             return {"query": query, "input_type": "empty", "candidates": []}
         if is_cui(raw_query):
             cui = raw_query.upper()
+            candidate = self.candidate_from_cui(cui, score=1.4, source="cui", matched=cui)
             return {
                 "query": query,
                 "input_type": "cui",
-                "candidates": [
-                    self.candidate_from_cui(cui, score=1.4, source="cui", matched=cui)
-                ],
+                "candidates": [candidate] if candidate else [],
             }
         parsed_code = parse_system_code(raw_query)
         if parsed_code:
             sab, code = parsed_code
             if sab == "CUI" and is_cui(code):
                 cui = code.upper()
+                candidate = self.candidate_from_cui(cui, score=1.4, source="cui", matched=cui)
                 return {
                     "query": query,
                     "input_type": "cui",
-                    "candidates": [
-                        self.candidate_from_cui(cui, score=1.4, source="cui", matched=cui)
-                    ],
+                    "candidates": [candidate] if candidate else [],
                 }
             rows = self.code_index.lookup_code(code, sab=sab, limit=max(limit * 5, 25)) if self.code_index else []
             return {
@@ -402,15 +488,15 @@ class SearchHydrationMixin:
             cui = str(hit.get("cui") or "")
             if not cui:
                 continue
-            label_candidates.append(
-                self.candidate_from_cui(
-                    cui,
-                    score=float(hit.get("score") or 0),
-                    source="umls_label",
-                    matched=str(hit.get("matched_query_span") or raw_query),
-                    label=(hit.get("labels") or [""])[0],
-                )
+            candidate = self.candidate_from_cui(
+                cui,
+                score=float(hit.get("score") or 0),
+                source="umls_label",
+                matched=str(hit.get("matched_query_span") or raw_query),
+                label=(hit.get("labels") or [""])[0],
             )
+            if candidate:
+                label_candidates.append(candidate)
         return {
             "query": query,
             "input_type": "text",
@@ -424,6 +510,9 @@ class SearchHydrationMixin:
             hit = self.hit_from_record(record, score=float(candidate.get("score") or 0))
         else:
             labels = self.labels_for_cui(cui, list(candidate.get("labels") or []))
+            name = self.display_label_for_cui(cui, labels)
+            if not name:
+                return {}
             definitions = self.definitions_for_cui(cui)
             definition_lines = "\n".join(
                 f"- {item.get('source') or 'MRDEF'}: {item.get('definition') or ''}"
@@ -432,12 +521,16 @@ class SearchHydrationMixin:
             hit = {
                 "doc_id": f"{cui}:resolver",
                 "cui": cui,
-                "name": self.preferred_label_for_cui(cui) or concept_display_name(labels, fallback=cui),
+                "name": name,
                 "view": "resolver",
                 "score": float(candidate.get("score") or 0),
-                "labels": labels or [cui],
+                "labels": labels,
                 "sources": [str(candidate.get("source") or "resolver")],
                 "evidence_count": 0,
+                "source_bundle": str(candidate.get("source") or "resolver"),
+                "vector_path": "",
+                "vector_row": -1,
+                "vector_lineage": {},
                 "source_mix": source_mix_from_evidence_items(
                     [],
                     declared_sources=[str(candidate.get("source") or "resolver")],
@@ -473,7 +566,10 @@ class SearchHydrationMixin:
                 cui,
                 merge_labels(list(candidate.get("labels") or []), list(hit.get("labels") or [])),
             )
-            hit["name"] = self.preferred_label_for_cui(cui) or concept_display_name(list(hit.get("labels") or []), fallback=cui)
+            name = self.display_label_for_cui(cui, list(hit.get("labels") or []))
+            if not name:
+                return {}
+            hit["name"] = name
         if candidate.get("source") and candidate["source"] not in hit.get("sources", []):
             hit["sources"] = [candidate["source"]] + list(hit.get("sources") or [])
             hit["source_mix"] = source_mix_from_evidence_items(
@@ -488,6 +584,8 @@ class SearchHydrationMixin:
             retrieval = "direct CUI/code resolver"
         elif backend == "elasticsearch":
             retrieval = "Elasticsearch kNN over concept-document embeddings"
+        elif backend == "generic_query_filter":
+            retrieval = "audited generic query suppression"
         else:
             retrieval = "local vector scan over concept-document embeddings"
         mode_descriptions = {
@@ -517,6 +615,7 @@ class SearchHydrationMixin:
         include_related: bool = True,
         semantic_bucket_keys: object = None,
         search_mode: str = "balanced",
+        debug: bool = False,
     ) -> dict:
         semantic_bucket_keys = normalize_semantic_bucket_filter(semantic_bucket_keys)
         candidates = list(resolution.get("candidates") or [])
@@ -579,10 +678,11 @@ class SearchHydrationMixin:
             "input_type": resolution.get("input_type") or "",
             "resolution": resolution,
             "hits": hits,
+            **self.source_contribution_metadata(hits, include_debug=debug),
             **self.semantic_response_metadata(
                 hits,
                 include_related=include_related,
                 semantic_bucket_keys=semantic_bucket_keys,
             ),
             "elapsed_ms": round((time.time() - started) * 1000, 1),
-        })
+        }, include_debug=debug)

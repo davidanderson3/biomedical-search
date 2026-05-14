@@ -209,6 +209,64 @@ def classify_suspect_hit(hit: dict, *, rank: int, accepted: set[str]) -> list[st
     return reasons
 
 
+def relevance_root_cause(hit: dict, *, rank: int, reasons: list[str], useful: set[str]) -> tuple[str, str]:
+    hit_cui = str(hit.get("cui") or "").upper()
+    matched_span_tokens = set(content_tokens(str(hit.get("matched_query_span") or "")))
+    matched_label_tokens = set(content_tokens(str(hit.get("matched_label") or "")))
+    all_matched_tokens = matched_span_tokens | matched_label_tokens
+    score_breakdown = hit.get("score_breakdown") or {}
+    lexical_component = float(score_breakdown.get("lexical_component") or 0.0)
+    rank_score = float(hit.get("rank_score") or hit.get("score") or 0.0)
+    semantic_types = semantic_type_names(hit)
+
+    if hit_cui in useful:
+        return (
+            "known_useful_extra",
+            "Consider promoting to expected if it is central to the paragraph; otherwise keep as useful-extra.",
+        )
+    if "generic_or_status_label" in reasons or "single_generic_anchor" in reasons:
+        return (
+            "generic_status_or_qualifier",
+            "Block the CUI/label or require a stronger local anchor before it can rank visibly.",
+        )
+    if "low_specificity_semantic_type" in reasons or "other_or_uncategorized" in reasons:
+        return (
+            "low_specificity_semantic_type",
+            "Downweight this semantic type/source in broad paragraphs unless the query explicitly names it.",
+        )
+    if not matched_span_tokens and (lexical_component <= 0.5 or rank_score < 0.35):
+        return (
+            "unanchored_vector_drift",
+            "Require lexical overlap, relation support, or a high-confidence definition/evidence anchor.",
+        )
+    if "already_specificity_penalized" in reasons or "already_context_penalized" in reasons:
+        return (
+            "penalty_not_strong_enough",
+            "Convert repeated penalized false positives into a cutoff, not just a lower score.",
+        )
+    if rank <= 3 and all_matched_tokens:
+        if semantic_types & {
+            "Antibiotic",
+            "Diagnostic Procedure",
+            "Laboratory Procedure",
+            "Organic Chemical",
+            "Pharmacologic Substance",
+            "Therapeutic or Preventive Procedure",
+        }:
+            return (
+                "literal_auxiliary_concept",
+                "Decide whether the benchmark should expect mentioned drugs/tests/procedures; otherwise apply task/view weighting.",
+            )
+        return (
+            "expected_set_gap_or_valid_secondary",
+            "Judge the result: add expected/useful-extra if clinically relevant, or add a reusable context rule if not.",
+        )
+    return (
+        "needs_manual_judgment",
+        "Review manually, then turn repeated patterns into a source/type/anchor rule.",
+    )
+
+
 def compact_expected(expected: list[str], accepted: set[str]) -> str:
     expected_set = {cui.upper() for cui in expected}
     extra = sorted(accepted - expected_set)
@@ -231,6 +289,7 @@ def audit_payloads(
     useful_extras = read_useful_extra_cuis(useful_extras_path)
     rows = []
     reason_counts: Counter[str] = Counter()
+    root_cause_counts: Counter[str] = Counter()
     suspect_counts_by_cui: Counter[str] = Counter()
     names_by_cui: dict[str, str] = {}
     examples_by_cui: defaultdict[str, list[str]] = defaultdict(list)
@@ -254,6 +313,13 @@ def audit_payloads(
             reasons = classify_suspect_hit(hit, rank=rank, accepted=accepted_or_useful)
             if not reasons:
                 continue
+            root_cause, recommended_action = relevance_root_cause(
+                hit,
+                rank=rank,
+                reasons=reasons,
+                useful=useful,
+            )
+            root_cause_counts[root_cause] += 1
             cui = hit_cui
             name = label_text(hit)
             suspect_counts_by_cui[cui] += 1
@@ -274,6 +340,8 @@ def audit_payloads(
                     "matched_label": str(hit.get("matched_label") or ""),
                     "matched_query_span": str(hit.get("matched_query_span") or ""),
                     "reasons": "|".join(reasons),
+                    "root_cause": root_cause,
+                    "recommended_action": recommended_action,
                     "expected_or_accepted": compact_expected(spec.expected_cuis, accepted),
                     "useful_extra_cuis": "|".join(sorted(useful)),
                     "query": spec.query,
@@ -301,6 +369,7 @@ def audit_payloads(
         "suspect_hits_per_paragraph": len(rows) / len(specs) if specs else 0.0,
         "useful_extra_rows": sum(len(values) for values in useful_extras.values()),
         "reason_counts": dict(sorted(reason_counts.items())),
+        "root_cause_counts": dict(sorted(root_cause_counts.items())),
         "top_suspect_cuis": top_suspects,
     }
     return rows, metrics
@@ -318,6 +387,8 @@ def write_tsv(path: Path, rows: list[dict]) -> None:
         "matched_label",
         "matched_query_span",
         "reasons",
+        "root_cause",
+        "recommended_action",
         "expected_or_accepted",
         "useful_extra_cuis",
         "query",
@@ -346,10 +417,24 @@ def write_report(path: Path, metrics: dict) -> None:
         f"- Suspect hits per paragraph: {metrics['suspect_hits_per_paragraph']:.2f}",
         f"- Configured useful extra rows: {metrics['useful_extra_rows']}",
         f"- Reason counts: {metrics['reason_counts']}",
+        f"- Root-cause counts: {metrics['root_cause_counts']}",
         "",
-        "## Most Frequent Suspect CUIs",
+        "## Strategy Buckets",
         "",
     ]
+    root_cause_counts = metrics.get("root_cause_counts") or {}
+    if not root_cause_counts:
+        lines.append("- None.")
+    else:
+        for root_cause, count in sorted(root_cause_counts.items(), key=lambda item: (-item[1], item[0])):
+            lines.append(f"- {root_cause}: {count}")
+    lines.extend(
+        [
+            "",
+            "## Most Frequent Suspect CUIs",
+            "",
+        ]
+    )
     top_suspects = metrics.get("top_suspect_cuis") or []
     if not top_suspects:
         lines.append("- None.")

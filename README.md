@@ -46,9 +46,59 @@ For external rebuilds and artifact boundaries, see
 artifacts from licensed/local inputs such as UMLS, LOINC, SNOMED CT, external
 CUI vectors, and any credentialed clinical data.
 
+For a fresh clone workflow, see [GitHub Quickstart](docs/github_quickstart.md).
+It covers public dependencies, dry-run rebuild planning, required local UMLS
+files, missing high-citation article acquisition, and the difference between
+historical local progression reports and strict local validation.
+Use `requirements-public.txt` for the standard-library public build path and
+`requirements-dev.txt` when you want to run the pytest checks.
+
 For the HTTP contract used by external clients and the browser UI, see
 [Biomedical Concept Search API](docs/api.md). The server also exposes a
 machine-readable OpenAPI document at `/api/openapi.json`.
+
+## Attribution And Licensing
+
+This project uses UMLS CUIs as concept identifiers and may use locally supplied
+UMLS-derived indexes under the user's UMLS license. Licensed vocabularies such
+as SNOMED CT, LOINC, RxNorm, and other local source files should only be used
+and redistributed where the deployment has the necessary rights.
+
+Public evidence and enrichment may come from
+[NCBI E-utilities for PubMed and PMC](https://www.ncbi.nlm.nih.gov/books/NBK25497/),
+[Europe PMC](https://europepmc.org/),
+[ClinicalTrials.gov](https://clinicaltrials.gov/data-api/api),
+[MedlinePlus](https://medlineplus.gov/xml.html),
+[MedlinePlus Genetics](https://medlineplus.gov/genetics/),
+[DailyMed](https://dailymed.nlm.nih.gov/dailymed/),
+[NCBI Bookshelf / NLM LitArch Open Access](https://www.ncbi.nlm.nih.gov/books/about/openaccess/),
+[NCI](https://www.cancer.gov/policies/copyright-reuse),
+[CDC](https://www.cdc.gov/other/agencymaterials.html),
+[FDA](https://www.fda.gov/about-fda/about-website/website-policies),
+[NIDDK](https://www.niddk.nih.gov/copyright),
+[Human Phenotype Ontology](https://human-phenotype-ontology.github.io/license.html),
+[Mondo Disease Ontology](https://monarch-initiative.github.io/monarch-documentation/Repositories/mondo/),
+[OpenAlex](https://developers.openalex.org/api-reference/introduction),
+and open Wikipedia/Wikimedia content when compatible with the source license.
+Images retain per-file source and license metadata where available.
+
+Clinician reference sites such as Merck/MSD Manual Professional, AAFP,
+Medscape, BMJ Best Practice, NICE CKS, StatPearls on NCBI Bookshelf,
+Patient.info Professional Reference, GPnotebook, and WikEM are tracked as useful
+candidate sources. They are excluded from the public rebuild unless a deployment
+supplies licensed/permitted content locally and can satisfy the source-specific
+reuse, automated-access, attribution, and derivative-artifact terms. See
+`config/reference_source_policy.tsv` and:
+
+```sh
+python3 scripts/evidence_vectors.py reference-source-policy
+```
+
+SNOMED CT content is subject to the
+[NLM SNOMED CT Affiliate License Agreement](https://www.nlm.nih.gov/research/umls/knowledge_sources/metathesaurus/release/license_agreement_snomed.html).
+LOINC content, when present, is copyrighted by Regenstrief Institute, Inc. and
+the LOINC Committee and is governed by the
+[LOINC license](https://loinc.org/kb/license/).
 
 The public-first rebuild entrypoint is:
 
@@ -58,6 +108,14 @@ python3 scripts/run_public_rebuild.py \
   --out-dir build/public \
   --provider hashing
 ```
+
+The rebuild fetches bounded public subsets and links them through multiword
+semantic-profile shards by default. When a standalone permitted-source pack is
+also present, the search server loads
+`build/public/permitted_sources_concept_documents.jsonl` and
+`build/public/permitted_sources_concept_vectors.hashing.jsonl` automatically.
+Use `--dry-run` first on a fresh clone to print the full command plan without
+network calls or file writes.
 
 ## Data Model
 
@@ -166,6 +224,208 @@ python3 scripts/evidence_vectors.py fetch-pmc-oa-topics \
   --out build/pmc_oa_biomedicine_topics_corpus.jsonl
 ```
 
+#### ClinicalTrials.gov subset
+
+ClinicalTrials.gov adds structured trial language for conditions,
+interventions, eligibility criteria, outcomes, and study populations. Treat it
+as trial-design evidence, not as proof that an intervention works.
+
+```sh
+python3 scripts/evidence_vectors.py fetch-clinicaltrials \
+  --query 'cancer OR diabetes OR migraine OR sepsis OR pneumonia' \
+  --max-records 100 \
+  --out build/clinicaltrials_subset_corpus.jsonl
+```
+
+#### MedlinePlus health topic subset
+
+MedlinePlus XML adds patient-facing phrasing, lay synonyms, topic groupings, and
+consumer health language. The default command discovers the current health topic
+XML/ZIP link from MedlinePlus and keeps a bounded subset unless `--max-records 0`
+is supplied.
+
+```sh
+python3 scripts/evidence_vectors.py fetch-medlineplus \
+  --max-records 500 \
+  --out build/medlineplus_subset_corpus.jsonl
+```
+
+#### MedlinePlus Genetics subset
+
+MedlinePlus Genetics adds gene, genetic condition, chromosome, inheritance,
+synonym, and related-condition language. Keep it bounded for public smoke builds
+and expand when you want broader genetics coverage.
+
+```sh
+python3 scripts/evidence_vectors.py fetch-medlineplus-genetics \
+  --max-records 500 \
+  --out build/medlineplus_genetics_subset_corpus.jsonl
+```
+
+#### DailyMed drug label subset
+
+DailyMed adds structured public drug-label language for indications, dosage,
+contraindications, warnings, adverse reactions, drug interactions, populations,
+and clinical pharmacology. Keep this bounded by drug names or SPL set IDs. If
+you already have UMLS locally, DailyMed SPL set IDs can also be extracted from
+`MRSAT.RRF`.
+
+```sh
+python3 scripts/evidence_vectors.py fetch-dailymed \
+  --drug-name metformin \
+  --drug-name pantoprazole \
+  --drug-name osimertinib \
+  --max-labels-per-drug 1 \
+  --max-records 20 \
+  --out build/dailymed_subset_corpus.jsonl
+```
+
+#### NCBI Bookshelf Open Access subset
+
+Bookshelf contains many traditionally copyrighted books, so the public fetcher
+uses only the NLM LitArch Open Access subset and its FTP file list. Licenses vary
+by package; generated corpus records retain the package license text, archive
+path, accession ID, publisher, and source URL.
+
+```sh
+python3 scripts/evidence_vectors.py fetch-bookshelf-oa \
+  --term 'clinical guidelines' \
+  --term 'expert panel report' \
+  --max-books 3 \
+  --max-records 100 \
+  --out build/bookshelf_oa_subset_corpus.jsonl
+```
+
+#### OBO ontology subsets
+
+HPO and MONDO are handled as structured OBO sources rather than scraped
+reference pages. The fetcher preserves term identifiers, labels, definitions,
+synonyms, xrefs, parent IDs, relationship text, source license, and source
+version metadata.
+
+```sh
+python3 scripts/evidence_vectors.py fetch-obo-ontology \
+  --source hpo \
+  --out build/hpo_ontology_corpus.jsonl
+```
+
+The public rebuild can also augment the research relation index with staged HPO
+annotation files under `data/external/hpo/` when
+`--include-hpo-research-relations` is supplied. Those files add
+disease-phenotype, gene-phenotype, disease-gene, and gene-disease links that are
+not recoverable from UMLS alone. Review the HPO annotation and upstream
+OMIM/Orphanet reuse terms before redistributing derived relation artifacts.
+
+#### Reference page subsets
+
+The public rebuild can also fetch small, attributable subsets from reusable
+government reference pages. This covers some of the same practical diagnostic
+ground as Merck/MSD, AAFP, and Medscape without pulling copyrighted reference
+articles into public artifacts.
+
+```sh
+python3 scripts/evidence_vectors.py fetch-reference-pages \
+  --source nci \
+  --max-records 25 \
+  --out build/nci_reference_pages_corpus.jsonl
+```
+
+Supported source policy keys are `nci`, `cdc`, `fda`, `niddk`,
+`ncbi_bookshelf_oa`, `hpo`, `mondo`, `merck_manual_professional`,
+`msd_manual_professional`, `aafp`, `medscape`, `bmj_best_practice`, `nice_cks`,
+`ncbi_bookshelf_statpearls`, `patient_info_professional`, `gpnotebook`, and
+`wikem`. Only `nci`, `cdc`, `fda`, and `niddk` are default public
+reference-page sources; `ncbi_bookshelf_oa` uses the dedicated
+`fetch-bookshelf-oa` command, and `hpo`/`mondo` use `fetch-obo-ontology`
+instead of HTML page fetching. The restricted keys are blocked by default; use
+them only for private/licensed deployments, and prefer locally supplied permitted
+excerpts through `ingest-tabular-corpus`.
+
+#### Incremental source subset build
+
+For one-source additions, use `build-source-subset` instead of rerunning the full
+public rebuild. It fetches the bounded source subset, assigns CUIs with the local
+MRCONSO-backed label index, writes source-specific corpus/evidence/docs/vectors,
+and can upsert the resulting docs/vectors into aggregate JSONL files.
+
+```sh
+python3 scripts/evidence_vectors.py build-source-subset \
+  --source dailymed \
+  --drug-name pantoprazole \
+  --label-index build/public/indexes/umls_biomedicine_search_label_index.sqlite \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --out-dir build/public/source_subsets/dailymed_pantoprazole \
+  --update-docs build/public/permitted_sources_concept_documents.jsonl \
+  --update-vectors build/public/permitted_sources_concept_vectors.hashing.jsonl
+```
+
+Search responses include per-response `source_contributions` and
+`source_bundle_contributions`. Add `debug=1` to `/api/search` to include
+`vector_path`, `vector_row`, and retrieval lineage for each returned hit.
+
+#### Measured source acquisition plan
+
+Use measured paragraph-quality output to decide which source slices, labels, or
+relationship edges to acquire next. The planner joins query specs to recover
+expected CUIs, infers review-only candidate false positives from top-ranked
+non-expected hits, and filters expected-CUI association pairs against existing
+relation indexes when those SQLite files are available. It also emits a ranked
+association-candidate queue. All recommendation scores use measured gap weight
+plus a bounded prevalence/commonness multiplier; pair candidates additionally use
+relation clarity, sourceability, and text proximity so common conditions, lab
+tests, procedures, and drugs are reviewed early. The command automatically loads
+`config/source_acquisition_prevalence_priors.tsv` when present; pass
+`--prevalence-prior <tsv>` to add another prior or
+`--no-default-prevalence-prior` to rely only on heuristic commonness. When
+`build/umls_biomedicine_search_label_index.sqlite` exists, it is used by default
+for acquisition labeling because measured source builds need broad drug, gene,
+condition, lab, procedure, and synonym coverage.
+
+```sh
+python3 scripts/evidence_vectors.py plan-source-acquisition \
+  --quality-summary build/improvements/<run>/paragraph_quality_summary.tsv \
+  --out-json build/source_acquisition/plan.json \
+  --out-tsv build/source_acquisition/recommendations.tsv \
+  --out-associations-tsv build/source_acquisition/association_candidates.tsv \
+  --out-association-review-tsv build/source_acquisition/association_review.tsv \
+  --out-bundle-dir build/source_acquisition/bundle \
+  --out-md build/source_acquisition/plan.md
+```
+
+`--out-bundle-dir` writes the plan plus source seed TSVs, literature topic TSVs,
+review templates, and a command checklist for the highest-utility acquisition
+actions.
+
+To make acquisition progressions reproducible, record each tested stage in
+`config/source_acquisition_progression.tsv` and regenerate the progression
+manifest/report:
+
+```sh
+python3 scripts/source_acquisition_progression.py --fail-on-regression
+```
+
+The progression command inventories all listed artifacts, hashes small files,
+compares each stage to the previous retained stage in its group, and fails if
+an incremental gate regresses recall or adds top-ranked disallowed concepts.
+Rejected diagnostic stages are recorded without lowering the next gate. It
+writes `build/source_acquisition/progression_manifest.json` and
+`build/source_acquisition/progression_report.md`.
+
+On a fresh clone before historical `build/` artifacts exist, inspect the ledger
+without failing on missing local metrics:
+
+```sh
+python3 scripts/source_acquisition_progression.py --allow-missing-stage-metrics
+```
+
+After review, approved rows can be converted into relationship-edge JSONL:
+
+```sh
+python3 scripts/evidence_vectors.py build-reviewed-association-edges \
+  --review build/source_acquisition/association_review.tsv \
+  --out build/source_acquisition/reviewed_relationship_edges.jsonl
+```
+
 ### 2. Build a UMLS label index
 
 This index is used only for anchoring real-world text spans to CUIs. You can keep
@@ -173,8 +433,8 @@ it broad, or restrict by semantic type to reduce ambiguous matches and runtime.
 
 ```sh
 python3 scripts/evidence_vectors.py build-label-index \
-  --mrconso ~/Downloads/2026AA/META/MRCONSO.RRF \
-  --mrsty ~/Downloads/2026AA/META/MRSTY.RRF \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --mrsty /path/to/UMLS/META/MRSTY.RRF \
   --semantic-type 'Disease or Syndrome' \
   --semantic-type 'Sign or Symptom' \
   --semantic-type T047 \
@@ -189,16 +449,16 @@ untyped matcher:
 python3 scripts/evidence_vectors.py list-semantic-profiles
 
 python3 scripts/evidence_vectors.py build-label-index \
-  --mrconso ~/Downloads/2026AA/META/MRCONSO.RRF \
-  --mrsty ~/Downloads/2026AA/META/MRSTY.RRF \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --mrsty /path/to/UMLS/META/MRSTY.RRF \
   --profile clinical \
   --min-tokens 2 \
   --replace \
   --out build/umls_clinical_profile_multiword_label_index.sqlite
 
 python3 scripts/evidence_vectors.py build-label-index \
-  --mrconso ~/Downloads/2026AA/META/MRCONSO.RRF \
-  --mrsty ~/Downloads/2026AA/META/MRSTY.RRF \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --mrsty /path/to/UMLS/META/MRSTY.RRF \
   --profile chemicals-drugs \
   --min-tokens 2 \
   --replace \
@@ -209,8 +469,8 @@ To build the default production shards for biomedicine in one pass:
 
 ```sh
 python3 scripts/evidence_vectors.py build-profile-indexes \
-  --mrconso ~/Downloads/2026AA/META/MRCONSO.RRF \
-  --mrsty ~/Downloads/2026AA/META/MRSTY.RRF \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --mrsty /path/to/UMLS/META/MRSTY.RRF \
   --out-dir build/profile_indexes \
   --replace
 ```
@@ -235,7 +495,7 @@ needs to accept CUIs and source vocabulary codes before semantic ANN search:
 
 ```sh
 python3 scripts/evidence_vectors.py build-code-index \
-  --mrconso ~/Downloads/2026AA/META/MRCONSO.RRF \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
   --out build/cui_code_index.sqlite \
   --replace
 ```
@@ -253,7 +513,7 @@ number of matching CUIs is within `--max-ambiguity`.
 
 ```sh
 python3 scripts/evidence_vectors.py link-corpus \
-  --corpus build/pubmed_corpus.jsonl build/europepmc_corpus.jsonl build/pmc_oa_corpus.jsonl \
+  --corpus build/pubmed_corpus.jsonl build/europepmc_corpus.jsonl build/pmc_oa_corpus.jsonl build/clinicaltrials_subset_corpus.jsonl build/medlineplus_subset_corpus.jsonl build/medlineplus_genetics_subset_corpus.jsonl build/dailymed_subset_corpus.jsonl build/bookshelf_oa_subset_corpus.jsonl \
   --label-index build/umls_label_index.sqlite \
   --out build/corpus_evidence.jsonl \
   --matcher trie
@@ -262,16 +522,17 @@ python3 scripts/evidence_vectors.py link-corpus \
 Use `--matcher trie` for large corpora. It loads the label index once and scans
 each document token stream, avoiding per-span SQLite lookups.
 
-For broad biomedical linking, run the same corpus through each profile shard and
-tag the output evidence by profile:
+For broad biomedical linking, prefer running the same corpus through each
+multiword profile shard and tagging the output evidence by profile:
 
 ```sh
 python3 scripts/evidence_vectors.py link-profile-shards \
-  --corpus build/pubmed_corpus.jsonl build/europepmc_corpus.jsonl \
+  --corpus build/pubmed_corpus.jsonl build/europepmc_corpus.jsonl build/medlineplus_subset_corpus.jsonl build/dailymed_subset_corpus.jsonl build/bookshelf_oa_subset_corpus.jsonl \
   --index-dir build/profile_indexes \
   --out-dir build/profile_evidence \
-  --run-name pubmed_europepmc \
-  --matcher trie
+  --run-name public_corpus \
+  --matcher trie \
+  --materialize-corpus
 ```
 
 This writes one JSONL file per profile, such as
@@ -312,7 +573,7 @@ MRCONSO labels are used only as anchors for evidence-bearing CUIs.
 ```sh
 python3 scripts/evidence_vectors.py build-docs \
   --evidence build/corpus_evidence.jsonl build/snippet_evidence.jsonl \
-  --mrconso ~/Downloads/2026AA/META/MRCONSO.RRF \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
   --out build/concept_documents.jsonl
 ```
 
@@ -322,7 +583,7 @@ builder:
 ```sh
 python3 scripts/evidence_vectors.py build-docs-sqlite \
   --evidence build/pubmed_corpus_evidence.jsonl build/europepmc_corpus_evidence.jsonl build/pmc_oa_corpus_evidence.jsonl \
-  --mrconso ~/Downloads/2026AA/META/MRCONSO.RRF \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
   --sqlite build/literature_docs.sqlite \
   --replace \
   --out build/literature_concept_documents.sqlite.jsonl
@@ -519,8 +780,17 @@ components. Use it as the first pass before deeper relevance review.
 High-value evidence:
 
 - PubMed abstracts and PMC/Europe PMC open literature text
-- DailyMed, RxNorm/RxClass, LOINC, MeSH, NCI/NCIt, HPO, and other permitted
-  public biomedical sources
+- bounded ClinicalTrials.gov subsets for trial condition, intervention,
+  eligibility, outcome, and population language
+- bounded MedlinePlus XML subsets for patient-facing synonyms and lay phrasing
+- bounded MedlinePlus Genetics subsets for genes, genetic conditions,
+  chromosomes, inheritance, and related-condition language
+- bounded DailyMed label subsets for indications, warnings, interactions,
+  adverse reactions, populations, and pharmacology language
+- bounded NCBI Bookshelf / NLM LitArch Open Access packages for clinical
+  guidelines, evidence reports, and book chapters with per-package licenses
+- RxNorm/RxClass, LOINC, MeSH, NCI/NCIt, HPO, and other permitted public
+  biomedical sources
 - OpenAlex citation-linked evidence when it adds useful literature context
 - manually reviewed examples when available
 

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, TextIO
 
-from .code_index import normalize_sab
+from .code_index import SAB_PRIORITY, TTY_PRIORITY, normalize_sab
 from .relation_index import display_label, read_doc_labels
 from .universal_relationship import attach_universal_edge
 
@@ -134,6 +134,8 @@ class SourceCodeResolver:
         self.cache: dict[tuple[str, str], list[str]] = {}
         self.sab_exists_cache: dict[str, bool] = {}
         self.eager_loaded_sabs: set[str] = set()
+        self.labels_by_cui: dict[str, str] = {}
+        self.label_priority_by_cui: dict[str, tuple] = {}
         if self.code_index_path and eager_sabs:
             self.load_code_index_sabs({canonical_source_sab(sab) for sab in eager_sabs if sab})
 
@@ -161,7 +163,7 @@ class SourceCodeResolver:
         placeholders = ",".join("?" for _ in missing)
         rows = conn.execute(
             f"""
-            SELECT DISTINCT cui, sab, code, scui, sdui
+            SELECT DISTINCT cui, sab, code, scui, sdui, tty, label, ispref, suppress
             FROM code_mappings
             WHERE sab IN ({placeholders})
             """,
@@ -172,6 +174,14 @@ class SourceCodeResolver:
             cui = str(row["cui"] or "")
             if not sab or not cui:
                 continue
+            self.remember_label(
+                cui,
+                str(row["label"] or ""),
+                sab=sab,
+                tty=str(row["tty"] or ""),
+                ispref=str(row["ispref"] or ""),
+                suppress=str(row["suppress"] or ""),
+            )
             for code_field in ("code", "scui", "sdui"):
                 code = str(row[code_field] or "").strip()
                 if code:
@@ -204,7 +214,7 @@ class SourceCodeResolver:
                 return []
             rows = conn.execute(
                 """
-                SELECT DISTINCT cui
+                SELECT DISTINCT cui, sab, tty, label, ispref, suppress
                 FROM code_mappings
                 WHERE sab = ?
                   AND (
@@ -215,10 +225,51 @@ class SourceCodeResolver:
                 """,
                 (key[0], key[1], key[1], key[1]),
             )
-            cuis.update(str(row["cui"]) for row in rows if row["cui"])
+            for row in rows:
+                cui = str(row["cui"] or "")
+                if not cui:
+                    continue
+                cuis.add(cui)
+                self.remember_label(
+                    cui,
+                    str(row["label"] or ""),
+                    sab=str(row["sab"] or ""),
+                    tty=str(row["tty"] or ""),
+                    ispref=str(row["ispref"] or ""),
+                    suppress=str(row["suppress"] or ""),
+                )
         results = sorted(cuis)
         self.cache[key] = results
         return list(results)
+
+    def remember_label(
+        self,
+        cui: str,
+        label: str,
+        *,
+        sab: str = "",
+        tty: str = "",
+        ispref: str = "",
+        suppress: str = "",
+    ) -> None:
+        cui = str(cui or "").strip().upper()
+        label = str(label or "").strip()
+        if not cui or not label:
+            return
+        priority = (
+            0 if str(suppress or "N") == "N" else 1,
+            0 if str(ispref or "") == "Y" else 1,
+            SAB_PRIORITY.get(str(sab or ""), 99),
+            TTY_PRIORITY.get(str(tty or ""), 99),
+            label.lower(),
+        )
+        current = self.label_priority_by_cui.get(cui)
+        if current is None or priority < current:
+            self.labels_by_cui[cui] = label
+            self.label_priority_by_cui[cui] = priority
+
+    def label_for_cui(self, cui: str) -> str:
+        return self.labels_by_cui.get(str(cui or "").strip().upper(), "")
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -760,6 +811,9 @@ def build_external_cui_vector_index(
                 max_source_cuis=max_source_cuis,
             )
             for cui in cuis:
+                label = source_code_resolver.label_for_cui(cui)
+                if label:
+                    labels.setdefault(cui, label)
                 labels.setdefault(cui, cui)
             if np is not None:
                 inserted = _build_neighbors_numpy(

@@ -31,11 +31,11 @@ from qe_evidence_vectors.search_semantics import (
 )
 from qe_evidence_vectors.search_tokens import content_tokens
 from qe_evidence_vectors.search_utils import (
-    concept_display_name,
     merge_definition_lists,
     merge_labels,
     source_mix_from_evidence_items,
 )
+from qe_evidence_vectors.generic_filters import is_blocked_generic_query
 from qe_evidence_vectors.text import normalized_key
 
 
@@ -61,7 +61,18 @@ def active_label_row_matches_query_context(row: dict, query_norm: str) -> bool:
     return True
 
 
+def definition_fallback_query_is_too_generic(query: str) -> bool:
+    return is_blocked_generic_query(query)
+
+
 class SearchRerankMixin:
+    def capped_fallback_limit(self, requested: int, attr: str) -> int:
+        requested = max(1, int(requested or 1))
+        cap = int(getattr(self, attr, 0) or 0)
+        if cap <= 0:
+            return requested
+        return min(requested, cap)
+
     def hydrate_label_hit(self, label_hit: dict) -> dict:
         cui = str(label_hit.get("cui") or "")
         label_source = str(label_hit.get("source") or "umls_label")
@@ -72,7 +83,10 @@ class SearchRerankMixin:
             hydrated.setdefault("semantic_types", self.semantic_types_for_cui(cui))
             hydrated.setdefault("definitions", self.definitions_for_cui(cui))
             hydrated["labels"] = self.labels_for_cui(cui, list(hydrated.get("labels") or []))
-            hydrated["name"] = self.preferred_label_for_cui(cui) or concept_display_name(list(hydrated.get("labels") or []), fallback=cui)
+            name = self.display_label_for_cui(cui, list(hydrated.get("labels") or []))
+            if not name:
+                return {}
+            hydrated["name"] = name
             hydrated.update(semantic_group_metadata(list(hydrated.get("semantic_types") or [])))
             return hydrated
         hydrated = self.hit_from_record(record, score=float(label_hit.get("score") or 0))
@@ -87,7 +101,10 @@ class SearchRerankMixin:
             cui,
             merge_labels(list(label_hit.get("labels") or []), list(hydrated.get("labels") or [])),
         )
-        hydrated["name"] = self.preferred_label_for_cui(cui) or concept_display_name(list(hydrated.get("labels") or []), fallback=cui)
+        name = self.display_label_for_cui(cui, list(hydrated.get("labels") or []))
+        if not name:
+            return {}
+        hydrated["name"] = name
         hydrated["sources"] = merge_labels([label_source], list(hydrated.get("sources") or []))
         hydrated["mappings"] = self.mappings_for_cui(cui, limit=25)
         return hydrated
@@ -229,6 +246,8 @@ class SearchRerankMixin:
 
     def definition_fallback_hits(self, query: str, *, limit: int) -> list[dict]:
         if not self.definition_index:
+            return []
+        if definition_fallback_query_is_too_generic(query):
             return []
         if len(specific_query_token_set(content_tokens(query))) < 2:
             return []
@@ -389,13 +408,31 @@ class SearchRerankMixin:
         best_by_cui = {hit.get("cui", ""): hit for hit in hits if hit.get("cui")}
         label_hits = []
         if self.label_fallback.paths:
-            label_hits = self.label_fallback.search(query, limit=max(top_k * 12, 100))
+            label_hits = self.label_fallback.search(
+                query,
+                limit=self.capped_fallback_limit(
+                    max(top_k * 12, 100),
+                    "label_fallback_limit",
+                ),
+            )
             for anchor_query in label_fallback_anchor_queries(query):
                 label_hits.extend(self.label_fallback.search(anchor_query, limit=8))
-        label_hits.extend(self.extension_label_fallback_hits(query, limit=max(top_k * 8, 60)))
-        label_hits.extend(self.active_label_supplement_hits(query, limit=max(top_k * 4, 40)))
+        label_hits.extend(
+            self.extension_label_fallback_hits(
+                query,
+                limit=self.capped_fallback_limit(max(top_k * 8, 60), "label_fallback_limit"),
+            )
+        )
+        label_hits.extend(
+            self.active_label_supplement_hits(
+                query,
+                limit=self.capped_fallback_limit(max(top_k * 4, 40), "label_fallback_limit"),
+            )
+        )
         for label_hit in label_hits:
             hydrated = self.hydrate_label_hit(label_hit)
+            if not hydrated:
+                continue
             if should_suppress_label_fallback_hit(hydrated):
                 continue
             current = best_by_cui.get(label_hit["cui"])
@@ -467,7 +504,13 @@ class SearchRerankMixin:
                 continue
             if current is None or hydrated["score"] > float(current.get("score", 0)):
                 best_by_cui[label_hit["cui"]] = hydrated
-        for definition_hit in self.definition_fallback_hits(query, limit=max(top_k * 8, 60)):
+        for definition_hit in self.definition_fallback_hits(
+            query,
+            limit=self.capped_fallback_limit(
+                max(top_k * 8, 60),
+                "definition_fallback_limit",
+            ),
+        ):
             cui = str(definition_hit.get("cui") or "")
             current = best_by_cui.get(cui)
             if current is None:

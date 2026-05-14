@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import csv
 from array import array
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,6 +48,9 @@ class SearchRecord:
     text: str
     evidence_items: list[dict]
     metadata: dict
+    vector_path: str
+    vector_row: int
+    source_bundle: str
 
 
 class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin, SearchRelatedMixin):
@@ -64,12 +67,17 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
         local_files_only: bool,
         max_seq_length: int | None,
         device: str,
+        idf_path: Path | None = None,
         elastic_url: str | None = None,
         elastic_index: str | None = None,
         elastic_num_candidates: int = 100,
+        require_elasticsearch: bool = False,
+        elastic_exclude_source_prefixes: list[str] | tuple[str, ...] | None = ("mimic",),
         search_knn_func: Callable[..., list[dict]] | None = None,
         label_index_paths: list[Path] | None = None,
         label_max_tokens: int = 8,
+        label_fallback_limit: int = 120,
+        definition_fallback_limit: int = 80,
         code_index_path: Path | None = None,
         semantic_type_index_path: Path | None = None,
         relation_index_path: Path | None = None,
@@ -97,18 +105,30 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
             provider,
             model=model,
             dim=dim,
+            idf_path=idf_path,
             local_files_only=local_files_only,
             max_seq_length=max_seq_length,
             device=device,
         )
+        self.idf_path = idf_path
         self.elastic_url = elastic_url
         self.elastic_index = elastic_index
         self.elastic_num_candidates = elastic_num_candidates
+        self.require_elasticsearch = require_elasticsearch
+        self.elastic_exclude_source_prefixes = tuple(
+            prefix.strip()
+            for prefix in (elastic_exclude_source_prefixes or [])
+            if prefix.strip()
+        )
         self.search_knn = search_knn_func or search_knn
+        self.elastic_disabled_until = 0.0
+        self.elastic_failure_reason = ""
         self.label_fallback = LabelFallback(
             label_index_paths or [],
             max_tokens=label_max_tokens,
         )
+        self.label_fallback_limit = max(0, int(label_fallback_limit or 0))
+        self.definition_fallback_limit = max(0, int(definition_fallback_limit or 0))
         self.code_index_path = code_index_path
         self.code_index = CodeIndex(code_index_path) if code_index_path else None
         self.semantic_type_index_path = semantic_type_index_path
@@ -151,9 +171,16 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
         self.drug_rollup_cache: dict[tuple[str, int], list[dict]] = {}
         self.loinc_lc_label_cache: dict[str, str] = {}
         self.records: list[SearchRecord] = []
+        self.vector_matrix = None
+        self.vector_matrix_backend = "python"
+        self.source_bundle_counts: dict[str, int] = {}
+        self.vector_file_counts: dict[str, int] = {}
         self.records_by_doc_id: dict[str, SearchRecord] = {}
         self.records_by_cui: dict[str, list[SearchRecord]] = {}
         self.best_record_by_cui: dict[str, SearchRecord] = {}
+        self.preferred_label_cache: dict[str, str] = {}
+        self.semantic_types_cache: dict[str, list[dict]] = {}
+        self.definitions_cache: dict[tuple[str, int], list[dict]] = {}
         self.extension_label_rows_by_norm: dict[str, list[dict]] = {}
         self.extension_semantic_types_by_cui: dict[str, list[dict]] = {}
         self.active_label_rows_by_norm: dict[str, list[dict]] = {}
@@ -186,7 +213,7 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
         records: list[SearchRecord] = []
         actual_dim: int | None = None
         for vectors_path in self.vector_paths:
-            for vector_record in iter_vectors(vectors_path):
+            for vector_row, vector_record in enumerate(iter_vectors(vectors_path)):
                 if actual_dim is None:
                     actual_dim = len(vector_record.vector)
                 elif len(vector_record.vector) != actual_dim:
@@ -205,6 +232,12 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
                 evidence_count = int(
                     metadata.get("evidence_count") or doc.get("evidence_count") or 0
                 )
+                source_bundle = self.source_bundle_for_record(
+                    vector_path=vectors_path,
+                    doc=doc,
+                    metadata=metadata,
+                    sources=sources,
+                )
                 records.append(
                     SearchRecord(
                         doc_id=vector_record.doc_id,
@@ -219,9 +252,15 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
                             str(doc.get("text") or vector_record.text or "")
                         ),
                         metadata=metadata,
+                        vector_path=str(vectors_path),
+                        vector_row=vector_row,
+                        source_bundle=source_bundle,
                     )
                 )
         self.records = records
+        self.vector_matrix = self._build_vector_matrix(records)
+        self.source_bundle_counts = dict(Counter(record.source_bundle for record in records))
+        self.vector_file_counts = dict(Counter(record.vector_path for record in records))
         self.records_by_doc_id = {record.doc_id: record for record in records}
         records_by_cui: dict[str, list[SearchRecord]] = {}
         for record in records:
@@ -250,6 +289,60 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
         if actual_dim is not None:
             self.dim = actual_dim
         self.load_seconds = time.time() - started
+
+    def _build_vector_matrix(self, records: list[SearchRecord]):
+        if not records:
+            return None
+        try:
+            import numpy as np
+        except Exception:
+            self.vector_matrix_backend = "python"
+            return None
+        matrix = np.asarray([record.vector for record in records], dtype=np.float32)
+        if matrix.ndim != 2:
+            self.vector_matrix_backend = "python"
+            return None
+        if not np.isfinite(matrix).all():
+            matrix = np.nan_to_num(matrix, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
+        self.vector_matrix_backend = "numpy"
+        return np.ascontiguousarray(matrix, dtype=np.float32)
+
+    def source_bundle_for_record(
+        self,
+        *,
+        vector_path: Path,
+        doc: dict,
+        metadata: dict,
+        sources: list[str],
+    ) -> str:
+        explicit = str(
+            metadata.get("source_bundle")
+            or doc.get("source_bundle")
+            or ""
+        ).strip()
+        if explicit:
+            return explicit
+        if len(sources) == 1 and sources[0]:
+            return str(sources[0])
+        name = vector_path.name
+        for suffix in (
+            ".hashing.jsonl",
+            ".sentence_transformers.jsonl",
+            ".transformers_cls.jsonl",
+            ".bert_cls.jsonl",
+            ".sapbert.jsonl",
+            ".jsonl",
+        ):
+            if name.endswith(suffix):
+                name = name[: -len(suffix)]
+                break
+        for marker in (
+            "_concept_vectors",
+            "_vectors",
+            ".cumulative",
+        ):
+            name = name.replace(marker, "")
+        return name or "unknown"
 
     def images_by_cui_for_records(self, records: list[SearchRecord]) -> dict[str, list[dict]]:
         by_cui: dict[str, list[dict]] = {}
@@ -383,6 +476,20 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
             "vector_paths": [str(path) for path in self.vector_paths],
             "doc_paths": [str(path) for path in self.doc_paths],
             "records": len(self.records),
+            "source_bundles": [
+                {"source_bundle": source_bundle, "records": count}
+                for source_bundle, count in sorted(
+                    self.source_bundle_counts.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )
+            ],
+            "vector_file_records": [
+                {"vector_path": vector_path, "records": count}
+                for vector_path, count in sorted(
+                    self.vector_file_counts.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )
+            ],
             "docs": self.docs_count,
             "evidence_sources": self.provenance_count,
             "evidence_files": len(self.evidence_paths),
@@ -391,10 +498,18 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
             "dim": self.dim,
             "embedding_provider": self.embedder.provider_name,
             "embedding_model": self.embedder.model_name,
-            "search_backend": "elasticsearch" if self.elastic_index else "local",
+            "idf_path": str(self.idf_path or ""),
+            "search_backend": "elasticsearch" if self.elastic_url and self.elastic_index else "local",
+            "local_vector_backend": self.vector_matrix_backend,
             "elastic_url": self.elastic_url or "",
             "elastic_index": self.elastic_index or "",
+            "elastic_num_candidates": self.elastic_num_candidates,
+            "require_elasticsearch": self.require_elasticsearch,
+            "elastic_exclude_source_prefixes": list(self.elastic_exclude_source_prefixes),
+            "elastic_disabled_until": round(self.elastic_disabled_until, 3),
             "label_indexes": [str(path) for path in self.label_fallback.paths],
+            "label_fallback_limit": self.label_fallback_limit,
+            "definition_fallback_limit": self.definition_fallback_limit,
             "code_index": str(self.code_index_path or ""),
             "code_mappings": self.code_index.mapping_count() if self.code_index else 0,
             "semantic_type_index": str(self.semantic_type_index_path or ""),

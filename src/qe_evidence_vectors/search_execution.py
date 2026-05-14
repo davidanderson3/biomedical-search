@@ -5,18 +5,22 @@ from array import array
 from copy import deepcopy
 from urllib.error import URLError
 
+from qe_evidence_vectors.generic_filters import is_blocked_generic_query
 from qe_evidence_vectors.search_semantics import semantic_group_metadata
 from qe_evidence_vectors.search_semantic_buckets import (
     hit_matches_any_semantic_bucket,
     normalize_semantic_bucket_filter,
 )
 from qe_evidence_vectors.search_utils import (
-    concept_display_name,
     dot,
     source_mix_from_evidence_items,
 )
 
 VALID_SEARCH_MODES = {"balanced", "exact", "comprehensive"}
+
+
+class SearchBackendUnavailable(RuntimeError):
+    pass
 
 
 def normalize_search_mode(value: object = None) -> str:
@@ -51,6 +55,13 @@ class SearchExecutionMixin:
         "source_mix",
         "text",
     }
+    SEARCH_HIT_DEBUG_FIELDS = {
+        "retrieval",
+        "source_bundle",
+        "vector_lineage",
+        "vector_path",
+        "vector_row",
+    }
 
     def search_cache_key(
         self,
@@ -60,6 +71,7 @@ class SearchExecutionMixin:
         include_related: bool,
         semantic_bucket_keys: object = None,
         search_mode: object = None,
+        debug: bool = False,
     ) -> tuple:
         mode = normalize_search_mode(search_mode)
         return (
@@ -67,6 +79,7 @@ class SearchExecutionMixin:
             str(query or "").strip(),
             int(top_k),
             bool(include_related),
+            bool(debug),
             mode,
             tuple(normalize_semantic_bucket_filter(semantic_bucket_keys)),
             int(getattr(self, "related_limit", 0) or 0),
@@ -74,8 +87,11 @@ class SearchExecutionMixin:
             int(getattr(self, "expensive_related_source_limit", 0) or 0),
             int(getattr(self, "candidate_pool_multiplier", 0) or 0),
             int(getattr(self, "candidate_pool_min", 0) or 0),
+            int(getattr(self, "label_fallback_limit", 0) or 0),
+            int(getattr(self, "definition_fallback_limit", 0) or 0),
             str(getattr(self, "elastic_url", "") or ""),
             str(getattr(self, "elastic_index", "") or ""),
+            int(getattr(self, "elastic_num_candidates", 0) or 0),
         )
 
     def rerank_candidate_pool_size(self, top_k: int, *, search_mode: object = None) -> int:
@@ -119,20 +135,116 @@ class SearchExecutionMixin:
             if hit_matches_any_semantic_bucket(hit, keys)
         ]
 
-    def compact_search_hit(self, hit: dict) -> dict:
+    def compact_search_hit(self, hit: dict, *, include_debug: bool = False) -> dict:
         compact = {
             key: value
             for key, value in hit.items()
             if key not in self.SEARCH_HIT_DETAIL_FIELDS
         }
+        if (
+            hit.get("mappings")
+            and str(hit.get("match_type") or "") in {"code", "cui", "system_code"}
+        ):
+            compact["mappings"] = hit["mappings"]
+        if (
+            hit.get("evidence_items")
+            and str(hit.get("match_type") or "") == "umls_label"
+            and int(hit.get("evidence_count") or 0) > 0
+        ):
+            compact["evidence_items"] = hit["evidence_items"]
+        if not include_debug:
+            for key in self.SEARCH_HIT_DEBUG_FIELDS:
+                compact.pop(key, None)
         compact["details_lazy"] = True
         return compact
 
-    def compact_search_response(self, result: dict) -> dict:
+    def compact_search_response(self, result: dict, *, include_debug: bool = False) -> dict:
         output = dict(result)
-        output["hits"] = [self.compact_search_hit(hit) for hit in result.get("hits") or []]
+        output["hits"] = [
+            self.compact_search_hit(hit, include_debug=include_debug)
+            for hit in result.get("hits") or []
+        ]
         output["details_lazy"] = True
         return output
+
+    def source_contribution_metadata(self, hits: list[dict], *, include_debug: bool = False) -> dict:
+        def summarize(bucket: dict[str, dict]) -> list[dict]:
+            rows = []
+            for key, value in bucket.items():
+                best = value["best_hit"]
+                rows.append(
+                    {
+                        value["field"]: key,
+                        "hits": value["hits"],
+                        "unique_cuis": len(value["cuis"]),
+                        "top_rank": value["top_rank"],
+                        "max_score": round(value["max_score"], 6),
+                        "best_hit": best,
+                    }
+                )
+            return sorted(rows, key=lambda row: (row["top_rank"], -row["max_score"], row.get("source") or row.get("source_bundle") or row.get("vector_path") or ""))
+
+        def add(bucket: dict[str, dict], *, field: str, key: str, rank: int, hit: dict) -> None:
+            key = str(key or "unknown")
+            score = float(hit.get("score") or 0.0)
+            current = bucket.get(key)
+            best_hit = {
+                "rank": rank,
+                "cui": str(hit.get("cui") or ""),
+                "name": str(hit.get("name") or ""),
+                "score": round(score, 6),
+            }
+            if current is None:
+                bucket[key] = {
+                    "field": field,
+                    "hits": 1,
+                    "cuis": {str(hit.get("cui") or "")},
+                    "top_rank": rank,
+                    "max_score": score,
+                    "best_hit": best_hit,
+                }
+                return
+            current["hits"] += 1
+            current["cuis"].add(str(hit.get("cui") or ""))
+            if rank < current["top_rank"]:
+                current["top_rank"] = rank
+            if score > current["max_score"]:
+                current["max_score"] = score
+                current["best_hit"] = best_hit
+
+        source_bucket: dict[str, dict] = {}
+        bundle_bucket: dict[str, dict] = {}
+        vector_bucket: dict[str, dict] = {}
+        for rank, hit in enumerate(hits, start=1):
+            sources = [
+                str(source).strip()
+                for source in (hit.get("sources") or [])
+                if str(source).strip()
+            ] or ["unknown"]
+            for source in sources:
+                add(source_bucket, field="source", key=source, rank=rank, hit=hit)
+            add(
+                bundle_bucket,
+                field="source_bundle",
+                key=str(hit.get("source_bundle") or "unknown"),
+                rank=rank,
+                hit=hit,
+            )
+            if include_debug:
+                add(
+                    vector_bucket,
+                    field="vector_path",
+                    key=str(hit.get("vector_path") or "unknown"),
+                    rank=rank,
+                    hit=hit,
+                )
+        metadata = {
+            "source_contributions": summarize(source_bucket),
+            "source_bundle_contributions": summarize(bundle_bucket),
+        }
+        if include_debug:
+            metadata["vector_file_contributions"] = summarize(vector_bucket)
+        return metadata
 
     def filter_hits_by_search_mode(self, hits: list[dict], *, search_mode: object = None) -> list[dict]:
         mode = normalize_search_mode(search_mode)
@@ -222,6 +334,7 @@ class SearchExecutionMixin:
                         vector=list(seed.vector),
                         k=elastic_k,
                         num_candidates=max(self.elastic_num_candidates, elastic_k),
+                        exclude_source_prefixes=getattr(self, "elastic_exclude_source_prefixes", ()),
                     )
                     for raw_hit in raw_hits:
                         source = raw_hit.get("_source", {}) or {}
@@ -231,24 +344,30 @@ class SearchExecutionMixin:
                         if not target_cui or target_cui == cui:
                             continue
                         score = float(raw_hit.get("_score", 0.0))
-                        hit = self.hit_from_record(record, score=score) if record else {
-                            "doc_id": doc_id,
-                            "cui": target_cui,
-                            "name": self.preferred_label_for_cui(target_cui) or concept_display_name(
-                                self.labels_for_cui(target_cui, list(source.get("labels") or [])),
-                                fallback=target_cui,
-                            ),
-                            "view": str(source.get("view") or ""),
-                            "score": score,
-                            "labels": self.labels_for_cui(target_cui, list(source.get("labels") or [])),
-                            "sources": list(source.get("sources") or []),
-                            "evidence_count": int(source.get("evidence_count") or 0),
-                            "semantic_types": self.semantic_types_for_cui(target_cui),
-                            "images": self.images_for_cui(target_cui),
-                            "text": str(source.get("text") or ""),
-                            "evidence_items": [],
-                            "related_concepts": [],
-                        }
+                        if record:
+                            hit = self.hit_from_record(record, score=score)
+                        else:
+                            labels = self.labels_for_cui(target_cui, list(source.get("labels") or []))
+                            name = self.display_label_for_cui(target_cui, labels)
+                            if not name:
+                                continue
+                            hit = {
+                                "doc_id": doc_id,
+                                "cui": target_cui,
+                                "name": name,
+                                "view": str(source.get("view") or ""),
+                                "score": score,
+                                "labels": labels,
+                                "sources": list(source.get("sources") or []),
+                                "evidence_count": int(source.get("evidence_count") or 0),
+                                "semantic_types": self.semantic_types_for_cui(target_cui),
+                                "images": self.images_for_cui(target_cui),
+                                "text": str(source.get("text") or ""),
+                                "evidence_items": [],
+                                "related_concepts": [],
+                            }
+                        if not hit.get("name"):
+                            continue
                         hit["seed_doc_id"] = seed.doc_id
                         current = candidate_hits.get(target_cui)
                         if current is None or score > float(current.get("score") or 0):
@@ -272,6 +391,88 @@ class SearchExecutionMixin:
             hit["mappings"] = self.mappings_for_cui(str(hit.get("cui") or ""), limit=10)
         return hits
 
+    def mark_elasticsearch_unavailable(self, exc: BaseException, *, cooldown_seconds: float = 30.0) -> str:
+        reason = f"elasticsearch unavailable: {exc}"
+        self.elastic_failure_reason = reason
+        self.elastic_disabled_until = time.time() + cooldown_seconds
+        return reason
+
+    def elastic_search_is_temporarily_disabled(self) -> bool:
+        return bool(
+            getattr(self, "elastic_disabled_until", 0.0)
+            and time.time() < float(getattr(self, "elastic_disabled_until", 0.0))
+        )
+
+    def require_elasticsearch_or_raise(self, reason: str) -> None:
+        if getattr(self, "require_elasticsearch", False):
+            raise SearchBackendUnavailable(f"Elasticsearch is required: {reason}")
+
+    def local_vector_candidates(self, query_vector: array, *, candidate_pool_k: int) -> list[dict]:
+        matrix = getattr(self, "vector_matrix", None)
+        if matrix is not None:
+            candidates = self.numpy_local_vector_candidates(
+                query_vector,
+                candidate_pool_k=candidate_pool_k,
+            )
+            if candidates:
+                return candidates
+        best_by_cui: dict[str, dict] = {}
+        for record in self.records:
+            score = dot(query_vector, record.vector)
+            current = best_by_cui.get(record.cui)
+            if current is None or score > current["score"]:
+                best_by_cui[record.cui] = {
+                    "score": score,
+                    "record": record,
+                }
+        return sorted(best_by_cui.values(), key=lambda hit: hit["score"], reverse=True)[:candidate_pool_k]
+
+    def numpy_local_vector_candidates(self, query_vector: array, *, candidate_pool_k: int) -> list[dict]:
+        try:
+            import numpy as np
+        except Exception:
+            return []
+        matrix = getattr(self, "vector_matrix", None)
+        if matrix is None or not len(self.records):
+            return []
+        query = np.asarray(query_vector, dtype=np.float32)
+        if query.ndim != 1 or query.shape[0] != matrix.shape[1]:
+            return []
+        if not np.isfinite(query).all():
+            query = np.nan_to_num(query, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            scores = matrix @ query
+        if not np.isfinite(scores).all():
+            scores = np.nan_to_num(scores, copy=False, nan=-np.inf, posinf=-np.inf, neginf=-np.inf)
+        total = int(scores.shape[0])
+        if total <= 0:
+            return []
+        raw_k = min(total, max(candidate_pool_k * 8, candidate_pool_k + 256))
+        while True:
+            if raw_k >= total:
+                order = np.argsort(scores)[::-1]
+            else:
+                unordered = np.argpartition(scores, -raw_k)[-raw_k:]
+                order = unordered[np.argsort(scores[unordered])[::-1]]
+            candidates = []
+            seen_cuis: set[str] = set()
+            for index in order:
+                record = self.records[int(index)]
+                if record.cui in seen_cuis:
+                    continue
+                seen_cuis.add(record.cui)
+                candidates.append(
+                    {
+                        "score": float(scores[int(index)]),
+                        "record": record,
+                    }
+                )
+                if len(candidates) >= candidate_pool_k:
+                    return candidates
+            if raw_k >= total:
+                return candidates
+            raw_k = min(total, raw_k * 2)
+
     def search(
         self,
         query: str,
@@ -280,6 +481,7 @@ class SearchExecutionMixin:
         include_related: bool = True,
         semantic_bucket_keys: object = None,
         search_mode: object = None,
+        debug: bool = False,
     ) -> dict:
         started = time.time()
         search_mode = normalize_search_mode(search_mode)
@@ -290,10 +492,29 @@ class SearchExecutionMixin:
             include_related=include_related,
             semantic_bucket_keys=semantic_bucket_keys,
             search_mode=search_mode,
+            debug=debug,
         )
         cached = self.cached_search_result(cache_key, started=started)
         if cached is not None:
             return cached
+        if is_blocked_generic_query(query):
+            result = {
+                "query": query,
+                "top_k": top_k,
+                "search_mode": search_mode,
+                "backend": "generic_query_filter",
+                "scoring": self.scoring_summary("generic_query_filter", search_mode=search_mode),
+                "semantic_bucket_filter": list(semantic_bucket_keys),
+                "hits": [],
+                **self.source_contribution_metadata([], include_debug=debug),
+                **self.semantic_response_metadata(
+                    [],
+                    include_related=include_related,
+                    semantic_bucket_keys=semantic_bucket_keys,
+                ),
+                "elapsed_ms": round((time.time() - started) * 1000, 1),
+            }
+            return self.store_search_result_cache(cache_key, result)
         resolution = self.resolve(query, limit=max(top_k * 2, 10))
         if resolution.get("input_type") in {"cui", "system_code", "code"} and resolution.get("candidates"):
             result = self.direct_search(
@@ -303,6 +524,7 @@ class SearchExecutionMixin:
                 include_related=include_related,
                 semantic_bucket_keys=semantic_bucket_keys,
                 search_mode=search_mode,
+                debug=debug,
             )
             return self.store_search_result_cache(cache_key, result)
         query_vector = array("f", self.embedder.embed([query])[0])
@@ -311,6 +533,23 @@ class SearchExecutionMixin:
                 f"query vector dimension {len(query_vector)} does not match index dimension {self.dim}"
             )
         if self.elastic_url and self.elastic_index:
+            if self.elastic_search_is_temporarily_disabled():
+                self.require_elasticsearch_or_raise(
+                    self.elastic_failure_reason or "temporarily disabled after a previous failure"
+                )
+                result = self.search_local(
+                    query,
+                    query_vector=query_vector,
+                    top_k=top_k,
+                    started=started,
+                    include_related=include_related,
+                    backend="local_fallback",
+                    fallback_reason=self.elastic_failure_reason or "elasticsearch temporarily disabled",
+                    semantic_bucket_keys=semantic_bucket_keys,
+                    search_mode=search_mode,
+                    debug=debug,
+                )
+                return self.store_search_result_cache(cache_key, result)
             try:
                 result = self.search_elastic(
                     query,
@@ -320,9 +559,14 @@ class SearchExecutionMixin:
                     include_related=include_related,
                     semantic_bucket_keys=semantic_bucket_keys,
                     search_mode=search_mode,
+                    debug=debug,
                 )
+                self.elastic_disabled_until = 0.0
+                self.elastic_failure_reason = ""
                 return self.store_search_result_cache(cache_key, result)
             except (OSError, URLError) as exc:
+                fallback_reason = self.mark_elasticsearch_unavailable(exc)
+                self.require_elasticsearch_or_raise(fallback_reason)
                 result = self.search_local(
                     query,
                     query_vector=query_vector,
@@ -330,11 +574,13 @@ class SearchExecutionMixin:
                     started=started,
                     include_related=include_related,
                     backend="local_fallback",
-                    fallback_reason=f"elasticsearch unavailable: {exc}",
+                    fallback_reason=fallback_reason,
                     semantic_bucket_keys=semantic_bucket_keys,
                     search_mode=search_mode,
+                    debug=debug,
                 )
                 return self.store_search_result_cache(cache_key, result)
+        self.require_elasticsearch_or_raise("missing --elastic-url or --elastic-index")
         result = self.search_local(
             query,
             query_vector=query_vector,
@@ -343,6 +589,7 @@ class SearchExecutionMixin:
             include_related=include_related,
             semantic_bucket_keys=semantic_bucket_keys,
             search_mode=search_mode,
+            debug=debug,
         )
         return self.store_search_result_cache(cache_key, result)
 
@@ -358,23 +605,27 @@ class SearchExecutionMixin:
         fallback_reason: str = "",
         semantic_bucket_keys: object = None,
         search_mode: object = None,
+        debug: bool = False,
     ) -> dict:
         search_mode = normalize_search_mode(search_mode)
-        best_by_cui: dict[str, dict] = {}
-        for record in self.records:
-            score = dot(query_vector, record.vector)
-            current = best_by_cui.get(record.cui)
-            if current is None or score > current["score"]:
-                best_by_cui[record.cui] = {
-                    "score": score,
-                    "record": record,
-                }
         rank_top_k = self.semantic_filter_rank_limit(top_k, semantic_bucket_keys, search_mode=search_mode)
         candidate_pool_k = self.rerank_candidate_pool_size(rank_top_k, search_mode=search_mode)
-        hits = [
-            self.hit_from_record(item["record"], score=float(item["score"]))
-            for item in sorted(best_by_cui.values(), key=lambda hit: hit["score"], reverse=True)[:candidate_pool_k]
-        ]
+        candidates = self.local_vector_candidates(query_vector, candidate_pool_k=candidate_pool_k)
+        hits = []
+        for candidate_rank, item in enumerate(candidates, start=1):
+            hit = self.hit_from_record(
+                item["record"],
+                score=float(item["score"]),
+                hydrate_details=False,
+            )
+            if not hit.get("name"):
+                continue
+            hit["retrieval"] = {
+                "kind": "local_vector",
+                "candidate_rank": candidate_rank,
+                "vector_backend": getattr(self, "vector_matrix_backend", "python"),
+            }
+            hits.append(hit)
         hits = self.merge_label_fallback(query, hits, top_k=rank_top_k)
         hits = self.filter_hits_by_search_mode(hits, search_mode=search_mode)
         hits = self.filter_hits_by_semantic_buckets(hits, semantic_bucket_keys)[:top_k]
@@ -390,6 +641,7 @@ class SearchExecutionMixin:
             "scoring": self.scoring_summary("local", search_mode=search_mode),
             "semantic_bucket_filter": list(normalize_semantic_bucket_filter(semantic_bucket_keys)),
             "hits": hits,
+            **self.source_contribution_metadata(hits, include_debug=debug),
             **self.semantic_response_metadata(
                 hits,
                 include_related=include_related,
@@ -400,7 +652,7 @@ class SearchExecutionMixin:
         if fallback_reason:
             result["fallback_reason"] = fallback_reason
             result["requested_backend"] = "elasticsearch"
-        return self.compact_search_response(result)
+        return self.compact_search_response(result, include_debug=debug)
 
     def search_elastic(
         self,
@@ -412,6 +664,7 @@ class SearchExecutionMixin:
         include_related: bool = True,
         semantic_bucket_keys: object = None,
         search_mode: object = None,
+        debug: bool = False,
     ) -> dict:
         search_mode = normalize_search_mode(search_mode)
         rank_top_k = self.semantic_filter_rank_limit(top_k, semantic_bucket_keys, search_mode=search_mode)
@@ -423,44 +676,67 @@ class SearchExecutionMixin:
             vector=query_vector,
             k=elastic_k,
             num_candidates=max(self.elastic_num_candidates, elastic_k),
+            exclude_source_prefixes=getattr(self, "elastic_exclude_source_prefixes", ()),
         )
         best_by_cui: dict[str, dict] = {}
         for hit in raw_hits:
             source = hit.get("_source", {}) or {}
             doc_id = str(source.get("doc_id") or hit.get("_id") or "")
             record = self.records_by_doc_id.get(doc_id)
+            if record is None:
+                continue
             cui = str(source.get("cui") or (record.cui if record else ""))
             if not cui:
                 continue
             semantic_types = self.semantic_types_for_cui(cui)
+            labels = self.labels_for_cui(
+                cui,
+                list(source.get("labels") or (record.labels if record else [])),
+            )
+            name = self.display_label_for_cui(cui, labels)
+            if not name:
+                continue
             result = {
                 "doc_id": doc_id,
                 "cui": cui,
-                "name": self.preferred_label_for_cui(cui) or concept_display_name(
-                    self.labels_for_cui(cui, list(source.get("labels") or (record.labels if record else []))),
-                    fallback=cui,
-                ),
+                "name": name,
                 "view": str(source.get("view") or (record.view if record else "")),
                 "score": float(hit.get("_score", 0.0)),
-                "labels": self.labels_for_cui(
-                    cui,
-                    list(source.get("labels") or (record.labels if record else [])),
-                ),
+                "labels": labels,
                 "sources": list(source.get("sources") or (record.sources if record else [])),
                 "evidence_count": int(
                     source.get("evidence_count") or (record.evidence_count if record else 0)
                 ),
+                "source_bundle": record.source_bundle if record else "",
+                "vector_path": record.vector_path if record else "",
+                "vector_row": record.vector_row if record else -1,
+                "vector_lineage": (
+                    {
+                        "vector_path": record.vector_path,
+                        "vector_row": record.vector_row,
+                        "source_bundle": record.source_bundle,
+                        "doc_id": record.doc_id,
+                        "cui": record.cui,
+                        "view": record.view,
+                    }
+                    if record
+                    else {}
+                ),
+                "retrieval": {
+                    "kind": "elasticsearch_knn",
+                    "elastic_index": self.elastic_index or "",
+                },
                 "source_mix": source_mix_from_evidence_items(
-                    self.evidence_items_for_record(record) if record else [],
+                    list(record.evidence_items) if record else [],
                     declared_sources=list(source.get("sources") or (record.sources if record else [])),
                     evidence_count=int(source.get("evidence_count") or (record.evidence_count if record else 0)),
                 ),
                 "semantic_types": semantic_types,
                 **semantic_group_metadata(semantic_types),
-                "definitions": self.definitions_for_cui(cui),
-                "images": self.images_for_cui(cui),
+                "definitions": [],
+                "images": [],
                 "text": record.text if record else str(source.get("text") or ""),
-                "evidence_items": self.evidence_items_for_record(record) if record else [],
+                "evidence_items": [dict(item) for item in record.evidence_items] if record else [],
             }
             current = best_by_cui.get(cui)
             if current is None or result["score"] > current["score"]:
@@ -481,10 +757,11 @@ class SearchExecutionMixin:
             "scoring": self.scoring_summary("elasticsearch", search_mode=search_mode),
             "semantic_bucket_filter": list(normalize_semantic_bucket_filter(semantic_bucket_keys)),
             "hits": hits,
+            **self.source_contribution_metadata(hits, include_debug=debug),
             **self.semantic_response_metadata(
                 hits,
                 include_related=include_related,
                 semantic_bucket_keys=semantic_bucket_keys,
             ),
             "elapsed_ms": round((time.time() - started) * 1000, 1),
-        })
+        }, include_debug=debug)

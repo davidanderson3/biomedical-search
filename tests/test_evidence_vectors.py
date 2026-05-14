@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import json
 import re
+import sqlite3
 import sys
 import warnings
 import xml.etree.ElementTree as ET
@@ -30,7 +31,14 @@ from qe_evidence_vectors.code_index import CodeIndex, build_code_index, looks_li
 from qe_evidence_vectors.definition_index import DefinitionIndex, build_definition_index
 from qe_evidence_vectors.elastic_client import build_knn_search_body, resolve_bulk_paths
 from qe_evidence_vectors.elastic_export import elastic_mapping, write_elastic_bulk, write_elastic_bulk_sharded
-from qe_evidence_vectors.embeddings import HashingEmbedder, embed_documents
+from qe_evidence_vectors.embeddings import (
+    HashingEmbedder,
+    IdfHashingEmbedder,
+    build_hashing_idf_weights,
+    embed_documents,
+    load_hashing_idf_weights,
+    write_hashing_idf_weights,
+)
 from qe_evidence_vectors.extension_concepts import (
     build_extension_concept_artifacts,
     concept_from_payload,
@@ -60,7 +68,7 @@ from qe_evidence_vectors.fetchers import (
     read_pubmed_topics,
     resolve_ncbi_api_key,
 )
-from qe_evidence_vectors.generic_filters import is_blocked_generic_concept
+from qe_evidence_vectors.generic_filters import is_blocked_generic_concept, is_blocked_generic_query
 from qe_evidence_vectors.label_index import LabelIndex, build_label_index
 from qe_evidence_vectors.linker import link_corpus_to_evidence
 from qe_evidence_vectors.mimic_notes import iter_mimic_note_documents, write_mimic_note_corpora
@@ -103,6 +111,18 @@ from qe_evidence_vectors.schema import ConceptDocument, CorpusDocument
 from qe_evidence_vectors.search import search_vectors
 from qe_evidence_vectors.semantic_type_index import SemanticTypeIndex, build_semantic_type_index
 from qe_evidence_vectors.semantic_profiles import biomedicine_profile_names, resolve_profiles
+from qe_evidence_vectors.source_acquisition import (
+    infer_candidate_disallowed_cuis,
+    load_relation_pairs,
+    plan_source_acquisition,
+    plan_source_acquisition_from_files,
+    unavailable_association_pairs,
+    write_acquisition_bundle,
+    write_association_candidates_jsonl,
+    write_association_candidates_tsv,
+    write_association_review_tsv,
+    write_reviewed_association_edges_jsonl,
+)
 from qe_evidence_vectors.search_semantic_buckets import (
     SEMANTIC_RESULT_BUCKETS,
     hit_matches_semantic_bucket,
@@ -110,12 +130,14 @@ from qe_evidence_vectors.search_semantic_buckets import (
     relation_visible_in_semantic_bucket,
     semantic_result_buckets_for_response,
 )
+from qe_evidence_vectors.search_rerank import definition_fallback_query_is_too_generic
 from qe_evidence_vectors.trie_linker import LabelTrie, link_document_to_evidence_trie
 from qe_evidence_vectors.universal_relationship import universal_relationship_edge
 from qe_evidence_vectors.wikipedia_enrichment import build_wikipedia_documents
 from scaling_status import chunk_number, plan_status
 from scaling_status import artifact_status
 import search_quality_server
+import evidence_vectors
 import compare_umls_api
 from search_quality_server import (
     API_VERSION,
@@ -244,6 +266,388 @@ def test_scaling_status_explains_human_progress_and_step_rationale(tmp_path: Pat
 def test_scaling_status_extracts_configured_chunk_number() -> None:
     assert chunk_number("scaling_chunk_005_diagnostics_procedures_devices") == "005"
     assert chunk_number("full_pipeline") is None
+
+
+def test_source_acquisition_plan_uses_measured_gaps_and_associations() -> None:
+    row = {
+        "id": "semaglutide_ckd",
+        "verdict": "mixed",
+        "expected_cuis": "C3885068|C0019018|C1561643",
+        "expected_count": "3",
+        "found_at_10": "2",
+        "found_at_20": "2",
+        "found_at_60": "3",
+        "coverage_at_10": "0.667",
+        "missing_at_10": "C3885068",
+        "missing_at_20": "C3885068",
+        "missing_at_60": "",
+        "disallowed_at_10": "",
+        "disallowed_at_20": "",
+        "accepted_alternatives_at_10": "",
+        "hits_top_10": (
+            "1:C0030768 Peer Review [PROC 1.900] | "
+            "2:C0019018 Glycosylated hemoglobin A [CHEM 1.400] | "
+            "3:C1561643 Chronic Kidney Diseases [DISO 1.300]"
+        ),
+        "query": (
+            "Semaglutide reduced hemoglobin A1c in adults with type 2 diabetes "
+            "and chronic kidney disease."
+        ),
+    }
+
+    plan = plan_source_acquisition(
+        [row],
+        max_recommendations=30,
+        available_relation_pairs=set(),
+    )
+
+    recommendations = plan["recommendations"]
+    assert plan["summary"]["unavailable_association_pairs"] >= 1
+    assert plan["summary"]["inferred_candidate_disallowed_cuis"] == 1
+    assert any(
+        item["source"] == "dailymed" and item["seed"] == "semaglutide"
+        for item in recommendations
+    )
+    assert any(
+        item["source"] == "relationship_edges" and item["association_pairs"]
+        for item in recommendations
+    )
+    assert plan["association_candidates"]
+
+
+def test_source_acquisition_bundle_writes_actionable_queues(tmp_path: Path) -> None:
+    row = {
+        "id": "semaglutide_ckd",
+        "verdict": "mixed",
+        "expected_cuis": "C3885068|C0011860|C1561643",
+        "expected_count": "3",
+        "found_at_10": "2",
+        "found_at_20": "2",
+        "coverage_at_10": "0.667",
+        "missing_at_10": "C3885068",
+        "missing_at_20": "C3885068",
+        "unavailable_association_pairs": "C0011860-C3885068",
+        "query": "Semaglutide for type 2 diabetes and chronic kidney disease.",
+    }
+    plan = plan_source_acquisition(
+        [row],
+        max_recommendations=10,
+        cui_label_map={
+            "C3885068": "Semaglutide",
+            "C0011860": "Type 2 Diabetes Mellitus",
+            "C1561643": "Chronic Kidney Disease",
+        },
+        semantic_group_map={
+            "C3885068": "CHEM",
+            "C0011860": "DISO",
+            "C1561643": "DISO",
+        },
+    )
+
+    manifest = write_acquisition_bundle(plan, tmp_path / "bundle")
+
+    assert manifest["counts"]["recommendations"] == len(plan["recommendations"])
+    assert manifest["counts"]["association_candidates"] == len(plan["association_candidates"])
+    assert (tmp_path / "bundle" / "source_action_seeds.tsv").exists()
+    assert (tmp_path / "bundle" / "literature_topics.tsv").exists()
+    commands = (tmp_path / "bundle" / "commands.todo.sh").read_text(encoding="utf-8")
+    assert "build/umls_biomedicine_search_label_index.sqlite" in commands
+    assert "dailymed_semaglutide" in commands
+    assert "<seed>" not in commands
+    assert "<MRCONSO.RRF>" not in commands
+
+
+def test_source_acquisition_ranks_labeled_association_evidence_candidates(tmp_path: Path) -> None:
+    row = {
+        "id": "semaglutide_trial",
+        "verdict": "mixed",
+        "expected_count": "3",
+        "found_at_10": "2",
+        "found_at_20": "2",
+        "coverage_at_10": "0.667",
+        "expected_cuis": "C3885068|C0011860|C1561643",
+        "missing_at_10": "C3885068",
+        "missing_at_20": "C3885068",
+        "unavailable_association_pairs": "C0011860-C3885068|C1561643-C3885068",
+        "query": (
+            "Semaglutide was prescribed for adults with type 2 diabetes "
+            "and chronic kidney disease."
+        ),
+    }
+    labels = {
+        "C3885068": "Semaglutide",
+        "C0011860": "Type 2 Diabetes Mellitus",
+        "C1561643": "Chronic Kidney Disease",
+    }
+    groups = {
+        "C3885068": "CHEM",
+        "C0011860": "DISO",
+        "C1561643": "DISO",
+    }
+
+    plan = plan_source_acquisition(
+        [row],
+        max_recommendations=10,
+        cui_label_map=labels,
+        semantic_group_map=groups,
+        prevalence_prior_map={"C0011860": 2.0},
+        infer_associations=False,
+    )
+    candidates = plan["association_candidates"]
+    diabetes_candidate = next(
+        item for item in candidates if item["pair"] == "C0011860-C3885068"
+    )
+
+    assert diabetes_candidate["source_cui"] == "C3885068"
+    assert diabetes_candidate["source_label"] == "Semaglutide"
+    assert diabetes_candidate["target_label"] == "Type 2 Diabetes Mellitus"
+    assert diabetes_candidate["relationship_type"] == "treats"
+    assert diabetes_candidate["evidence_sources"][0] == "dailymed"
+    assert diabetes_candidate["prevalence_score"] >= 2.0
+
+    out_jsonl = tmp_path / "association_candidates.jsonl"
+    out_tsv = tmp_path / "association_candidates.tsv"
+    review_tsv = tmp_path / "association_review.tsv"
+    write_association_candidates_jsonl(plan, out_jsonl)
+    write_association_candidates_tsv(plan, out_tsv)
+    write_association_review_tsv(plan, review_tsv)
+
+    assert '"review_status": "needs_source_evidence"' in out_jsonl.read_text(encoding="utf-8")
+    assert "Semaglutide" in out_tsv.read_text(encoding="utf-8")
+    review_text = review_tsv.read_text(encoding="utf-8")
+    assert "proposed_subject_cui" in review_text
+    assert "source_cui" not in review_text.splitlines()[0]
+
+
+def test_reviewed_association_template_builds_edges_only_after_approval(tmp_path: Path) -> None:
+    review = tmp_path / "review.tsv"
+    review.write_text(
+        "\t".join(
+            [
+                "rank",
+                "review_status",
+                "review_decision",
+                "candidate_pair",
+                "utility_score",
+                "prevalence_score",
+                "prevalence_multiplier",
+                "proposed_subject_cui",
+                "proposed_subject_label",
+                "proposed_object_cui",
+                "proposed_object_label",
+                "proposed_relationship_type",
+                "proposed_relation_group",
+                "proposed_direction",
+                "proposed_confidence",
+                "proposed_source",
+                "candidate_sources",
+                "sample_query_ids",
+                "evidence_search_query",
+                "evidence_source",
+                "source_url",
+                "supporting_pmids",
+                "supporting_doc_ids",
+                "evidence_text",
+                "reviewer",
+                "reviewer_notes",
+                "index_destination",
+                "rationale",
+            ]
+        )
+        + "\n"
+        + "\t".join(
+            [
+                "1",
+                "needs_source_evidence",
+                "approved",
+                "C0011860-C3885068",
+                "12.0",
+                "2.0",
+                "1.44",
+                "C3885068",
+                "Semaglutide",
+                "C0011860",
+                "Type 2 Diabetes Mellitus",
+                "treats",
+                "treatment",
+                "subject_to_object",
+                "0.82",
+                "dailymed",
+                "dailymed|pubmed",
+                "semaglutide_trial",
+                "Semaglutide type 2 diabetes treatment",
+                "dailymed",
+                "https://example.test/semaglutide",
+                "12345",
+                "",
+                "Reviewed label supports semaglutide use in type 2 diabetes.",
+                "reviewer",
+                "ok",
+                "relationship_edges",
+                "test",
+            ]
+        )
+        + "\n"
+        + "\t".join(
+            [
+                "2",
+                "needs_source_evidence",
+                "",
+                "C0011860-C0000001",
+                "1.0",
+                "1.0",
+                "1.22",
+                "C0000001",
+                "Unreviewed",
+                "C0011860",
+                "Type 2 Diabetes Mellitus",
+                "associated_with",
+                "benchmark_expected_pair",
+                "bidirectional",
+                "0.45",
+                "pubmed",
+                "pubmed",
+                "semaglutide_trial",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "relationship_edges",
+                "",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "reviewed_edges.jsonl"
+
+    count = write_reviewed_association_edges_jsonl([review], out)
+    rows = list(iter_jsonl(out))
+
+    assert count == 1
+    assert rows[0]["subject_cui"] == "C3885068"
+    assert rows[0]["object_cui"] == "C0011860"
+    assert rows[0]["relationship_type"] == "treats"
+    assert rows[0]["relation_group"] == "treatment"
+    assert rows[0]["edge"]["confidence"] == 0.82
+    assert rows[0]["edge"]["evidence"]["supporting_pmids"] == ["12345"]
+    assert rows[0]["edge"]["evidence"]["evidence_text"].startswith("Reviewed label")
+
+
+def test_source_acquisition_filters_associations_already_in_relation_index(tmp_path: Path) -> None:
+    relation_index = tmp_path / "relations.sqlite"
+    conn = sqlite3.connect(relation_index)
+    conn.execute(
+        """
+        CREATE TABLE related_concepts (
+            source_cui TEXT,
+            target_cui TEXT,
+            relation TEXT,
+            rela TEXT,
+            sab TEXT,
+            direction TEXT,
+            label TEXT,
+            rank INTEGER
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO related_concepts(
+            source_cui, target_cui, relation, rela, sab, direction, label, rank
+        )
+        VALUES ('C0000001', 'C0000002', 'RO', '', 'MSH', 'outgoing', 'two', 1)
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    available = load_relation_pairs([relation_index])
+    row = {"expected_cuis": "C0000001|C0000002|C0000003"}
+    pairs = unavailable_association_pairs(row, available_relation_pairs=available)
+
+    assert "C0000001-C0000002" not in pairs
+    assert "C0000001-C0000003" in pairs
+    assert "C0000002-C0000003" in pairs
+
+
+def test_source_acquisition_from_files_attaches_expected_cuis(tmp_path: Path) -> None:
+    quality = tmp_path / "paragraph_quality_summary.tsv"
+    quality.write_text(
+        "\t".join(
+            [
+                "id",
+                "verdict",
+                "expected_count",
+                "found_at_10",
+                "found_at_20",
+                "found_at_60",
+                "coverage_at_10",
+                "missing_at_10",
+                "missing_at_20",
+                "missing_at_60",
+                "disallowed_at_10",
+                "disallowed_at_20",
+                "accepted_alternatives_at_10",
+                "hits_top_10",
+                "query",
+            ]
+        )
+        + "\n"
+        + "\t".join(
+            [
+                "egfr_trial",
+                "mixed",
+                "3",
+                "2",
+                "2",
+                "3",
+                "0.667",
+                "C1414313",
+                "C1414313",
+                "",
+                "",
+                "",
+                "",
+                "1:C0332147 Status [DISO 1.500] | 2:C0007131 Non-Small Cell Lung Carcinoma [DISO 1.400]",
+                "EGFR mutated non small cell lung cancer treated with osimertinib.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    queries = tmp_path / "queries.tsv"
+    queries.write_text(
+        "id\tquery\texpected_cuis\tdisallowed_cuis\n"
+        "egfr_trial\tEGFR mutated non small cell lung cancer treated with osimertinib.\t"
+        "C0007131|C1414313|C4058811\t\n",
+        encoding="utf-8",
+    )
+    prevalence_prior = tmp_path / "prevalence.tsv"
+    prevalence_prior.write_text(
+        "cui\tprevalence_weight\n"
+        "C0007131\t2.5\n",
+        encoding="utf-8",
+    )
+
+    plan = plan_source_acquisition_from_files(
+        [quality],
+        query_spec_paths=[queries],
+        relation_index_paths=[],
+        prevalence_prior_paths=[prevalence_prior],
+        max_recommendations=20,
+    )
+
+    assert plan["query_spec_inputs"] == [str(queries)]
+    assert plan["prevalence_prior_inputs"] == [str(prevalence_prior)]
+    assert plan["summary"]["prevalence_prior_count"] == 1
+    assert plan["summary"]["unavailable_association_pairs"] >= 1
+    assert any(item["source"] == "nci" for item in plan["recommendations"])
+    assert any(item["prevalence_score"] >= 2.5 for item in plan["association_candidates"])
 
 
 def test_search_quality_judgments_round_trip_csv(tmp_path: Path) -> None:
@@ -1090,7 +1494,7 @@ def test_ranker_keeps_curated_memory_loss_anchor_visible() -> None:
 
     ordered_cuis = [hit["cui"] for hit in ranked]
     assert ordered_cuis.index("C0751295") < ordered_cuis.index("C0700327")
-    assert ordered_cuis.index("C0751295") < ordered_cuis.index("C1709925")
+    assert "C1709925" not in ordered_cuis
     memory_loss_hit = next(hit for hit in ranked if hit["cui"] == "C0751295")
     assert memory_loss_hit["score_breakdown"]["curated_exact_label_component"] > 0
 
@@ -1148,7 +1552,7 @@ def test_ranker_keeps_curated_explicit_single_token_symptom_and_drug_anchors_vis
 
     ranked = rank_hits(query, [evaluation, fever, pyelonephritis, dysuria], top_k=4)
     ordered_cuis = [hit["cui"] for hit in ranked]
-    assert ordered_cuis.index("C0013428") < ordered_cuis.index("C0220825")
+    assert "C0220825" not in ordered_cuis
     dysuria_hit = next(hit for hit in ranked if hit["cui"] == "C0013428")
     assert dysuria_hit["score_breakdown"]["curated_exact_label_component"] >= 0.30
 
@@ -1260,9 +1664,8 @@ def test_ranker_demotes_emergency_setting_concept_and_keeps_seizure_anchor_visib
     }
 
     ranked = rank_hits(pyelonephritis_query, [emergency, dysuria], top_k=2)
-    emergency_hit = next(hit for hit in ranked if hit["cui"] == "C2745965")
-    assert emergency_hit["score_breakdown"]["clinical_context_sense_penalty"] >= 0.42
     assert ranked[0]["cui"] == "C0013428"
+    assert "C2745965" not in [hit["cui"] for hit in ranked]
 
     withdrawal_query = (
         "A hospitalized patient developed alcohol withdrawal syndrome with tremor, "
@@ -1522,7 +1925,7 @@ def test_ranker_prefers_curated_multi_token_specific_label_over_generic_label() 
     )
 
     assert ranked[0]["cui"] == "C0001339"
-    assert ranked[0]["score_breakdown"]["curated_exact_label_component"] == 0.22
+    assert ranked[0]["score_breakdown"]["curated_exact_label_component"] == 0.34
 
 
 def test_ranker_gives_curated_exact_credit_to_lab_procedure_anchor() -> None:
@@ -1862,6 +2265,58 @@ def test_search_index_prefers_loinc_lc_for_clinical_attribute_names(tmp_path: Pa
     assert hit["labels"][0] == "Heart sounds"
 
 
+def test_search_index_excludes_all_suppressed_cui_from_display(tmp_path: Path) -> None:
+    mrconso = tmp_path / "MRCONSO.RRF"
+    mrsty = tmp_path / "MRSTY.RRF"
+    mrconso.write_text(
+        "C3266132|ENG|P|L1|PF|S1|Y|A1|||OLD1|MTH|PN|OLD1|Obsolete placeholder|0|O||\n"
+        "C3266132|ENG|P|L2|PF|S2|N|A2|||OLD2|MSH|MH|OLD2|Suppressed placeholder|0|Y||\n"
+        "C0004238|ENG|P|L3|PF|S3|Y|A3|||D001|MSH|MH|D001|Atrial Fibrillation|0|N||\n",
+        encoding="utf-8",
+    )
+    mrsty.write_text(
+        "C3266132|T033|A1.2.3|Finding|AT1|\n"
+        "C0004238|T047|B2.2.1.2.1|Disease or Syndrome|AT2|\n",
+        encoding="utf-8",
+    )
+    docs = build_documents(
+        [
+            EvidenceRecord("e1", "C3266132", "obsolete suppressed placeholder evidence", "mesh", "label", 1),
+            EvidenceRecord("e2", "C0004238", "atrial fibrillation evidence", "mesh", "label", 2),
+        ]
+    )
+    docs_path = tmp_path / "docs.jsonl"
+    vectors_path = tmp_path / "vectors.jsonl"
+    code_path = tmp_path / "codes.sqlite"
+    semantic_type_path = tmp_path / "semantic_types.sqlite"
+    write_jsonl(docs_path, docs)
+    write_jsonl(vectors_path, embed_documents(docs, HashingEmbedder(dim=16)))
+    build_code_index(mrconso_path=mrconso, out_path=code_path, replace=True)
+    build_semantic_type_index(mrsty_path=mrsty, out_path=semantic_type_path, replace=True)
+
+    index = SearchIndex(
+        vector_paths=[vectors_path],
+        doc_paths=[docs_path],
+        evidence_paths=[],
+        provenance_index_path=None,
+        provider="hashing",
+        model=None,
+        dim=16,
+        local_files_only=True,
+        max_seq_length=None,
+        device="cpu",
+        code_index_path=code_path,
+        semantic_type_index_path=semantic_type_path,
+    )
+
+    assert not index.concept_is_displayable("C3266132", ["C3266132"])
+    assert index.hit_from_record(index.best_record_for_cui("C3266132"), score=1.0)["name"] == ""
+    assert index.resolve("C3266132")["candidates"] == []
+    hits = index.search("obsolete suppressed placeholder", top_k=5, include_related=False)["hits"]
+    assert "C3266132" not in {hit["cui"] for hit in hits}
+    assert index.concept_is_displayable("C0004238", [])
+
+
 def test_definition_index_builds_and_searches_mrdef(tmp_path: Path) -> None:
     docs = tmp_path / "docs.jsonl"
     write_jsonl(
@@ -2101,11 +2556,10 @@ def test_query_ranker_demotes_broad_qualifier_fragments() -> None:
         ],
         top_k=1,
     )[0]
-    worsening = next(hit for hit in ranked if hit["cui"] == "C0332271")
     assert difficult["score_breakdown"]["lexical_fallback_used"]
     assert difficult["score_breakdown"]["generic_penalty"] > 0
     assert difficult["score_breakdown"]["evidence_context_component"] == 0.0
-    assert worsening["score_breakdown"]["generic_penalty"] > 0
+    assert "C0332271" not in [hit["cui"] for hit in ranked]
     pharmaceutical = next(hit for hit in ranked if hit["cui"] == "C0013227")
     assert pharmaceutical["score_breakdown"]["generic_penalty"] > 0
     assert pharmaceutical["score_breakdown"]["lexical_fallback_used"]
@@ -2144,13 +2598,50 @@ def test_query_ranker_respects_drug_answer_type_with_definitions() -> None:
                     }
                 ],
             },
+            {
+                "cui": "C0018939",
+                "name": "Hematological Disease",
+                "labels": ["Hematological Disease"],
+                "score": 0.70,
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C0042373",
+                "name": "Vascular Diseases",
+                "labels": ["Vascular Diseases"],
+                "score": 0.70,
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C0080306",
+                "name": "Vena Cava Filters",
+                "labels": ["Vena Cava Filters"],
+                "score": 0.70,
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Medical Device"}],
+            },
+            {
+                "cui": "C5206272",
+                "name": "CellSave Blood Collection Tube",
+                "labels": ["CellSave Blood Collection Tube"],
+                "score": 0.70,
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Medical Device"}],
+            },
         ],
-        top_k=2,
+        top_k=6,
     )
 
+    ordered_cuis = [hit["cui"] for hit in ranked]
     assert ranked[0]["cui"] == "C0003280"
     assert ranked[0]["score_breakdown"]["semantic_component"] > 0
     assert ranked[1]["score_breakdown"]["role_mismatch_penalty"] > 0
+    assert "C0018939" not in ordered_cuis
+    assert "C0042373" not in ordered_cuis
+    assert "C0080306" not in ordered_cuis
+    assert "C5206272" not in ordered_cuis
 
 
 def test_query_ranker_promotes_specific_noncontiguous_label_match() -> None:
@@ -2371,10 +2862,9 @@ def test_query_ranker_does_not_promote_modifier_only_numeric_match() -> None:
     )
 
     ordered_cuis = [hit["cui"] for hit in ranked]
-    assert ordered_cuis.index("C0011849") < ordered_cuis.index("C0745117")
-    assert ordered_cuis.index("C4014362") < ordered_cuis.index("C0745117")
-    controlled = next(hit for hit in ranked if hit["cui"] == "C0745117")
-    assert controlled["score_breakdown"]["lexical_component"] < 0.5
+    assert "C4014362" in ordered_cuis
+    assert "C0011849" in ordered_cuis
+    assert "C0745117" not in ordered_cuis
 
 
 def test_query_ranker_penalizes_numeric_context_without_substantive_anchor() -> None:
@@ -2444,12 +2934,9 @@ def test_query_ranker_does_not_double_count_vector_for_lexical_fallback() -> Non
         top_k=2,
     )
 
-    vector_only = next(hit for hit in ranked if hit["cui"] == "C0000001")
-    breakdown = vector_only["score_breakdown"]
-    assert breakdown["lexical_fallback_used"]
-    assert breakdown["lexical_component"] == 0.24
-    assert breakdown["vector_component"] == 0.12
-    assert breakdown["rank_score"] == 0.40
+    ordered_cuis = [hit["cui"] for hit in ranked]
+    assert "C0000002" in ordered_cuis
+    assert "C0000001" not in ordered_cuis
 
 
 def test_query_ranker_prefers_direct_infection_over_followup_and_broad_bucket() -> None:
@@ -2491,8 +2978,8 @@ def test_query_ranker_prefers_direct_infection_over_followup_and_broad_bucket() 
     )
 
     assert ranked[0]["cui"] == "C3714514"
-    broad = next(hit for hit in ranked if hit["cui"] == "C0009450")
-    assert ranked[0]["score_breakdown"]["semantic_component"] > broad["score_breakdown"]["semantic_component"]
+    assert "C0009450" not in [hit["cui"] for hit in ranked]
+    assert "C0589120" not in [hit["cui"] for hit in ranked]
 
 
 def test_query_ranker_demotes_generic_infection_when_specific_sti_anchors_are_present() -> None:
@@ -2807,9 +3294,8 @@ def test_query_ranker_demotes_generic_mutation_context_when_specific_context_pre
         [mutation, active],
         top_k=2,
     )
-    mutation_hit = next(hit for hit in ranked if hit["cui"] == "C1705285")
-    assert mutation_hit["score_breakdown"]["clinical_context_sense_penalty"] > 0
     assert ranked[0]["cui"] == "C0007131"
+    assert "C1705285" not in [hit["cui"] for hit in ranked]
 
     generic_query_ranked = rank_hits("mutation abnormality", [mutation, active], top_k=2)
     generic_query_hit = next(hit for hit in generic_query_ranked if hit["cui"] == "C1705285")
@@ -2841,9 +3327,8 @@ def test_query_ranker_demotes_broad_thromboembolism_fragment_for_specific_query(
         [broad, specific],
         top_k=2,
     )
-    broad_hit = next(hit for hit in ranked if hit["cui"] == "C1704212")
-    assert broad_hit["score_breakdown"]["clinical_context_sense_penalty"] > 0
     assert ranked[0]["cui"] == "C0034065"
+    assert "C1704212" not in [hit["cui"] for hit in ranked]
 
     broad_query_ranked = rank_hits("embolus", [broad, specific], top_k=2)
     broad_query_hit = next(hit for hit in broad_query_ranked if hit["cui"] == "C1704212")
@@ -3020,15 +3505,26 @@ def test_query_ranker_suppresses_ordinary_word_artifacts_in_clinical_prose() -> 
         "evidence_count": 12,
         "semantic_types": [{"name": "Disease or Syndrome"}],
     }
+    abnormal = {
+        "cui": "C0205161",
+        "name": "Abnormal",
+        "labels": ["Abnormal"],
+        "score": 1.18,
+        "match_type": "umls_label",
+        "matched_label": "Abnormal",
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Qualitative Concept"}],
+    }
 
     ranked = rank_hits(
         "Chart review described chronic obstructive pulmonary disease while source control was planned for sepsis.",
-        [chart_device, source, true_control_status, control_aspects, copd, sepsis],
-        top_k=6,
+        [chart_device, source, true_control_status, control_aspects, abnormal, copd, sepsis],
+        top_k=7,
     )
 
     ordered_cuis = [hit["cui"] for hit in ranked]
     assert ordered_cuis == ["C0024117", "C0243026"]
+    assert is_blocked_generic_concept("C0205161", "Abnormal")
     assert is_blocked_generic_concept("C0007963", "chart [medical device]")
     assert is_blocked_generic_concept("C0449416", "Source")
     assert is_blocked_generic_concept("C3274648", "True Control Status")
@@ -3171,7 +3667,7 @@ def test_query_ranker_filters_admin_review_artifacts_in_clinical_context() -> No
             "and adherence to tenofovir."
         ),
         [peer_review, reviewed_by, not_reviewed, chart_review, hiv, viral_load],
-        top_k=6,
+        top_k=8,
     )
 
     ordered_cuis = [hit["cui"] for hit in ranked]
@@ -3186,6 +3682,202 @@ def test_query_ranker_filters_admin_review_artifacts_in_clinical_context() -> No
     assert direct_peer_review[0]["cui"] == "C0030768"
     direct_chart_review = rank_hits("chart review", [chart_review], top_k=1)
     assert direct_chart_review[0]["cui"] == "C0541653"
+
+
+def test_query_ranker_filters_research_method_artifacts_in_long_paragraphs() -> None:
+    nsclc = {
+        "cui": "C0007131",
+        "name": "Non-Small Cell Lung Carcinoma",
+        "labels": ["Non-Small Cell Lung Cancer"],
+        "score": 0.95,
+        "match_type": "umls_label",
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Neoplastic Process"}],
+    }
+    osimertinib = {
+        "cui": "C4058811",
+        "name": "osimertinib",
+        "labels": ["osimertinib"],
+        "score": 0.9,
+        "match_type": "umls_label",
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Pharmacologic Substance"}],
+    }
+    placebo_trial = {
+        "cui": "C0599724",
+        "name": "Placebo-Controlled Trial",
+        "labels": ["Placebo-Controlled Trial"],
+        "score": 1.18,
+        "match_type": "umls_label",
+        "matched_label": "Placebo-Controlled Trial",
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Research Activity"}],
+    }
+    multicenter_study = {
+        "cui": "C1096776",
+        "name": "Multicenter Study",
+        "labels": ["Multicenter Study"],
+        "score": 1.12,
+        "match_type": "umls_label",
+        "matched_label": "Multicenter Study",
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Research Activity"}],
+    }
+    improved = {
+        "cui": "C0184511",
+        "name": "Improved",
+        "labels": ["Improved"],
+        "score": 1.1,
+        "match_type": "umls_label",
+        "matched_label": "Improved",
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    event_unit = {
+        "cui": "C4724244",
+        "name": "Event Unit",
+        "labels": ["Event Unit"],
+        "score": 1.08,
+        "match_type": "umls_label",
+        "matched_label": "Event Unit",
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Quantitative Concept"}],
+    }
+    clinical_trials = {
+        "cui": "C0008976",
+        "name": "Clinical Trials",
+        "labels": ["Clinical Trials"],
+        "score": 1.1,
+        "match_type": "umls_label",
+        "matched_label": "Clinical Trials",
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Research Activity"}],
+    }
+    medical_care = {
+        "cui": "C0496675",
+        "name": "Medical care",
+        "labels": ["Medical care"],
+        "score": 1.06,
+        "match_type": "umls_label",
+        "matched_label": "care",
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Therapeutic or Preventive Procedure"}],
+    }
+    small_amount = {
+        "cui": "C3869892",
+        "name": "Small amount",
+        "labels": ["Small amount"],
+        "score": 1.06,
+        "match_type": "umls_label",
+        "matched_label": "small",
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Quantitative Concept"}],
+    }
+    did_not_receive = {
+        "cui": "C0332155",
+        "name": "Did not receive therapy or drug for",
+        "labels": ["Did not receive therapy or drug for"],
+        "score": 1.06,
+        "match_type": "umls_label",
+        "matched_label": "therapy",
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    clinical_trials_phase_ii = {
+        "cui": "C0282460",
+        "name": "Clinical Trials, Phase II",
+        "labels": ["Clinical Trials, Phase II"],
+        "score": 1.06,
+        "match_type": "umls_label",
+        "matched_label": "Clinical Trials, Phase II",
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Research Activity"}],
+    }
+    observation_method = {
+        "cui": "C1551403",
+        "name": "Observation Method - Magnetic resonance",
+        "labels": ["Observation Method - Magnetic resonance"],
+        "score": 1.06,
+        "match_type": "umls_label",
+        "matched_label": "Magnetic resonance",
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Clinical Attribute"}],
+    }
+
+    ranked = rank_hits(
+        (
+            "A phase 3 oncology abstract enrolled patients with EGFR mutated "
+            "non small cell lung cancer. Osimertinib improved progression free "
+            "survival compared with placebo in the multicenter trial."
+        ),
+        [
+            placebo_trial,
+            multicenter_study,
+            improved,
+            event_unit,
+            clinical_trials,
+            medical_care,
+            small_amount,
+            did_not_receive,
+            clinical_trials_phase_ii,
+            observation_method,
+            nsclc,
+            osimertinib,
+        ],
+        top_k=10,
+    )
+
+    ordered_cuis = [hit["cui"] for hit in ranked]
+    assert ordered_cuis == ["C0007131", "C4058811"]
+
+    direct_study_design = rank_hits("placebo controlled trial", [placebo_trial], top_k=1)
+    assert direct_study_design[0]["cui"] == "C0599724"
+
+
+def test_query_ranker_filters_suspected_diagnosis_when_specific_targets_present() -> None:
+    valacyclovir = {
+        "cui": "C0209368",
+        "name": "valacyclovir",
+        "labels": ["valacyclovir"],
+        "score": 0.9,
+        "match_type": "umls_label",
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Organic Chemical"}],
+    }
+    shingles = {
+        "cui": "C0019360",
+        "name": "Herpes zoster (disorder)",
+        "labels": ["Herpes zoster", "shingles"],
+        "score": 0.88,
+        "match_type": "umls_label",
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    suspected = {
+        "cui": "C0332147",
+        "name": "Suspected diagnosis",
+        "labels": ["Suspected diagnosis", "suspected"],
+        "score": 1.08,
+        "match_type": "umls_label",
+        "matched_label": "suspected",
+        "matched_query_span": "suspected",
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Qualitative Concept"}],
+    }
+
+    ranked = rank_hits(
+        "She was started on valacyclovir for suspected shingles.",
+        [suspected, valacyclovir, shingles],
+        top_k=3,
+    )
+
+    ordered_cuis = [hit["cui"] for hit in ranked]
+    assert "C0209368" in ordered_cuis
+    assert "C0019360" in ordered_cuis
+    assert "C0332147" not in ordered_cuis
+
+    direct_status = rank_hits("suspected diagnosis", [suspected], top_k=1)
+    assert direct_status[0]["cui"] == "C0332147"
 
 
 def test_query_ranker_filters_standalone_immune_mediated_modifier_in_clinical_context() -> None:
@@ -4270,9 +4962,10 @@ def test_query_ranker_demotes_respiratory_aspiration_in_orthopedic_joint_context
         top_k=2,
     )
 
-    respiratory = next(hit for hit in ranked if hit["cui"] == "C1720922")
-    assert respiratory["score_breakdown"]["clinical_context_sense_penalty"] > 0
+    assert "C1720922" not in [hit["cui"] for hit in ranked]
     assert ranked[0]["cui"] == "C0204854"
+    direct_respiration = rank_hits("respiratory aspiration", [respiratory_aspiration], top_k=1)
+    assert direct_respiration[0]["cui"] == "C1720922"
 
 
 def test_query_ranker_filters_contextual_device_and_extract_false_positives() -> None:
@@ -4526,6 +5219,1283 @@ def test_query_ranker_filters_low_value_context_status_results() -> None:
     assert direct_tonsillitis[0]["cui"] == "C0740402"
 
 
+def test_query_ranker_filters_negated_status_and_route_only_disease_noise() -> None:
+    seizure_free = {
+        "cui": "C1299590",
+        "name": "Seizure free",
+        "labels": ["Seizure free", "No seizures", "No Seizure"],
+        "score": 1.04,
+        "match_type": "umls_label",
+        "matched_label": "No seizures",
+        "matched_query_span": "no seizures",
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    seizures = {
+        "cui": "C0036572",
+        "name": "Seizures",
+        "labels": ["Seizures"],
+        "score": 1.34,
+        "match_type": "umls_label",
+        "matched_label": "Seizures",
+        "matched_query_span": "seizures",
+        "evidence_count": 30,
+        "semantic_types": [{"name": "Sign or Symptom"}],
+    }
+    nsclc = {
+        "cui": "C0007131",
+        "name": "Non-Small Cell Lung Carcinoma",
+        "labels": ["Non-Small Cell Lung Carcinoma"],
+        "score": 0.95,
+        "match_type": "umls_label",
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Neoplastic Process"}],
+    }
+
+    oncology_ranked = rank_hits(
+        (
+            "A phase 3 oncology abstract enrolled patients with non small cell lung cancer "
+            "and brain metastases, but participants had no baseline seizures."
+        ),
+        [seizures, seizure_free, nsclc],
+        top_k=3,
+    )
+    assert oncology_ranked[0]["cui"] == "C0007131"
+    oncology_cuis = [hit["cui"] for hit in oncology_ranked]
+    assert "C1299590" not in oncology_cuis
+    assert "C0036572" not in oncology_cuis
+
+    direct_seizure_free = rank_hits("seizure free", [seizure_free], top_k=1)
+    assert direct_seizure_free[0]["cui"] == "C1299590"
+    direct_seizures = rank_hits("seizures", [seizures], top_k=1)
+    assert direct_seizures[0]["cui"] == "C0036572"
+
+    status_migrainosus = {
+        "cui": "C0338489",
+        "name": "Status Migrainosus",
+        "labels": ["Status Migrainosus"],
+        "score": 0.73,
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    sumatriptan = {
+        "cui": "C0075632",
+        "name": "sumatriptan",
+        "labels": ["sumatriptan"],
+        "score": 1.05,
+        "match_type": "umls_label",
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Pharmacologic Substance"}],
+    }
+    acute_colitis = {
+        "cui": "C2118460",
+        "name": "Acute colitis",
+        "labels": ["Acute colitis"],
+        "score": 0.61,
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    subcutaneous_abscess = {
+        "cui": "C0241266",
+        "name": "Subcutaneous Abscess",
+        "labels": ["Subcutaneous Abscess"],
+        "score": 0.61,
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    inflammatory_response = {
+        "cui": "C4022804",
+        "name": "Decreased inflammatory response",
+        "labels": ["Decreased inflammatory response"],
+        "score": 0.61,
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Pathologic Function"}],
+    }
+
+    migraine_ranked = rank_hits(
+        (
+            "Status migrainosus lasted longer than 72 hours and was treated with "
+            "subcutaneous sumatriptan and nonsteroidal anti inflammatory drugs."
+        ),
+        [
+            acute_colitis,
+            subcutaneous_abscess,
+            inflammatory_response,
+            status_migrainosus,
+            sumatriptan,
+        ],
+        top_k=5,
+    )
+    ordered_cuis = [hit["cui"] for hit in migraine_ranked]
+    assert "C0338489" in ordered_cuis
+    assert "C0075632" in ordered_cuis
+    assert "C2118460" not in ordered_cuis
+    assert "C0241266" not in ordered_cuis
+    assert "C4022804" not in ordered_cuis
+
+    direct_abscess = rank_hits("subcutaneous abscess", [subcutaneous_abscess], top_k=1)
+    assert direct_abscess[0]["cui"] == "C0241266"
+
+
+def test_query_ranker_filters_low_rank_modifier_site_and_risk_tails() -> None:
+    ischemic_stroke = {
+        "cui": "C0948008",
+        "name": "Ischemic stroke",
+        "labels": ["Ischemic stroke"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Ischemic stroke",
+        "matched_query_span": "ischemic stroke",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    persistent_stuttering = {
+        "cui": "C3553381",
+        "name": "STUTTERING, FAMILIAL PERSISTENT, 3",
+        "labels": ["STUTTERING, FAMILIAL PERSISTENT, 3"],
+        "score": 0.61,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    stroke_ranked = rank_hits(
+        "No evidence of persistent neurologic deficit was found during evaluation for ischemic stroke.",
+        [persistent_stuttering, ischemic_stroke],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in stroke_ranked] == ["C0948008"]
+
+    pid = {
+        "cui": "C0242172",
+        "name": "Pelvic Inflammatory Disease",
+        "labels": ["Pelvic Inflammatory Disease"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Pelvic Inflammatory Disease",
+        "matched_query_span": "pelvic inflammatory disease",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    tubo_ovarian_abscess = {
+        "cui": "C0041343",
+        "name": "Tubo-ovarian abscess",
+        "labels": ["Tubo-ovarian abscess"],
+        "score": 0.9,
+        "match_type": "umls_label",
+        "matched_label": "tubo ovarian abscess",
+        "matched_query_span": "tubo ovarian abscess",
+        "sources": ["umls_label"],
+        "evidence_count": 10,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    ovarian_dysgenesis = {
+        "cui": "C4748263",
+        "name": "OVARIAN DYSGENESIS 7",
+        "labels": ["OVARIAN DYSGENESIS 7"],
+        "score": 0.61,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    pid_ranked = rank_hits(
+        "No evidence of tubo ovarian abscess was found during evaluation for pelvic inflammatory disease.",
+        [ovarian_dysgenesis, tubo_ovarian_abscess, pid],
+        top_k=3,
+    )
+    assert [hit["cui"] for hit in pid_ranked] == ["C0242172", "C0041343"]
+
+    diabetes = {
+        "cui": "NEW1692186",
+        "name": "poorly controlled type 2 diabetes mellitus",
+        "labels": ["poorly controlled type 2 diabetes mellitus"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "poorly controlled type 2 diabetes mellitus",
+        "matched_query_span": "poorly controlled type 2 diabetes mellitus",
+        "sources": ["local_extension"],
+        "evidence_count": 5,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    diabetes_risk = {
+        "cui": "C1171304",
+        "name": "diabetes risk",
+        "labels": ["diabetes risk"],
+        "score": 0.61,
+        "sources": ["pubmed_bulk"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    diabetes_prevention = {
+        "cui": "C1659987",
+        "name": "How to Prevent Diabetes",
+        "labels": ["How to Prevent Diabetes", "Diabetes Prevention"],
+        "score": 0.61,
+        "sources": ["pubmed_bulk"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Therapeutic or Preventive Procedure"}],
+    }
+    diabetes_ranked = rank_hits(
+        "Patient reports polyuria during evaluation for poorly controlled type 2 diabetes mellitus.",
+        [diabetes_risk, diabetes_prevention, diabetes],
+        top_k=3,
+    )
+    assert [hit["cui"] for hit in diabetes_ranked] == ["NEW1692186"]
+    family_history_diabetes_ranked = rank_hits(
+        "Family history was reviewed because of concern for poorly controlled type 2 diabetes mellitus.",
+        [diabetes_risk, diabetes],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in family_history_diabetes_ranked] == ["NEW1692186"]
+
+    direct_risk = rank_hits("type 2 diabetes risk", [diabetes_risk], top_k=1)
+    assert direct_risk[0]["cui"] == "C1171304"
+    direct_prevention = rank_hits("diabetes prevention", [diabetes_prevention], top_k=1)
+    assert direct_prevention[0]["cui"] == "C1659987"
+
+
+def test_query_ranker_filters_contextual_anatomy_and_status_tails() -> None:
+    upper_gi_bleed = {
+        "cui": "C0041909",
+        "name": "Upper gastrointestinal hemorrhage",
+        "labels": ["Upper gastrointestinal hemorrhage"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Upper gastrointestinal bleeding",
+        "matched_query_span": "upper gastrointestinal bleeding",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    upper_gi_tract = {
+        "cui": "C3203348",
+        "name": "Upper Gastrointestinal Tract",
+        "labels": ["Upper Gastrointestinal Tract"],
+        "score": 0.9,
+        "match_type": "umls_label",
+        "matched_label": "Upper Gastrointestinal Tract",
+        "matched_query_span": "upper gastrointestinal",
+        "sources": ["umls_label"],
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Body Location or Region"}],
+    }
+    gi_ranked = rank_hits(
+        "Problem list updated to include upper gastrointestinal bleeding after review of upper endoscopy.",
+        [upper_gi_tract, upper_gi_bleed],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in gi_ranked] == ["C0041909"]
+    assert rank_hits("upper gastrointestinal tract", [upper_gi_tract], top_k=1)[0]["cui"] == "C3203348"
+
+    rales = {
+        "cui": "C0034642",
+        "name": "Rales",
+        "labels": ["Rales", "Crackles"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Crackles",
+        "matched_query_span": "crackles",
+        "sources": ["umls_label"],
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Sign or Symptom"}],
+    }
+    lower_lobe = {
+        "cui": "C0225758",
+        "name": "Structure of lower lobe of lung",
+        "labels": ["Structure of lower lobe of lung", "Lower Lobe"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Lower Lobe",
+        "matched_query_span": "lower lobe",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Body Part, Organ, or Organ Component"}],
+    }
+    lung_ranked = rank_hits(
+        "Nursing note described productive cough and new right lower lobe crackles.",
+        [lower_lobe, rales],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in lung_ranked] == ["C0034642"]
+    assert rank_hits("structure of lower lobe of lung", [lower_lobe], top_k=1)[0]["cui"] == "C0225758"
+
+    pulmonary_nodule = {
+        "cui": "C2350019",
+        "name": "Solitary Pulmonary Nodule",
+        "labels": ["Solitary Pulmonary Nodule"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Solitary Pulmonary Nodule",
+        "matched_query_span": "solitary pulmonary nodule",
+        "sources": ["umls_label"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Neoplastic Process"}],
+    }
+    pulmonary_dysgenesis = {
+        "cui": "C4021592",
+        "name": "Unilateral primary pulmonary dysgenesis",
+        "labels": ["Unilateral primary pulmonary dysgenesis"],
+        "score": 0.61,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    nodule_ranked = rank_hits(
+        "Problem list updated to include solitary pulmonary nodule after review of chest CT.",
+        [pulmonary_dysgenesis, pulmonary_nodule],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in nodule_ranked] == ["C2350019"]
+    upper_lobe_structure = {
+        "cui": "C0225756",
+        "name": "Structure of upper lobe of lung",
+        "labels": ["Structure of upper lobe of lung", "Upper Lobe"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Upper Lobe",
+        "matched_query_span": "upper lobe",
+        "sources": ["umls_label"],
+        "evidence_count": 5,
+        "semantic_types": [{"name": "Body Part, Organ, or Organ Component"}],
+    }
+    upper_lobe_nodule_ranked = rank_hits(
+        "Clinical documentation linked spiculated upper lobe nodule to suspected solitary pulmonary nodule.",
+        [upper_lobe_structure, pulmonary_nodule],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in upper_lobe_nodule_ranked] == ["C2350019"]
+    monitoring_device = {
+        "cui": "C0596972",
+        "name": "Monitoring Device",
+        "labels": ["Monitoring Device", "Monitor"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Monitor",
+        "matched_query_span": "monitor",
+        "sources": ["umls_label"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Medical Device"}],
+    }
+    documentation_act = {
+        "cui": "C0175636",
+        "name": "Act of Documentation",
+        "labels": ["Act of Documentation", "Documentation"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Documentation",
+        "matched_query_span": "documentation",
+        "sources": ["umls_label"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Health Care Activity"}],
+    }
+    nodule_boilerplate_ranked = rank_hits(
+        "Clinical documentation linked spiculated upper lobe nodule to suspected solitary pulmonary nodule.",
+        [documentation_act, pulmonary_nodule],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in nodule_boilerplate_ranked] == ["C2350019"]
+    nodule_monitor_ranked = rank_hits(
+        "A repeat chest CT was ordered to monitor solitary pulmonary nodule.",
+        [monitoring_device, pulmonary_nodule],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in nodule_monitor_ranked] == ["C2350019"]
+    spiculated = {
+        "cui": "C5970376",
+        "name": "Spiculated",
+        "labels": ["Spiculated"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Spiculated",
+        "matched_query_span": "spiculated",
+        "sources": ["umls_label"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Qualitative Concept"}],
+    }
+    spiculated_nodule_ranked = rank_hits(
+        "In a cohort of patients with solitary pulmonary nodule, spiculated upper lobe nodule was associated with lung cancer.",
+        [spiculated, pulmonary_nodule],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in spiculated_nodule_ranked] == ["C2350019"]
+    assert rank_hits("spiculated", [spiculated], top_k=1)[0]["cui"] == "C5970376"
+
+    dvt = {
+        "cui": "C0149871",
+        "name": "Deep Vein Thrombosis",
+        "labels": ["Deep Vein Thrombosis"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Deep Vein Thrombosis",
+        "matched_query_span": "deep vein thrombosis",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    deep_vein = {
+        "cui": "C0226514",
+        "name": "Structure of deep vein",
+        "labels": ["Structure of deep vein"],
+        "score": 0.9,
+        "match_type": "umls_label",
+        "matched_label": "deep vein",
+        "matched_query_span": "deep vein",
+        "sources": ["umls_label"],
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Body Part, Organ, or Organ Component"}],
+    }
+    dvt_ranked = rank_hits(
+        "Follow up testing for deep vein thrombosis included venous duplex ultrasound.",
+        [deep_vein, dvt],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in dvt_ranked] == ["C0149871"]
+    assert rank_hits("structure of deep vein", [deep_vein], top_k=1)[0]["cui"] == "C0226514"
+
+    preeclampsia = {
+        "cui": "C0032914",
+        "name": "Pre-Eclampsia",
+        "labels": ["Pre-Eclampsia", "Preeclampsia"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "preeclampsia",
+        "matched_query_span": "preeclampsia",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    currently_pregnant = {
+        "cui": "C0549206",
+        "name": "Patient currently pregnant",
+        "labels": ["Patient currently pregnant"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Pregnancy",
+        "matched_query_span": "pregnancy",
+        "sources": ["umls_label"],
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    pregnancy_ranked = rank_hits(
+        "Patient reports headache in pregnancy during evaluation for preeclampsia.",
+        [currently_pregnant, preeclampsia],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in pregnancy_ranked] == ["C0032914"]
+    elevated_bp = {
+        "cui": "C0497247",
+        "name": "Increase in blood pressure",
+        "labels": ["elevated blood pressure", "Increase in blood pressure"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "elevated blood pressure",
+        "matched_query_span": "elevated blood pressure",
+        "sources": ["umls_label"],
+        "evidence_count": 3,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    pregnancy_bp_ranked = rank_hits(
+        "Nursing note described headache in pregnancy and new elevated blood pressure.",
+        [currently_pregnant, elevated_bp],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in pregnancy_bp_ranked] == ["C0497247"]
+    assert rank_hits("patient currently pregnant", [currently_pregnant], top_k=1)[0]["cui"] == "C0549206"
+
+    cervical_motion_tenderness = {
+        "cui": "C0238953",
+        "name": "CERVICAL MOTION TENDERNESS",
+        "labels": ["CERVICAL MOTION TENDERNESS"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "cervical motion tenderness",
+        "matched_query_span": "cervical motion tenderness",
+        "sources": ["umls_label"],
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    cervical_stenosis = {
+        "cui": "C1844925",
+        "name": "Cervical spinal canal stenosis",
+        "labels": ["Cervical spinal canal stenosis"],
+        "score": 0.61,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    cervical_ranked = rank_hits(
+        "Nursing note described pelvic pain and new cervical motion tenderness.",
+        [cervical_stenosis, cervical_motion_tenderness],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in cervical_ranked] == ["C0238953"]
+
+    heat_intolerance = {
+        "cui": "C0231274",
+        "name": "Intolerant of heat",
+        "labels": ["Intolerant of heat", "heat intolerance"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "heat intolerance",
+        "matched_query_span": "heat intolerance",
+        "sources": ["umls_label"],
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    food_intolerance = {
+        "cui": "C0149696",
+        "name": "Food intolerance (disorder)",
+        "labels": ["Food intolerance"],
+        "score": 0.61,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    heat_ranked = rank_hits(
+        "Physical examination did not reproduce heat intolerance, but fine tremor was present.",
+        [food_intolerance, heat_intolerance],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in heat_ranked] == ["C0231274"]
+
+    pleuritic_pain = {
+        "cui": "C0008033",
+        "name": "Pleuritic pain",
+        "labels": ["Pleuritic pain", "pleuritic chest pain"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "pleuritic chest pain",
+        "matched_query_span": "pleuritic chest pain",
+        "sources": ["umls_label"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Sign or Symptom"}],
+    }
+    restricted_chest_movement = {
+        "cui": "C4025015",
+        "name": "Restricted chest movement",
+        "labels": ["Restricted chest movement"],
+        "score": 0.4,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    chest_ranked = rank_hits(
+        "Physical examination did not reproduce pleuritic chest pain, but unilateral leg swelling was present.",
+        [restricted_chest_movement, pleuritic_pain],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in chest_ranked] == ["C0008033"]
+
+    creatinine = {
+        "cui": "C0201975",
+        "name": "Creatinine measurement",
+        "labels": ["Creatinine measurement", "rising creatinine"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "rising creatinine",
+        "matched_query_span": "rising creatinine",
+        "sources": ["umls_label"],
+        "evidence_count": 3,
+        "semantic_types": [{"name": "Laboratory Procedure"}],
+    }
+    low_cardiac_output = {
+        "cui": "C0007166",
+        "name": "Low Cardiac Output",
+        "labels": ["Low Cardiac Output"],
+        "score": 0.4,
+        "sources": ["hpo"],
+        "evidence_count": 3,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    creatinine_ranked = rank_hits(
+        "Physical examination did not reproduce decreased urine output, but rising creatinine was present.",
+        [low_cardiac_output, creatinine],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in creatinine_ranked] == ["C0201975"]
+
+    spinal_cord_history = {
+        "cui": "C4038839",
+        "name": "History of spinal cord injury",
+        "labels": ["History of spinal cord injury"],
+        "score": 0.61,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    aki = {
+        "cui": "C2609414",
+        "name": "Acute kidney injury",
+        "labels": ["Acute kidney injury"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Acute kidney injury",
+        "matched_query_span": "acute kidney injury",
+        "sources": ["umls_label"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    aki_ranked = rank_hits(
+        "Care coordination note lists acute kidney injury as the active clinical concern.",
+        [spinal_cord_history, aki],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in aki_ranked] == ["C2609414"]
+
+
+def test_query_ranker_filters_exam_modifier_and_anatomy_fragments() -> None:
+    rlq_pain = {
+        "cui": "C0694551",
+        "name": "Right lower quadrant pain",
+        "labels": ["Right lower quadrant pain", "tenderness in lower right abdominal quadrant"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "tenderness in lower right abdominal quadrant",
+        "matched_query_span": "tenderness in lower right abdominal quadrant",
+        "sources": ["active_label_supplement"],
+        "evidence_count": 0,
+        "semantic_types": [{"name": "Sign or Symptom"}],
+    }
+    revealed = {
+        "cui": "C0443289",
+        "name": "Revealed",
+        "labels": ["Revealed", "reveals"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "reveals",
+        "matched_query_span": "reveals",
+        "sources": ["umls_label", "mondo"],
+        "evidence_count": 70,
+        "semantic_types": [{"name": "Qualitative Concept"}],
+    }
+    mild_anemia = {
+        "cui": "C1858586",
+        "name": "Mild anemia",
+        "labels": ["Mild anemia"],
+        "score": 1.0,
+        "sources": ["medlineplus_genetics"],
+        "evidence_count": 2,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    abdominal_quadrant = {
+        "cui": "C0682587",
+        "name": "Abdominal quadrant",
+        "labels": ["Abdominal quadrant"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Abdominal quadrant",
+        "matched_query_span": "abdominal quadrant",
+        "sources": ["umls_label"],
+        "evidence_count": 0,
+        "semantic_types": [{"name": "Body Location or Region"}],
+    }
+    abdomen = {
+        "cui": "C0000726",
+        "name": "Abdomen",
+        "labels": ["Abdomen", "abdominal"],
+        "score": 0.9,
+        "match_type": "umls_label",
+        "matched_label": "abdominal",
+        "matched_query_span": "abdominal",
+        "sources": ["umls_label", "mondo"],
+        "evidence_count": 64,
+        "semantic_types": [{"name": "Body Location or Region"}],
+    }
+    lower_jaw_hypertrophy = {
+        "cui": "C4280645",
+        "name": "Hypertrophy of lower jaw",
+        "labels": ["Hypertrophy of lower jaw"],
+        "score": 0.9,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    abdominal_aortic_calcification = {
+        "cui": "C4531207",
+        "name": "Abdominal aortic calcification",
+        "labels": ["Abdominal aortic calcification"],
+        "score": 0.9,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Finding"}],
+    }
+
+    ranked = rank_hits(
+        "Physical examination reveals mild tenderness in lower right abdominal quadrant",
+        [
+            revealed,
+            mild_anemia,
+            abdominal_quadrant,
+            abdomen,
+            lower_jaw_hypertrophy,
+            abdominal_aortic_calcification,
+            rlq_pain,
+        ],
+        top_k=5,
+    )
+    cuis = [hit["cui"] for hit in ranked]
+    assert cuis == ["C0694551"]
+
+    direct_mild_anemia = rank_hits("mild anemia", [mild_anemia], top_k=1)
+    assert direct_mild_anemia[0]["cui"] == "C1858586"
+    symptomatic_anemia = {
+        "cui": "C0741011",
+        "name": "Symptomatic anaemia",
+        "labels": ["Symptomatic anaemia", "Symptomatic anemia"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Symptomatic anemia",
+        "matched_query_span": "symptomatic anemia",
+        "sources": ["umls_label"],
+        "evidence_count": 0,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    symptomatic_anemia_ranked = rank_hits(
+        "Secondary analyses examined whether microcytosis predicted symptomatic anemia.",
+        [mild_anemia, symptomatic_anemia],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in symptomatic_anemia_ranked] == ["C0741011"]
+    psoriasis = {
+        "cui": "C0033860",
+        "name": "Psoriasis",
+        "labels": ["Psoriasis"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Psoriasis",
+        "matched_query_span": "psoriasis",
+        "sources": ["umls_label"],
+        "evidence_count": 67,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    family_medical_history = {
+        "cui": "C0241889",
+        "name": "Family Medical History",
+        "labels": ["Family Medical History", "FAMILY HISTORY"],
+        "score": 0.62,
+        "sources": ["medlineplus"],
+        "evidence_count": 39,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    senile_plaques = {
+        "cui": "C0333463",
+        "name": "Senile Plaques",
+        "labels": ["Senile Plaques", "plaques"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "plaques",
+        "matched_query_span": "plaques",
+        "sources": ["umls_label"],
+        "evidence_count": 2,
+        "semantic_types": [{"name": "Acquired Abnormality"}],
+    }
+    history_physical = {
+        "cui": "C0150618",
+        "name": "History and physical examination",
+        "labels": ["History and physical examination"],
+        "score": 0.62,
+        "sources": ["clinicaltrials_gov"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    skin_exam_encounter = {
+        "cui": "C1456362",
+        "name": "Encounter due to examination of skin",
+        "labels": ["Encounter due to examination of skin", "skin examination"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "skin; examination",
+        "matched_query_span": "skin examination",
+        "sources": ["umls_label"],
+        "evidence_count": 0,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    extensor = {
+        "cui": "C1184148",
+        "name": "Extensor",
+        "labels": ["Extensor"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Extensor",
+        "matched_query_span": "extensor",
+        "sources": ["umls_label"],
+        "evidence_count": 16,
+        "semantic_types": [{"name": "Body Location or Region"}],
+    }
+    psoriasis_ranked = rank_hits(
+        "The manuscript defines psoriasis using skin examination, erythematous plaques on extensor surfaces, and treatment history.",
+        [family_medical_history, history_physical, skin_exam_encounter, extensor, senile_plaques, psoriasis],
+        top_k=3,
+    )
+    assert [hit["cui"] for hit in psoriasis_ranked] == ["C0033860"]
+    assert rank_hits("family history", [family_medical_history], top_k=1)[0]["cui"] == "C0241889"
+    assert rank_hits("senile plaques", [senile_plaques], top_k=1)[0]["cui"] == "C0333463"
+    assert rank_hits("history and physical examination", [history_physical], top_k=1)[0]["cui"] == "C0150618"
+    assert rank_hits("encounter due to examination of skin", [skin_exam_encounter], top_k=1)[0]["cui"] == "C1456362"
+    assert rank_hits("extensor", [extensor], top_k=1)[0]["cui"] == "C1184148"
+    direct_abdominal_quadrant = rank_hits("abdominal quadrant", [abdominal_quadrant], top_k=1)
+    assert direct_abdominal_quadrant[0]["cui"] == "C0682587"
+
+
+def test_query_ranker_filters_negated_distress_and_generic_note_fillers() -> None:
+    vital_signs = {
+        "cui": "C0518766",
+        "name": "Vital signs",
+        "labels": ["Vital signs"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Vital signs",
+        "matched_query_span": "vital signs",
+        "sources": ["umls_label"],
+        "evidence_count": 10,
+        "semantic_types": [{"name": "Clinical Attribute"}],
+    }
+    emotional_distress = {
+        "cui": "C0700361",
+        "name": "Emotional distress",
+        "labels": ["Emotional distress", "Distress"],
+        "score": 0.9,
+        "match_type": "umls_label",
+        "matched_label": "distress",
+        "matched_query_span": "distress",
+        "sources": ["umls_label"],
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    stable_status = {
+        "cui": "C0205360",
+        "name": "Stable status",
+        "labels": ["Stable status"],
+        "score": 0.8,
+        "match_type": "umls_label",
+        "matched_label": "stable",
+        "matched_query_span": "stable",
+        "sources": ["umls_label"],
+        "evidence_count": 2,
+        "semantic_types": [{"name": "Finding"}],
+    }
+
+    vitals_ranked = rank_hits(
+        "No evidence of acute distress vital signs stable and within normal limits",
+        [emotional_distress, stable_status, vital_signs],
+        top_k=3,
+    )
+    assert [hit["cui"] for hit in vitals_ranked] == ["C0518766", "C0205360"]
+    direct_distress = rank_hits("emotional distress", [emotional_distress], top_k=1)
+    assert direct_distress[0]["cui"] == "C0700361"
+    ards = {
+        "cui": "C0035222",
+        "name": "Acute respiratory distress syndrome",
+        "labels": ["Acute respiratory distress syndrome"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Acute respiratory distress syndrome",
+        "matched_query_span": "respiratory distress syndrome",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    respiratory_ranked = rank_hits(
+        "The ICU team managed acute respiratory distress syndrome with hypoxemia.",
+        [emotional_distress, ards],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in respiratory_ranked] == ["C0035222"]
+
+    medication_nonadherence = {
+        "cui": "C0746935",
+        "name": "Medication Nonadherence",
+        "labels": ["Medication Nonadherence", "medication adherence inconsistent"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "medication adherence inconsistent",
+        "matched_query_span": "medication adherence inconsistent",
+        "sources": ["active_label_supplement"],
+        "evidence_count": 0,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    prescription = {
+        "cui": "C0033080",
+        "name": "Prescription (procedure)",
+        "labels": ["Prescription (procedure)", "Prescriptions"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Prescriptions",
+        "matched_query_span": "prescriptions",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Therapeutic or Preventive Procedure"}],
+    }
+    unable = {
+        "cui": "C1299582",
+        "name": "Unable",
+        "labels": ["Unable"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Unable",
+        "matched_query_span": "unable",
+        "sources": ["umls_label"],
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    inconsistent = {
+        "cui": "C0442809",
+        "name": "Inconsistent",
+        "labels": ["Inconsistent"],
+        "score": 0.9,
+        "match_type": "umls_label",
+        "matched_label": "Inconsistent",
+        "matched_query_span": "inconsistent",
+        "sources": ["umls_label"],
+        "evidence_count": 5,
+        "semantic_types": [{"name": "Qualitative Concept"}],
+    }
+    medication_ranked = rank_hits(
+        "Medication adherence inconsistent patient unable to recall current prescriptions accurately",
+        [unable, inconsistent, prescription, medication_nonadherence],
+        top_k=3,
+    )
+    assert [hit["cui"] for hit in medication_ranked] == ["C0746935"]
+
+    antibiotics = {
+        "cui": "C0003232",
+        "name": "Antibiotics",
+        "labels": ["Antibiotics"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "antibiotics",
+        "matched_query_span": "antibiotics",
+        "sources": ["umls_label"],
+        "evidence_count": 10,
+        "semantic_types": [{"name": "Antibiotic"}],
+    }
+    preventive_monitoring = {
+        "cui": "C0150369",
+        "name": "Preventive monitoring",
+        "labels": ["Preventive monitoring", "Monitoring"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "monitoring",
+        "matched_query_span": "monitoring",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Therapeutic or Preventive Procedure"}],
+    }
+    hemorrhagic_diarrhea = {
+        "cui": "C0151594",
+        "name": "Hemorrhagic diarrhea",
+        "labels": ["Hemorrhagic diarrhea"],
+        "score": 1.0,
+        "sources": ["mondo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    antibiotic_ranked = rank_hits(
+        "Plan includes initiating antibiotics monitoring symptoms and scheduling follow up visit",
+        [hemorrhagic_diarrhea, preventive_monitoring, antibiotics],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in antibiotic_ranked] == ["C0003232"]
+
+    normal_cranial = {
+        "cui": "C3266627",
+        "name": "Normal cranial nerves",
+        "labels": ["Normal cranial nerves", "normal cranial nerves intact"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "normal cranial nerves intact",
+        "matched_query_span": "normal cranial nerves intact",
+        "sources": ["active_label_supplement"],
+        "evidence_count": 0,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    cranial_nerves = {
+        "cui": "C0010268",
+        "name": "Cranial Nerves",
+        "labels": ["Cranial Nerves"],
+        "score": 1.1,
+        "match_type": "umls_label",
+        "matched_label": "Cranial Nerves",
+        "matched_query_span": "cranial nerves",
+        "sources": ["umls_label"],
+        "evidence_count": 20,
+        "semantic_types": [{"name": "Body Part, Organ, or Organ Component"}],
+    }
+    focal_optic_lesion = {
+        "cui": "C5826814",
+        "name": "Focal necrotic optic nerve lesion",
+        "labels": ["Focal necrotic optic nerve lesion"],
+        "score": 0.9,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    cranial_nerve_dysfunction = {
+        "cui": "C3553482",
+        "name": "Cranial nerve dysfunction",
+        "labels": ["Cranial nerve dysfunction"],
+        "score": 0.9,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    facial_nerve_compression = {
+        "cui": "C5937195",
+        "name": "Facial nerve compression",
+        "labels": ["Facial nerve compression"],
+        "score": 0.9,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    abnormal_cranial_physiology = {
+        "cui": "C4021223",
+        "name": "Abnormal seventh cranial physiology",
+        "labels": ["Abnormal seventh cranial physiology"],
+        "score": 0.9,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    optic_nerve_fibers = {
+        "cui": "C1834600",
+        "name": "MYELINATED OPTIC NERVE FIBERS",
+        "labels": ["MYELINATED OPTIC NERVE FIBERS"],
+        "score": 0.9,
+        "sources": ["hpo"],
+        "evidence_count": 1,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    nerve = {
+        "cui": "C0027740",
+        "name": "Nerve",
+        "labels": ["Nerve"],
+        "score": 0.9,
+        "match_type": "umls_label",
+        "matched_label": "Nerve",
+        "matched_query_span": "nerves",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Body Part, Organ, or Organ Component"}],
+    }
+    cranium = {
+        "cui": "C0037303",
+        "name": "Bone structure of cranium",
+        "labels": ["Bone structure of cranium"],
+        "score": 0.9,
+        "match_type": "umls_label",
+        "matched_label": "cranial",
+        "matched_query_span": "cranial",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Body Part, Organ, or Organ Component"}],
+    }
+    neuro_ranked = rank_hits(
+        "Neurological exam normal cranial nerves intact no focal deficits observed",
+        [
+            cranial_nerves,
+            focal_optic_lesion,
+            cranial_nerve_dysfunction,
+            facial_nerve_compression,
+            abnormal_cranial_physiology,
+            optic_nerve_fibers,
+            nerve,
+            cranium,
+            normal_cranial,
+        ],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in neuro_ranked] == ["C3266627", "C0010268"]
+
+
+def test_query_ranker_filters_note_prose_and_assessment_only_fragments() -> None:
+    community_pneumonia = {
+        "cui": "C0694549",
+        "name": "Community-Acquired Pneumonia",
+        "labels": ["Community-Acquired Pneumonia"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Community-Acquired Pneumonia",
+        "matched_query_span": "community acquired pneumonia",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    rales = {
+        "cui": "C0034642",
+        "name": "Rales",
+        "labels": ["Rales", "Crackles"],
+        "score": 0.9,
+        "match_type": "umls_label",
+        "matched_label": "Crackles",
+        "matched_query_span": "crackles",
+        "sources": ["umls_label"],
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Sign or Symptom"}],
+    }
+    notable = {
+        "cui": "C4288581",
+        "name": "Notable",
+        "labels": ["Notable"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Notable",
+        "matched_query_span": "notable",
+        "sources": ["umls_label"],
+        "evidence_count": 4,
+        "semantic_types": [{"name": "Qualitative Concept"}],
+    }
+    settings = {
+        "cui": "C4533435",
+        "name": "Settings (qualitative)",
+        "labels": ["Settings (qualitative)", "Setting"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Setting",
+        "matched_query_span": "setting",
+        "sources": ["umls_label"],
+        "evidence_count": 4,
+        "semantic_types": [{"name": "Qualitative Concept"}],
+    }
+    acquired = {
+        "cui": "C0439661",
+        "name": "Acquired (qualifier value)",
+        "labels": ["Acquired"],
+        "score": 0.8,
+        "match_type": "umls_label",
+        "matched_label": "Acquired",
+        "matched_query_span": "acquired",
+        "sources": ["umls_label"],
+        "evidence_count": 4,
+        "semantic_types": [{"name": "Qualitative Concept"}],
+    }
+    lower_modifier = {
+        "cui": "C1548802",
+        "name": "Body Site Modifier - Lower",
+        "labels": ["Lower"],
+        "score": 0.8,
+        "match_type": "umls_label",
+        "matched_label": "Lower",
+        "matched_query_span": "lower",
+        "sources": ["umls_label"],
+        "evidence_count": 4,
+        "semantic_types": [{"name": "Body Location or Region"}],
+    }
+
+    pneumonia_ranked = rank_hits(
+        "Exam was notable for right lower lobe crackles in the setting of community acquired pneumonia.",
+        [notable, settings, acquired, lower_modifier, community_pneumonia, rales],
+        top_k=6,
+    )
+    assert [hit["cui"] for hit in pneumonia_ranked] == ["C0694549", "C0034642"]
+
+    diverticulitis = {
+        "cui": "C0012813",
+        "name": "Diverticulitis",
+        "labels": ["Diverticulitis"],
+        "score": 0.9,
+        "match_type": "umls_label",
+        "matched_label": "Diverticulitis",
+        "matched_query_span": "diverticulitis",
+        "sources": ["umls_label"],
+        "evidence_count": 10,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    llq_pain = {
+        "cui": "C0238551",
+        "name": "Left lower quadrant pain",
+        "labels": ["Left lower quadrant pain"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Left lower quadrant pain",
+        "matched_query_span": "left lower quadrant pain",
+        "sources": ["umls_label"],
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Sign or Symptom"}],
+    }
+    abdominal_tenderness = {
+        "cui": "C0232498",
+        "name": "Abdominal tenderness",
+        "labels": ["Abdominal tenderness"],
+        "score": 0.95,
+        "match_type": "umls_label",
+        "matched_label": "Abdominal tenderness",
+        "matched_query_span": "abdominal tenderness",
+        "sources": ["umls_label"],
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Finding"}],
+    }
+    nutrition_assessment = {
+        "cui": "C0028708",
+        "name": "Nutrition Assessment",
+        "labels": ["Nutrition Assessment", "Assessment"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Assessment",
+        "matched_query_span": "assessment",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Diagnostic Procedure"}],
+    }
+    cognitive_assessment = {
+        "cui": "C2237115",
+        "name": "assessment of cognitive functions",
+        "labels": ["assessment of cognitive functions", "Assessment"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Assessment",
+        "matched_query_span": "assessment",
+        "sources": ["umls_label"],
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Diagnostic Procedure"}],
+    }
+    uncomplicated = {
+        "cui": "C0443334",
+        "name": "Uncomplicated",
+        "labels": ["Uncomplicated"],
+        "score": 0.8,
+        "match_type": "umls_label",
+        "matched_label": "Uncomplicated",
+        "matched_query_span": "uncomplicated",
+        "sources": ["umls_label"],
+        "evidence_count": 4,
+        "semantic_types": [{"name": "Qualitative Concept"}],
+    }
+
+    diverticulitis_ranked = rank_hits(
+        "Assessment favored acute uncomplicated diverticulitis because of left lower quadrant pain and localized abdominal tenderness.",
+        [
+            nutrition_assessment,
+            cognitive_assessment,
+            uncomplicated,
+            diverticulitis,
+            llq_pain,
+            abdominal_tenderness,
+        ],
+        top_k=6,
+    )
+    assert [hit["cui"] for hit in diverticulitis_ranked] == [
+        "C0238551",
+        "C0232498",
+        "C0012813",
+    ]
+
+    direct_nutrition = dict(nutrition_assessment)
+    direct_nutrition["matched_label"] = "Nutrition Assessment"
+    direct_nutrition["matched_query_span"] = "nutrition assessment"
+    assert rank_hits("nutrition assessment", [direct_nutrition, cognitive_assessment], top_k=2)[0][
+        "cui"
+    ] == "C0028708"
+
+    direct_cognitive = dict(cognitive_assessment)
+    direct_cognitive["matched_label"] = "Cognitive assessment"
+    direct_cognitive["matched_query_span"] = "cognitive assessment"
+    assert rank_hits("cognitive assessment", [nutrition_assessment, direct_cognitive], top_k=2)[0][
+        "cui"
+    ] == "C2237115"
+
+
 def test_query_ranker_filters_low_value_procedure_fragments() -> None:
     migraine = {
         "cui": "C0149931",
@@ -4616,6 +6586,64 @@ def test_query_ranker_filters_low_value_procedure_fragments() -> None:
     sti_ordered = [hit["cui"] for hit in sti_ranked]
     assert "C0018081" in sti_ordered
     assert "C5244026" not in sti_ordered
+    c_difficile_toxin = {
+        "cui": "C0314765",
+        "name": "Clostridium difficile toxin",
+        "labels": ["Clostridioides difficile toxin"],
+        "score": 1.20,
+        "match_type": "umls_label",
+        "matched_query_span": "clostridioides difficile toxin",
+        "evidence_count": 0,
+        "semantic_types": [{"name": "Biologically Active Substance"}],
+    }
+    stool_infectious_agent_test = {
+        "cui": "C5826720",
+        "name": "Positive stool infectious agent test",
+        "labels": ["Positive stool infectious agent test"],
+        "score": 0.66,
+        "match_type": "semantic_vector",
+        "evidence_count": 4,
+        "semantic_types": [{"name": "Laboratory or Test Result"}],
+    }
+    fecal_occult_blood_test = {
+        "cui": "C0201811",
+        "name": "Fecal occult blood test",
+        "labels": ["Fecal occult blood test"],
+        "score": 0.90,
+        "match_type": "semantic_vector",
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Laboratory Procedure"}],
+    }
+    stool_seat = {
+        "cui": "C0183622",
+        "name": "Stool seat",
+        "labels": ["Stool seat"],
+        "score": 1.02,
+        "match_type": "umls_label",
+        "evidence_count": 10,
+        "semantic_types": [{"name": "Medical Device"}],
+    }
+    covid_lab_testing = {
+        **covid_testing,
+        "semantic_types": [{"name": "Laboratory Procedure"}],
+    }
+    stool_ranked = rank_hits(
+        "Stool testing was positive for Clostridioides difficile toxin.",
+        [
+            covid_lab_testing,
+            c_difficile_toxin,
+            stool_infectious_agent_test,
+            fecal_occult_blood_test,
+            stool_seat,
+        ],
+        top_k=5,
+    )
+    stool_ordered = [hit["cui"] for hit in stool_ranked]
+    assert "C0314765" in stool_ordered
+    assert "C5826720" in stool_ordered
+    assert "C5244026" not in stool_ordered
+    assert "C0201811" not in stool_ordered
+    assert "C0183622" not in stool_ordered
 
     cta = {
         "cui": "C1536105",
@@ -4832,12 +6860,10 @@ def test_query_ranker_demotes_device_alert_and_sleep_metadata_noise() -> None:
     )
 
     ordered_cuis = [hit["cui"] for hit in ranked]
-    assert ordered_cuis.index("C4255010") < ordered_cuis.index("C1551396")
-    assert ordered_cuis.index("C0242231") < ordered_cuis.index("C4744894")
-    device_alert_hit = next(hit for hit in ranked if hit["cui"] == "C1551396")
-    sleep_metric_hit = next(hit for hit in ranked if hit["cui"] == "C4744894")
-    assert device_alert_hit["score_breakdown"]["clinical_context_sense_penalty"] > 0
-    assert sleep_metric_hit["score_breakdown"]["clinical_context_sense_penalty"] > 0
+    assert "C4255010" in ordered_cuis
+    assert "C0242231" in ordered_cuis
+    assert "C1551396" not in ordered_cuis
+    assert "C4744894" not in ordered_cuis
 
     device_query_ranked = rank_hits("critical device alert level", [device_alert], top_k=1)
     sleep_query_ranked = rank_hits("wake after sleep onset", [wake_after_sleep], top_k=1)
@@ -4949,12 +6975,10 @@ def test_query_ranker_demotes_new_diagnosis_and_developed_status_noise() -> None
     )
 
     ordered_cuis = [hit["cui"] for hit in ranked]
-    assert ordered_cuis.index("C0026769") < ordered_cuis.index("C4540784")
-    assert ordered_cuis.index("C0029134") < ordered_cuis.index("C1518321")
-    developed_hit = next(hit for hit in ranked if hit["cui"] == "C4540784")
-    diagnosed_hit = next(hit for hit in ranked if hit["cui"] == "C1518321")
-    assert developed_hit["score_breakdown"]["clinical_context_sense_penalty"] > 0
-    assert diagnosed_hit["score_breakdown"]["clinical_context_sense_penalty"] > 0
+    assert "C0026769" in ordered_cuis
+    assert "C0029134" in ordered_cuis
+    assert "C4540784" not in ordered_cuis
+    assert "C1518321" not in ordered_cuis
 
     status_query_ranked = rank_hits("newly diagnosed", [newly_diagnosed], top_k=1)
     assert (
@@ -5079,6 +7103,22 @@ def test_query_ranker_demotes_broad_conditions_when_specific_condition_is_presen
                 "semantic_types": [{"name": "Disease or Syndrome"}],
             },
             {
+                "cui": "C0149725",
+                "name": "Lower respiratory tract infection",
+                "labels": ["Lower respiratory tract infection"],
+                "score": 1.0,
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C1442786",
+                "name": "Recurrent acute respiratory tract infection",
+                "labels": ["Recurrent acute respiratory tract infection"],
+                "score": 0.92,
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
                 "cui": "C0332148",
                 "name": "Probable diagnosis",
                 "labels": ["Probable diagnosis"],
@@ -5087,22 +7127,83 @@ def test_query_ranker_demotes_broad_conditions_when_specific_condition_is_presen
                 "evidence_count": 10,
                 "semantic_types": [{"name": "Finding"}],
             },
+            {
+                "cui": "C0729865",
+                "name": "Upper urinary tract structure",
+                "labels": ["Upper urinary tract structure"],
+                "score": 1.0,
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Body Part, Organ, or Organ Component"}],
+            },
+            {
+                "cui": "C4023641",
+                "name": "Abnormality of the upper urinary tract",
+                "labels": ["Abnormality of the upper urinary tract"],
+                "score": 1.0,
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Finding"}],
+            },
+            {
+                "cui": "C4732835",
+                "name": "Increased urinary mucus",
+                "labels": ["Increased urinary mucus"],
+                "score": 1.0,
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Finding"}],
+            },
+            {
+                "cui": "C5936980",
+                "name": "Elevated urinary dolichol level",
+                "labels": ["Elevated urinary dolichol level"],
+                "score": 1.0,
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Laboratory or Test Result"}],
+            },
+            {
+                "cui": "C0401148",
+                "name": "Acute constipation",
+                "labels": ["Acute constipation"],
+                "score": 0.95,
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C1185740",
+                "name": "Tract",
+                "labels": ["Tract"],
+                "score": 0.95,
+                "match_type": "umls_label",
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Spatial Concept"}],
+            },
+            {
+                "cui": "C1524119",
+                "name": "urinary",
+                "labels": ["urinary"],
+                "score": 0.95,
+                "match_type": "umls_label",
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Clinical Attribute"}],
+            },
         ],
-        top_k=6,
+        top_k=15,
     )
 
     ordered = [hit["cui"] for hit in ranked]
     assert ordered[:2] == ["C0242147", "C0042029"]
-    communicable = next(hit for hit in ranked if hit["cui"] == "C0009450")
-    acute_infectious = next(hit for hit in ranked if hit["cui"] == "C0275518")
-    acute_respiratory = next(hit for hit in ranked if hit["cui"] == "C0339901")
-    probable = next(hit for hit in ranked if hit["cui"] == "C0332148")
-    assert communicable["score_breakdown"]["generic_penalty"] > 0
-    assert communicable["score_breakdown"]["relative_specificity_penalty"] > 0
-    assert acute_infectious["score_breakdown"]["broad_label_penalty"] > 0
-    assert acute_respiratory["score_breakdown"]["clinical_context_sense_penalty"] > 0
-    assert probable["score_breakdown"]["generic_penalty"] > 0
-    assert ordered.index("C0009450") > ordered.index("C0042029")
+    assert "C0009450" not in ordered
+    assert "C0275518" not in ordered
+    assert "C0339901" not in ordered
+    assert "C0149725" not in ordered
+    assert "C1442786" not in ordered
+    assert "C0332148" not in ordered
+    assert "C0729865" not in ordered
+    assert "C4023641" not in ordered
+    assert "C4732835" not in ordered
+    assert "C5936980" not in ordered
+    assert "C0401148" not in ordered
+    assert "C1185740" not in ordered
+    assert "C1524119" not in ordered
 
 
 def test_query_ranker_ignores_self_synonym_fragments_for_specificity() -> None:
@@ -5158,9 +7259,200 @@ def test_query_ranker_prefers_non_st_mi_when_non_st_context_is_present() -> None
         top_k=2,
     )
 
-    stemi = next(hit for hit in ranked if hit["cui"] == "C1536220")
-    assert stemi["score_breakdown"]["clinical_context_sense_penalty"] > 0
-    assert ranked[0]["cui"] == "C4255010"
+    assert [hit["cui"] for hit in ranked] == ["C4255010"]
+
+    stemi_ranked = rank_hits(
+        "coronary angiography after ST elevation myocardial infarction",
+        [
+            {
+                "cui": "C1536220",
+                "name": "ST segment elevation myocardial infarction",
+                "labels": ["ST segment elevation myocardial infarction", "STEMI"],
+                "score": 1.0,
+                "evidence_count": 10,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+        ],
+        top_k=1,
+    )
+    assert [hit["cui"] for hit in stemi_ranked] == ["C1536220"]
+
+
+def test_query_ranker_filters_unanchored_semantic_drift_results() -> None:
+    ranked = rank_hits(
+        "Sickle cell anemia caused vaso-occlusive crisis with severe pain.",
+        [
+            {
+                "cui": "C0002895",
+                "name": "Anemia, Sickle Cell",
+                "labels": ["Anemia, Sickle Cell"],
+                "score": 0.9,
+                "match_type": "umls_label",
+                "matched_label": "Anemia, Sickle Cell",
+                "matched_query_span": "sickle cell anemia",
+                "evidence_count": 18,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C5936766",
+                "name": "Abnormal lymph-node cellular B-cell marker expression",
+                "labels": ["Abnormal lymph-node cellular B-cell marker expression"],
+                "score": 0.61,
+                "evidence_count": 1,
+                "semantic_types": [{"name": "Cell or Molecular Dysfunction"}],
+            },
+        ],
+        top_k=5,
+    )
+    assert [hit["cui"] for hit in ranked] == ["C0002895"]
+
+    ranked = rank_hits(
+        "Atrial fibrillation with rapid ventricular response was treated with metoprolol.",
+        [
+            {
+                "cui": "C0004238",
+                "name": "Atrial Fibrillation",
+                "labels": ["Atrial Fibrillation"],
+                "score": 0.95,
+                "match_type": "umls_label",
+                "matched_label": "Atrial Fibrillation",
+                "matched_query_span": "atrial fibrillation",
+                "evidence_count": 12,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C0042514",
+                "name": "Tachycardia, Ventricular",
+                "labels": ["Tachycardia, Ventricular"],
+                "score": 0.61,
+                "evidence_count": 8,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+        ],
+        top_k=5,
+    )
+    assert [hit["cui"] for hit in ranked] == ["C0004238"]
+
+    ranked = rank_hits(
+        "A pharmacogenomics manuscript reported CYP2C19 loss of function alleles after "
+        "percutaneous coronary intervention.",
+        [
+            {
+                "cui": "C0070166",
+                "name": "clopidogrel",
+                "labels": ["clopidogrel"],
+                "score": 0.86,
+                "evidence_count": 8,
+                "semantic_types": [{"name": "Pharmacologic Substance"}],
+            },
+            {
+                "cui": "C1852540",
+                "name": "Coronary Artery Dissection, Spontaneous",
+                "labels": ["Coronary Artery Dissection, Spontaneous"],
+                "score": 0.61,
+                "evidence_count": 1,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+        ],
+        top_k=5,
+    )
+    assert "C1852540" not in [hit["cui"] for hit in ranked]
+
+    ranked = rank_hits(
+        "Elevated albumin creatinine ratio was associated with progressive renal disease.",
+        [
+            {
+                "cui": "C0022658",
+                "name": "Kidney Diseases",
+                "labels": ["Kidney Diseases", "renal disease"],
+                "score": 0.9,
+                "match_type": "umls_label",
+                "matched_label": "renal disease",
+                "matched_query_span": "renal disease",
+                "evidence_count": 10,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C2926063",
+                "name": "Myocardial infarction",
+                "labels": [
+                    "Myocardial infarction",
+                    "Myocardial infarction:Finding:To identify measures at a point in time:^Patient:Ordinal",
+                ],
+                "score": 0.61,
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Clinical Attribute"}],
+            },
+        ],
+        top_k=5,
+    )
+    assert [hit["cui"] for hit in ranked] == ["C0022658"]
+
+    ranked = rank_hits(
+        "Status migrainosus is a persistent migraine attack requiring abortive therapy.",
+        [
+            {
+                "cui": "C0338489",
+                "name": "Status Migrainosus",
+                "labels": ["Status Migrainosus"],
+                "score": 0.9,
+                "match_type": "umls_label",
+                "matched_label": "Status Migrainosus",
+                "matched_query_span": "status migrainosus",
+                "evidence_count": 0,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C0262705",
+                "name": "Kangaroo care",
+                "labels": [
+                    "Kangaroo care",
+                    "Kangaroo care (regime/therapy)",
+                    "Skin to skin contact",
+                ],
+                "score": 0.61,
+                "evidence_count": 1,
+                "semantic_types": [{"name": "Therapeutic or Preventive Procedure"}],
+            },
+        ],
+        top_k=5,
+    )
+    assert [hit["cui"] for hit in ranked] == ["C0338489"]
+
+    ranked = rank_hits(
+        "Wound care assessed a sacral pressure ulcer with necrotic tissue.",
+        [
+            {
+                "cui": "C4554531",
+                "name": "Pressure injury",
+                "labels": ["Pressure injury", "pressure ulcer"],
+                "score": 0.9,
+                "match_type": "umls_label",
+                "matched_label": "pressure ulcer",
+                "matched_query_span": "pressure ulcer",
+                "evidence_count": 8,
+                "semantic_types": [{"name": "Finding"}],
+            },
+            {
+                "cui": "C0497247",
+                "name": "Increase in blood pressure",
+                "labels": ["Increase in blood pressure"],
+                "score": 0.61,
+                "evidence_count": 1,
+                "semantic_types": [{"name": "Finding"}],
+            },
+            {
+                "cui": "C0341165",
+                "name": "Acute gastric ulcer",
+                "labels": ["Acute gastric ulcer"],
+                "score": 0.61,
+                "evidence_count": 1,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+        ],
+        top_k=5,
+    )
+    assert [hit["cui"] for hit in ranked] == ["C4554531"]
 
 
 def test_query_ranker_preserves_poorly_controlled_diabetes_qualifier() -> None:
@@ -5401,10 +7693,10 @@ def test_query_ranker_demotes_autopsy_performed_for_unrelated_procedure_context(
     )
 
     autopsy = next(hit for hit in autopsy_query if hit["cui"] == "C4274690")
-    unrelated = next(hit for hit in procedure_query if hit["cui"] == "C4274690")
     assert autopsy_query[0]["cui"] == "C4274690"
     assert procedure_query[0]["cui"] == "C0034115"
-    assert autopsy["score_breakdown"]["lexical_component"] > unrelated["score_breakdown"]["lexical_component"]
+    assert autopsy["score_breakdown"]["lexical_component"] > 0
+    assert all(hit["cui"] != "C4274690" for hit in procedure_query)
 
 
 def test_query_ranker_uses_first_sentence_as_primary_paragraph_intent() -> None:
@@ -5826,13 +8118,11 @@ def test_query_ranker_penalizes_unrelated_therapy_in_transition_context() -> Non
     )
 
     ordered = [hit["cui"] for hit in ranked]
-    assert ordered.index("C0949766") < ordered.index("C0087111")
-    assert ordered.index("C0012622") < ordered.index("C0279025")
-    therapeutic = next(hit for hit in ranked if hit["cui"] == "C0087111")
-    hormone = next(hit for hit in ranked if hit["cui"] == "C0279025")
+    assert "C0949766" in ordered
+    assert "C0012622" in ordered
+    assert "C0087111" not in ordered
+    assert "C0279025" not in ordered
     facilities = next(hit for hit in ranked if hit["cui"] == "C4704819")
-    assert therapeutic["score_breakdown"]["generic_penalty"] > 0
-    assert hormone["score_breakdown"]["clinical_context_sense_penalty"] > 0
     assert facilities["score_breakdown"]["generic_penalty"] > 0
 
 
@@ -5957,8 +8247,10 @@ def test_query_ranker_filters_weak_zero_evidence_component_fallback_when_evidenc
         top_k=4,
     )
 
-    assert "C3540706" not in [hit["cui"] for hit in ranked]
-    assert ranked[-1]["cui"] == "C0015967"
+    ordered_cuis = [hit["cui"] for hit in ranked]
+    assert "C3540706" not in ordered_cuis
+    assert "C0015967" not in ordered_cuis
+    assert "C0042397" in ordered_cuis
 
 
 def test_query_ranker_keeps_strong_zero_evidence_exact_label_fallback() -> None:
@@ -6046,10 +8338,10 @@ def test_query_ranker_demotes_procedure_siblings_when_specific_procedure_present
     )
 
     assert ranked[0]["cui"] == "C0003611"
-    procedure_siblings = {hit["cui"]: hit for hit in ranked if hit["cui"] != "C0003611"}
-    assert procedure_siblings["C0009558"]["score_breakdown"]["role_mismatch_penalty"] > 0
-    assert procedure_siblings["C0040071"]["score_breakdown"]["role_mismatch_penalty"] > 0
-    assert procedure_siblings["C0009558"]["score_breakdown"]["lexical_fallback_used"]
+    ordered_cuis = [hit["cui"] for hit in ranked]
+    assert "C0184893" not in ordered_cuis
+    assert "C0009558" not in ordered_cuis
+    assert "C0040071" not in ordered_cuis
 
 
 def test_related_anchor_candidates_must_share_specific_procedure_anchor() -> None:
@@ -6226,6 +8518,84 @@ def test_query_ranker_demotes_standalone_modifier_finding_fragments() -> None:
     assert specific_finding["score_breakdown"]["semantic_fragment_penalty"] == 0.0
 
 
+def test_query_ranker_filters_component_only_broad_concepts_when_composite_exists() -> None:
+    ranked = rank_hits(
+        "white blood cell count elevated with neutrophil predominance",
+        [
+            {
+                "cui": "C0750426",
+                "name": "Blood leukocyte number above reference range",
+                "labels": ["White blood cell count elevated"],
+                "score": 1.1,
+                "match_type": "umls_label",
+                "matched_label": "White blood cell count elevated",
+                "matched_query_span": "white blood cell count elevated",
+                "evidence_count": 12,
+                "semantic_types": [{"name": "Finding"}],
+            },
+            {
+                "cui": "C0023508",
+                "name": "White Blood Cell Count procedure",
+                "labels": ["White Blood Cell Count procedure", "White blood cell count"],
+                "score": 1.0,
+                "match_type": "umls_label",
+                "matched_label": "White blood cell count",
+                "matched_query_span": "white blood cell count",
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Laboratory Procedure"}],
+            },
+            {
+                "cui": "C000000A",
+                "name": "White color",
+                "labels": ["White color", "white"],
+                "score": 1.34,
+                "match_type": "umls_label",
+                "matched_label": "white",
+                "matched_query_span": "white",
+                "evidence_count": 30,
+                "semantic_types": [{"name": "Qualitative Concept"}],
+            },
+            {
+                "cui": "C000000B",
+                "name": "Count of entities",
+                "labels": ["Count of entities", "count"],
+                "score": 1.34,
+                "match_type": "umls_label",
+                "matched_label": "count",
+                "matched_query_span": "count",
+                "evidence_count": 30,
+                "semantic_types": [{"name": "Quantitative Concept"}],
+            },
+        ],
+        top_k=5,
+    )
+
+    ordered = [hit["cui"] for hit in ranked]
+    assert "C0750426" in ordered
+    assert "C0023508" in ordered
+    assert "C000000A" not in ordered
+    assert "C000000B" not in ordered
+
+    standalone = rank_hits(
+        "white color",
+        [
+            {
+                "cui": "C000000A",
+                "name": "White color",
+                "labels": ["White color", "white"],
+                "score": 1.34,
+                "match_type": "umls_label",
+                "matched_label": "White color",
+                "matched_query_span": "white color",
+                "evidence_count": 30,
+                "semantic_types": [{"name": "Qualitative Concept"}],
+            },
+        ],
+        top_k=1,
+    )
+    assert [hit["cui"] for hit in standalone] == ["C000000A"]
+
+
 def test_query_ranker_promotes_uncovered_anchor_before_duplicate_component() -> None:
     ranked = rank_hits(
         "sepsis lactate vasopressor",
@@ -6370,16 +8740,12 @@ def test_query_ranker_promotes_composite_context_over_zero_evidence_duplicates()
     top_five = ordered_cuis[:5]
     assert ordered_cuis[0] == "C0036983"
     assert "C0036983" in ordered_cuis
-    assert ordered_cuis.index("C2938913") < ordered_cuis.index("C0202115")
-    assert ordered_cuis.index("C2938913") < ordered_cuis.index("C0042397")
-    assert ordered_cuis.index("C2938913") < ordered_cuis.index("C4285806")
-    assert "C0202115" not in top_five
-    assert "C0042397" not in top_five
+    assert "C2938913" not in ordered_cuis
+    assert ordered_cuis.index("C0036983") < ordered_cuis.index("C0202115")
+    assert ordered_cuis.index("C0036983") < ordered_cuis.index("C0042397")
     septic_shock = next(hit for hit in ranked if hit["cui"] == "C0036983")
-    distributive_shock = next(hit for hit in ranked if hit["cui"] == "C2938913")
     assert septic_shock["score_breakdown"]["evidence_context_component"] > 0
     assert septic_shock["score_breakdown"]["composite_intent_component"] > 0
-    assert distributive_shock["score_breakdown"]["composite_intent_component"] >= 0.26
     lactate = next(hit for hit in ranked if hit["cui"] == "C0202115")
     assert lactate["score_breakdown"]["composite_component_penalty"] > 0
     vasopressor = next(hit for hit in ranked if hit["cui"] == "C0042397")
@@ -6690,7 +9056,7 @@ def test_query_ranker_keeps_role_terms_when_the_specific_anchor_matches() -> Non
 
     assert ranked[0]["cui"] == "C0022948"
     assert ranked[0]["score_breakdown"]["role_mismatch_penalty"] == 0.0
-    assert ranked[-1]["cui"] == "C0202057"
+    assert "C0202057" not in [hit["cui"] for hit in ranked]
 
 
 def test_query_ranker_demotes_action_concept_for_observed_state_query() -> None:
@@ -7063,13 +9429,12 @@ def test_query_ranker_demotes_nonfinding_concepts_matching_denied_context() -> N
         top_k=3,
     )
 
-    pain_relief = next(hit for hit in ranked if hit["cui"] == "C0451615")
+    ordered_cuis = [hit["cui"] for hit in ranked]
     chest_pain = next(hit for hit in ranked if hit["cui"] == "C2926613")
     no_chest_pain = next(hit for hit in ranked if hit["cui"] == "C0848168")
-    assert pain_relief["score_breakdown"]["denied_context_mismatch_penalty"] > 0
+    assert "C0451615" not in ordered_cuis
     assert chest_pain["score_breakdown"]["denied_context_mismatch_penalty"] == 0.0
     assert no_chest_pain["score_breakdown"]["denied_context_mismatch_penalty"] == 0.0
-    assert ranked.index(no_chest_pain) < ranked.index(pain_relief)
 
 
 def test_query_ranker_scopes_denial_penalty_to_negated_phrase() -> None:
@@ -7091,6 +9456,8 @@ def test_query_ranker_scopes_denial_penalty_to_negated_phrase() -> None:
                 "labels": ["Focal Neurologic Deficits"],
                 "score": 1.10,
                 "match_type": "umls_label",
+                "matched_label": "Focal Neurologic Deficits",
+                "matched_query_span": "focal deficits",
                 "evidence_count": 20,
                 "semantic_types": [{"name": "Finding"}],
             },
@@ -7099,9 +9466,61 @@ def test_query_ranker_scopes_denial_penalty_to_negated_phrase() -> None:
     )
 
     normal_cranial = next(hit for hit in ranked if hit["cui"] == "C3266627")
-    focal_deficits = next(hit for hit in ranked if hit["cui"] == "C0746857")
     assert normal_cranial["score_breakdown"]["denied_positive_finding_penalty"] == 0.0
-    assert focal_deficits["score_breakdown"]["denied_positive_finding_penalty"] >= 0.5
+    assert "C0746857" not in [hit["cui"] for hit in ranked]
+
+    direct_deficit = rank_hits(
+        "focal neurologic deficit",
+        [
+            {
+                "cui": "C0746857",
+                "name": "Focal Neurologic Deficits",
+                "labels": ["Focal Neurologic Deficits"],
+                "score": 1.10,
+                "match_type": "umls_label",
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Finding"}],
+            },
+        ],
+        top_k=1,
+    )
+    assert direct_deficit[0]["cui"] == "C0746857"
+
+
+def test_query_ranker_does_not_carry_short_no_scope_into_next_clause() -> None:
+    ranked = rank_hits(
+        "No seizures or focal neurologic deficit oncology started osimertinib",
+        [
+            {
+                "cui": "C4058811",
+                "name": "osimertinib",
+                "labels": ["osimertinib"],
+                "score": 1.0,
+                "match_type": "umls_label",
+                "matched_label": "osimertinib",
+                "matched_query_span": "osimertinib",
+                "evidence_count": 0,
+                "semantic_types": [{"name": "Pharmacologic Substance"}],
+            },
+            {
+                "cui": "C0746857",
+                "name": "Focal Neurologic Deficits",
+                "labels": ["Focal Neurologic Deficits"],
+                "score": 1.0,
+                "match_type": "umls_label",
+                "matched_label": "Focal Neurologic Deficits",
+                "matched_query_span": "focal neurologic deficit",
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Finding"}],
+            },
+        ],
+        top_k=2,
+    )
+
+    osimertinib = next(hit for hit in ranked if hit["cui"] == "C4058811")
+    assert osimertinib["assertion"]["status"] == "current"
+    assert osimertinib["score_breakdown"]["denied_context_mismatch_penalty"] == 0.0
+    assert "C0746857" not in [hit["cui"] for hit in ranked]
 
 
 def test_query_ranker_demotes_physical_exam_boilerplate_fragments() -> None:
@@ -7177,15 +9596,12 @@ def test_query_ranker_demotes_physical_exam_boilerplate_fragments() -> None:
     assert ordered.index("C4050434") < ordered.index("C0024121")
     heart_disease = next(hit for hit in ranked if hit["cui"] == "C0018799")
     lung_neoplasm = next(hit for hit in ranked if hit["cui"] == "C0024121")
-    no_time = next(hit for hit in ranked if hit["cui"] == "C5381944")
-    in_person = next(hit for hit in ranked if hit["cui"] == "C5444207")
-    regular_exercise = next(hit for hit in ranked if hit["cui"] == "C2243091")
     auscultation = next(hit for hit in ranked if hit["cui"] == "C2230284")
     assert heart_disease["score_breakdown"]["normal_exam_fragment_penalty"] > 0
     assert lung_neoplasm["score_breakdown"]["normal_exam_fragment_penalty"] > 0
-    assert no_time["score_breakdown"]["generic_penalty"] > 0
-    assert in_person["score_breakdown"]["generic_penalty"] > 0
-    assert regular_exercise["score_breakdown"]["generic_fragment_penalty"] > 0
+    assert "C5381944" not in ordered
+    assert "C5444207" not in ordered
+    assert "C2243091" not in ordered
     assert auscultation["score_breakdown"]["denied_context_mismatch_penalty"] == 0.0
 
 
@@ -7467,6 +9883,7 @@ def test_search_index_falls_back_to_local_vectors_when_elasticsearch_is_unavaila
     documents = build_documents(
         [EvidenceRecord("e1", "C0004238", "atrial fibrillation anticoagulation", "notes", "clinical_snippet", 2)]
     )
+    documents[0].labels.append("Atrial Fibrillation")
     docs_path = tmp_path / "docs.jsonl"
     vectors_path = tmp_path / "vectors.jsonl"
     write_jsonl(docs_path, documents)
@@ -7496,6 +9913,308 @@ def test_search_index_falls_back_to_local_vectors_when_elasticsearch_is_unavaila
     assert result["requested_backend"] == "elasticsearch"
     assert "elasticsearch unavailable" in result["fallback_reason"]
     assert result["hits"][0]["cui"] == "C0004238"
+
+
+def test_search_index_can_require_elasticsearch_when_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    documents = build_documents(
+        [EvidenceRecord("e1", "C0004238", "atrial fibrillation anticoagulation", "notes", "clinical_snippet", 2)]
+    )
+    documents[0].labels.append("Atrial Fibrillation")
+    docs_path = tmp_path / "docs.jsonl"
+    vectors_path = tmp_path / "vectors.jsonl"
+    write_jsonl(docs_path, documents)
+    write_jsonl(vectors_path, embed_documents(documents, HashingEmbedder(dim=16)))
+
+    def fail_search_knn(*args, **kwargs):
+        raise OSError("elasticsearch down")
+
+    monkeypatch.setattr(search_quality_server, "search_knn", fail_search_knn)
+    index = SearchIndex(
+        vector_paths=[vectors_path],
+        doc_paths=[docs_path],
+        evidence_paths=[],
+        provenance_index_path=None,
+        provider="hashing",
+        model=None,
+        dim=16,
+        local_files_only=True,
+        max_seq_length=None,
+        device="cpu",
+        elastic_url="http://localhost:9200",
+        elastic_index="missing-index",
+        require_elasticsearch=True,
+    )
+
+    with pytest.raises(RuntimeError, match="Elasticsearch is required"):
+        index.search("atrial fibrillation", top_k=1)
+
+
+def test_search_index_skips_repeated_elasticsearch_failures_during_cooldown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    documents = build_documents(
+        [EvidenceRecord("e1", "C0004238", "atrial fibrillation anticoagulation", "notes", "clinical_snippet", 2)]
+    )
+    documents[0].labels.append("Atrial Fibrillation")
+    docs_path = tmp_path / "docs.jsonl"
+    vectors_path = tmp_path / "vectors.jsonl"
+    write_jsonl(docs_path, documents)
+    write_jsonl(vectors_path, embed_documents(documents, HashingEmbedder(dim=16)))
+    calls = []
+
+    def fail_search_knn(*args, **kwargs):
+        calls.append(1)
+        raise OSError("elasticsearch down")
+
+    monkeypatch.setattr(search_quality_server, "search_knn", fail_search_knn)
+    index = SearchIndex(
+        vector_paths=[vectors_path],
+        doc_paths=[docs_path],
+        evidence_paths=[],
+        provenance_index_path=None,
+        provider="hashing",
+        model=None,
+        dim=16,
+        local_files_only=True,
+        max_seq_length=None,
+        device="cpu",
+        elastic_url="http://localhost:9200",
+        elastic_index="missing-index",
+    )
+
+    first = index.search("atrial fibrillation", top_k=1, include_related=False)
+    second = index.search("anticoagulation", top_k=1, include_related=False)
+
+    assert len(calls) == 1
+    assert first["backend"] == "local_fallback"
+    assert second["backend"] == "local_fallback"
+    assert "elasticsearch unavailable" in second["fallback_reason"]
+
+
+def test_search_index_excludes_restricted_source_prefixes_from_elasticsearch_candidates(
+    tmp_path: Path,
+) -> None:
+    documents = build_documents(
+        [EvidenceRecord("e1", "C0004238", "atrial fibrillation anticoagulation", "pubmed", "abstract", 2)]
+    )
+    documents[0].labels.append("Atrial Fibrillation")
+    docs_path = tmp_path / "docs.jsonl"
+    vectors_path = tmp_path / "vectors.jsonl"
+    write_jsonl(docs_path, documents)
+    write_jsonl(vectors_path, embed_documents(documents, HashingEmbedder(dim=16)))
+    calls = []
+
+    def fake_search_knn(*args, **kwargs):
+        calls.append(kwargs)
+        return []
+
+    index = SearchIndex(
+        vector_paths=[vectors_path],
+        doc_paths=[docs_path],
+        evidence_paths=[],
+        provenance_index_path=None,
+        provider="hashing",
+        model=None,
+        dim=16,
+        local_files_only=True,
+        max_seq_length=None,
+        device="cpu",
+        elastic_url="http://localhost:9200",
+        elastic_index="concepts",
+        search_knn_func=fake_search_knn,
+    )
+
+    result = index.search("atrial fibrillation", top_k=1, include_related=False)
+
+    assert result["backend"] == "elasticsearch"
+    assert calls[0]["exclude_source_prefixes"] == ("mimic",)
+    assert index.status()["elastic_exclude_source_prefixes"] == ["mimic"]
+
+
+def test_search_index_reports_fast_local_vector_backend(tmp_path: Path) -> None:
+    documents = build_documents(
+        [
+            EvidenceRecord("e1", "C0004238", "atrial fibrillation anticoagulation", "notes", "clinical_snippet", 2),
+            EvidenceRecord("e2", "C0011849", "diabetes mellitus insulin", "notes", "clinical_snippet", 2),
+        ]
+    )
+    documents[0].labels.append("Atrial Fibrillation")
+    documents[1].labels.append("Diabetes Mellitus")
+    docs_path = tmp_path / "docs.jsonl"
+    vectors_path = tmp_path / "vectors.jsonl"
+    write_jsonl(docs_path, documents)
+    write_jsonl(vectors_path, embed_documents(documents, HashingEmbedder(dim=16)))
+
+    index = SearchIndex(
+        vector_paths=[vectors_path],
+        doc_paths=[docs_path],
+        evidence_paths=[],
+        provenance_index_path=None,
+        provider="hashing",
+        model=None,
+        dim=16,
+        local_files_only=True,
+        max_seq_length=None,
+        device="cpu",
+        elastic_url="",
+        elastic_index="",
+    )
+    result = index.search("atrial fibrillation", top_k=1, include_related=False)
+
+    assert index.status()["local_vector_backend"] in {"numpy", "python"}
+    assert result["hits"][0]["cui"] == "C0004238"
+
+
+def test_search_index_tracks_vector_lineage_and_source_contributions(tmp_path: Path) -> None:
+    documents = build_documents(
+        [
+            EvidenceRecord("e1", "C0004238", "atrial fibrillation anticoagulation", "notes", "clinical_snippet", 2),
+            EvidenceRecord("e2", "C0011849", "diabetes mellitus insulin", "dailymed", "drug_label", 2),
+        ]
+    )
+    documents[0].labels.append("Atrial Fibrillation")
+    documents[1].labels.append("Diabetes Mellitus")
+    docs_path = tmp_path / "docs.jsonl"
+    vectors_path = tmp_path / "vectors.jsonl"
+    write_jsonl(docs_path, documents)
+    write_jsonl(vectors_path, embed_documents(documents, HashingEmbedder(dim=16)))
+
+    index = SearchIndex(
+        vector_paths=[vectors_path],
+        doc_paths=[docs_path],
+        evidence_paths=[],
+        provenance_index_path=None,
+        provider="hashing",
+        model=None,
+        dim=16,
+        local_files_only=True,
+        max_seq_length=None,
+        device="cpu",
+        elastic_url="",
+        elastic_index="",
+    )
+    compact = index.search("atrial fibrillation", top_k=1, include_related=False)
+    debug = index.search("atrial fibrillation", top_k=1, include_related=False, debug=True)
+
+    assert index.status()["vector_file_records"][0]["records"] == 2
+    assert compact["source_contributions"][0]["source"] == "notes"
+    assert compact["source_bundle_contributions"][0]["source_bundle"] == "notes"
+    assert "vector_path" not in compact["hits"][0]
+    assert "vector_file_contributions" not in compact
+    assert debug["hits"][0]["vector_path"] == str(vectors_path)
+    assert debug["hits"][0]["vector_row"] == 0
+    assert debug["hits"][0]["source_bundle"] == "notes"
+    assert debug["hits"][0]["retrieval"]["kind"] == "local_vector"
+    assert debug["vector_file_contributions"][0]["vector_path"] == str(vectors_path)
+
+
+def test_build_source_subset_writes_appendable_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from argparse import Namespace
+
+    mrconso = tmp_path / "MRCONSO.RRF"
+    mrconso.write_text(
+        "C0004238|ENG|P|L1|PF|S1|Y|A1||SCUI1|SDUI1|MSH|MH|D001281|Atrial Fibrillation|0|N||\n",
+        encoding="utf-8",
+    )
+    label_index = tmp_path / "labels.sqlite"
+    build_label_index(mrconso_path=mrconso, out_path=label_index, replace=True)
+
+    def fake_medlineplus_fetch(**kwargs):
+        return [
+            CorpusDocument(
+                doc_id="MEDLINEPLUS:test",
+                source="medlineplus",
+                title="Atrial fibrillation",
+                text="Atrial fibrillation causes irregular heartbeat and may require anticoagulation.",
+            )
+        ]
+
+    monkeypatch.setattr(
+        evidence_vectors,
+        "fetch_medlineplus_health_topic_documents",
+        fake_medlineplus_fetch,
+    )
+    out_dir = tmp_path / "source"
+    aggregate_docs = tmp_path / "aggregate_docs.jsonl"
+    aggregate_vectors = tmp_path / "aggregate_vectors.jsonl"
+    args = Namespace(
+        source="medlineplus",
+        out_dir=str(out_dir),
+        prefix="",
+        label_index=str(label_index),
+        mrconso=str(mrconso),
+        query="",
+        source_url=None,
+        include_spanish=False,
+        prefer_xml=False,
+        include_type=None,
+        drug_name=[],
+        setid=[],
+        mrsat=[],
+        max_setids_from_mrsat=100,
+        max_records=10,
+        page_size=25,
+        max_labels_per_drug=2,
+        max_chars=20000,
+        matcher="trie",
+        max_label_tokens=8,
+        context_chars=120,
+        max_ambiguity=1,
+        max_mentions_per_cui=8,
+        evidence_tag="",
+        max_labels=8,
+        max_items_per_doc=10,
+        provider="hashing",
+        model=None,
+        dim=16,
+        batch_size=4,
+        vector_precision=6,
+        omit_text=False,
+        include_document_metadata=False,
+        local_files_only=True,
+        max_seq_length=None,
+        device="cpu",
+        update_docs=str(aggregate_docs),
+        update_vectors=str(aggregate_vectors),
+    )
+
+    assert evidence_vectors.cmd_build_source_subset(args) == 0
+    docs_path = out_dir / "medlineplus_concept_documents.jsonl"
+    vectors_path = out_dir / "medlineplus_concept_vectors.hashing.jsonl"
+    docs = list(iter_jsonl(docs_path))
+    vectors = list(iter_jsonl(vectors_path))
+    aggregate_doc_rows = list(iter_jsonl(aggregate_docs))
+    aggregate_vector_rows = list(iter_jsonl(aggregate_vectors))
+
+    assert len(docs) == 1
+    assert len(vectors) == 1
+    assert len(aggregate_doc_rows) == 1
+    assert len(aggregate_vector_rows) == 1
+    assert docs[0]["metadata"]["source_bundle"] == "medlineplus"
+
+    index = SearchIndex(
+        vector_paths=[vectors_path],
+        doc_paths=[docs_path],
+        evidence_paths=[],
+        provenance_index_path=None,
+        provider="hashing",
+        model=None,
+        dim=16,
+        local_files_only=True,
+        max_seq_length=None,
+        device="cpu",
+        elastic_url="",
+        elastic_index="",
+    )
+    result = index.search("atrial fibrillation", top_k=1, include_related=False, debug=True)
+
+    assert result["hits"][0]["cui"] == "C0004238"
+    assert result["hits"][0]["source_bundle"] == "medlineplus"
+    assert result["source_bundle_contributions"][0]["source_bundle"] == "medlineplus"
 
 
 def test_code_resolution_adds_evidence_bearing_label_broadened_candidate(tmp_path: Path) -> None:
@@ -9932,21 +12651,572 @@ def test_generic_umls_labels_are_suppressed_from_label_index(tmp_path: Path) -> 
     mrconso = tmp_path / "MRCONSO.RRF"
     mrconso.write_text(
         "C4489374|ENG|P|L1|PF|S1|Y|A1|||D001|NCI|PT|D001|Extremely Limited|0|N||\n"
-        "C0036983|ENG|P|L2|PF|S2|Y|A2|||D002|MSH|MH|D002|Septic shock|0|N||\n",
+        "C0036983|ENG|P|L2|PF|S2|Y|A2|||D002|MSH|MH|D002|Septic shock|0|N||\n"
+        "C0205161|ENG|P|L3|PF|S3|Y|A3|||D003|MTH|PN|D003|Abnormal|0|N||\n"
+        "C4022751|ENG|P|L4|PF|S4|Y|A4|||D004|MTH|PN|D004|Abnormal uterine bleeding|0|N||\n"
+        "C1704243|ENG|P|L5|PF|S5|Y|A5|||D005|MTH|PN|D005|Greater|0|N||\n"
+        "C0549177|ENG|P|L6|PF|S6|Y|A6|||D006|MTH|PN|D006|Large|0|N||\n"
+        "C1416798|ENG|P|L7|PF|S7|Y|A7|||D007|HGNC|NS|D007|LARGE|0|N||\n"
+        "C1515187|ENG|P|L8|PF|S8|Y|A8|||D008|SNOMEDCT_US|PT|D008|Take|0|N||\n"
+        "C0376636|ENG|P|L9|PF|S9|Y|A9|||D009|MSH|MH|D009|Disease Management|0|N||\n"
+        "C0000001|ENG|P|L10|PF|S10|Y|A10|||D010|MSH|MH|D010|Pain Management|0|N||\n",
         encoding="utf-8",
     )
     index_path = tmp_path / "labels.sqlite"
     count = build_label_index(mrconso_path=mrconso, out_path=index_path, replace=True)
-    assert count == 1
+    assert count == 4
     with LabelIndex(index_path) as index:
         assert index.lookup("extremely limited") == []
+        assert index.lookup("abnormal") == []
+        assert index.lookup("greater") == []
+        assert index.lookup("take") == []
+        assert index.lookup("disease management") == []
         assert index.lookup("septic shock")
+        assert index.lookup("abnormal uterine bleeding")
+        assert [row["cui"] for row in index.lookup("large")] == ["C1416798"]
+        assert index.lookup("pain management")
 
 
 def test_generic_filter_blocks_known_bad_concepts() -> None:
+    assert is_blocked_generic_concept("C0205161", "Abnormal")
+    assert is_blocked_generic_concept("C1550458", "Abnormal")
+    assert is_blocked_generic_concept("C0011750", "Developing Countries")
+    assert is_blocked_generic_concept("C0444611", "Fluid behavior")
+    assert is_blocked_generic_concept("C3842633", "At work")
+    assert is_blocked_generic_concept("C4698491", "Rather")
+    assert is_blocked_generic_concept("C5777012", "Lower risk")
+    assert is_blocked_generic_concept("C4534363", "At home")
+    assert is_blocked_generic_concept("C0744212", "FOUND DOWN")
+    assert is_blocked_generic_concept("C0226003", "Structure of large artery")
+    assert is_blocked_generic_concept("C0225990", "Large blood vessel structure")
     assert is_blocked_generic_concept("C4489374", "Extremely Limited")
     assert is_blocked_generic_concept("C0683954", "Study Results")
+    assert is_blocked_generic_concept("C1704243", "Greater")
+    assert is_blocked_generic_concept("C0549177", "Large")
+    assert is_blocked_generic_concept("C0439091", "Greater Than or Equal To")
+    assert is_blocked_generic_concept("C0439092", "Less Than")
+    assert is_blocked_generic_concept("C0700321", "Small")
+    assert is_blocked_generic_concept("C1880391", "Domestic")
+    assert is_blocked_generic_concept("C0443350", "Watery")
+    assert is_blocked_generic_concept("C0460139", "Pressure (finding)")
+    assert is_blocked_generic_concept("C1533810", "Placement - action")
+    assert is_blocked_generic_concept("C1518614", "Organism Strain")
+    assert is_blocked_generic_concept("C0232920", "Sterile (qualifier value)")
+    assert is_blocked_generic_concept("C3854333", "Narrowing")
+    assert is_blocked_generic_concept("C0205225", "Primary")
+    assert is_blocked_generic_concept("C1283828", "intent")
+    assert is_blocked_generic_concept("C0443275", "Partial thickness")
+    assert is_blocked_generic_concept("C0439220", "stones - unit")
+    assert is_blocked_generic_concept("C0205271", "Irregular")
+    assert is_blocked_generic_concept("C1515187", "Take")
+    assert is_blocked_generic_concept("C0376636", "Disease Management")
+    assert is_blocked_generic_concept("C0376636", "management")
+    assert is_blocked_generic_concept("C0332128", "Examined")
+    assert is_blocked_generic_concept("C0849355", "Removed")
+    assert is_blocked_generic_concept("C1519941", "Validation")
+    assert is_blocked_generic_concept("C0205396", "Identified")
+    assert is_blocked_generic_concept("C0441889", "Levels (qualifier value)")
+    assert is_blocked_generic_concept("C0449286", "Degree or extent")
+    assert is_blocked_generic_concept("C4723751", "Other Than")
+    assert is_blocked_generic_concept("C1280412", "Thick")
+    assert is_blocked_generic_concept("C1514721", "Range")
+    assert is_blocked_generic_concept("C0087111", "Therapeutic procedure")
+    assert is_blocked_generic_concept("C3647129", "pain pressure")
+    assert is_blocked_generic_concept("C1881187", "Increase in Pressure Medical Device Problem")
+    assert is_blocked_generic_concept("C3845350", "At least daily")
+    assert is_blocked_generic_concept("C0019932", "Hormones")
+    assert is_blocked_generic_concept(
+        "C3870121",
+        "Information to tell doctors if I have a severe brain injury Narrative - Reported",
+    )
+    assert not is_blocked_generic_concept("C1416798", "LARGE")
+    assert not is_blocked_generic_concept("C0000001", "Pain Management")
+    assert not is_blocked_generic_concept("C4022751", "Abnormal uterine bleeding")
     assert not is_blocked_generic_concept("C0036983", "Septic shock")
+
+
+def test_definition_fallback_skips_generic_blocked_queries() -> None:
+    assert definition_fallback_query_is_too_generic("disease management")
+    assert is_blocked_generic_query("large")
+    assert not definition_fallback_query_is_too_generic("pain management")
+
+
+def test_query_ranker_filters_contextual_false_positive_results() -> None:
+    ranked = rank_hits(
+        "A procedure note documented ultrasound guided venous access. "
+        "The right internal jugular central line was placed using sterile technique.",
+        [
+            {
+                "cui": "C1145640",
+                "name": "Central venous catheter, device",
+                "labels": ["Central venous catheter, device"],
+                "score": 1.1,
+                "match_type": "umls_label",
+                "matched_query_span": "central venous catheter",
+                "evidence_count": 1,
+                "semantic_types": [{"name": "Medical Device"}],
+            },
+            {
+                "cui": "C0021359",
+                "name": "Infertility",
+                "labels": ["Infertility", "Sterility"],
+                "score": 1.34,
+                "match_type": "umls_label",
+                "matched_query_span": "sterile",
+                "evidence_count": 6,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+        ],
+        top_k=5,
+    )
+
+    assert [hit["cui"] for hit in ranked] == ["C1145640"]
+
+    ranked = rank_hits(
+        "Pulmonary hypertension caused dyspnea and elevated pressures.",
+        [
+            {
+                "cui": "C0020542",
+                "name": "Pulmonary Hypertension",
+                "labels": ["Pulmonary Hypertension"],
+                "score": 0.9,
+                "match_type": "umls_label",
+                "matched_query_span": "pulmonary hypertension",
+                "evidence_count": 1,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C4293696",
+                "name": "Elevated prostate-specific antigen level",
+                "labels": ["Elevated prostate-specific antigen level"],
+                "score": 0.62,
+                "evidence_count": 1,
+                "semantic_types": [{"name": "Finding"}],
+            },
+        ],
+        top_k=5,
+    )
+
+    assert [hit["cui"] for hit in ranked] == ["C0020542"]
+
+    ranked = rank_hits(
+        "Sickle cell anemia caused vaso-occlusive crisis with severe pain. "
+        "Hydroxyurea was continued after discharge.",
+        [
+            {
+                "cui": "C0002895",
+                "name": "Anemia, Sickle Cell",
+                "labels": ["Anemia, Sickle Cell"],
+                "score": 0.9,
+                "match_type": "umls_label",
+                "matched_query_span": "sickle cell anemia",
+                "evidence_count": 18,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C0566986",
+                "name": "Abnormal Vaginal Discharge",
+                "labels": ["Abnormal Vaginal Discharge"],
+                "score": 0.61,
+                "evidence_count": 2,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+        ],
+        top_k=5,
+    )
+
+    assert [hit["cui"] for hit in ranked] == ["C0002895"]
+
+    ranked = rank_hits(
+        "Adult ICU patient with acute respiratory distress syndrome and septic shock.",
+        [
+            {
+                "cui": "C0035222",
+                "name": "Respiratory Distress Syndrome, Adult",
+                "labels": ["Respiratory Distress Syndrome, Adult"],
+                "score": 1.0,
+                "match_type": "umls_label",
+                "matched_query_span": "acute respiratory distress syndrome",
+                "evidence_count": 10,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C0035220",
+                "name": "Respiratory Distress Syndrome, Newborn",
+                "labels": ["Respiratory Distress Syndrome, Newborn"],
+                "score": 1.1,
+                "match_type": "umls_label",
+                "matched_query_span": "respiratory distress syndrome",
+                "evidence_count": 10,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C0036974",
+                "name": "Shock",
+                "labels": ["Shock"],
+                "score": 1.1,
+                "match_type": "umls_label",
+                "matched_query_span": "shock",
+                "evidence_count": 10,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+        ],
+        top_k=5,
+    )
+
+    assert [hit["cui"] for hit in ranked] == ["C0035222"]
+
+
+def test_query_ranker_filters_research_prose_secondary_analyses_tails() -> None:
+    anemia = {
+        "cui": "C0002871",
+        "name": "Anemia",
+        "labels": ["Anemia"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Anemia",
+        "matched_query_span": "anemia",
+        "sources": ["umls_label"],
+        "evidence_count": 46,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    secondary_aplastic_anemia = {
+        "cui": "C0271908",
+        "name": "Secondary aplastic anemia",
+        "labels": ["Secondary aplastic anemia"],
+        "score": 0.64,
+        "sources": ["mondo"],
+        "evidence_count": 2,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    neoplasm_metastasis = {
+        "cui": "C0027627",
+        "name": "Neoplasm Metastasis",
+        "labels": ["Neoplasm Metastasis", "secondary"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "secondary",
+        "matched_query_span": "secondary",
+        "sources": ["umls_label"],
+        "evidence_count": 63,
+        "semantic_types": [{"name": "Neoplastic Process"}],
+    }
+    lung_cancer = {
+        "cui": "C0242379",
+        "name": "Malignant neoplasm of lung",
+        "labels": ["Malignant neoplasm of lung", "Lung Cancer"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Lung Cancer",
+        "matched_query_span": "lung cancer",
+        "sources": ["umls_label"],
+        "evidence_count": 16,
+        "semantic_types": [{"name": "Neoplastic Process"}],
+    }
+
+    ranked = rank_hits(
+        "Secondary analyses examined whether microcytosis predicted symptomatic anemia.",
+        [neoplasm_metastasis, secondary_aplastic_anemia, anemia],
+        top_k=3,
+    )
+
+    assert [hit["cui"] for hit in ranked] == ["C0002871"]
+    lung_cancer_ranked = rank_hits(
+        "Secondary analyses examined whether incidental lung nodule predicted lung cancer.",
+        [neoplasm_metastasis, lung_cancer],
+        top_k=2,
+    )
+    assert [hit["cui"] for hit in lung_cancer_ranked] == ["C0242379"]
+    diagnostic_sensitivity = {
+        "cui": "C1511883",
+        "name": "Diagnostic Sensitivity",
+        "labels": ["Diagnostic Sensitivity", "Sensitivity"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Sensitivity",
+        "matched_query_span": "sensitivity",
+        "sources": ["umls_label"],
+        "evidence_count": 0,
+        "semantic_types": [{"name": "Quantitative Concept"}],
+    }
+    hypersensitivity = {
+        "cui": "C0020517",
+        "name": "Hypersensitivity",
+        "labels": ["Hypersensitivity", "Sensitivity"],
+        "score": 1.0,
+        "match_type": "umls_label",
+        "matched_label": "Sensitivity",
+        "matched_query_span": "sensitivity",
+        "sources": ["umls_label"],
+        "evidence_count": 16,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    sensitivity_analysis_ranked = rank_hits(
+        "Sensitivity analyses removed encounters with possible metastatic disease.",
+        [diagnostic_sensitivity, hypersensitivity, neoplasm_metastasis],
+        top_k=3,
+    )
+    assert [hit["cui"] for hit in sensitivity_analysis_ranked] == ["C0027627"]
+    direct_sensitivity_ranked = rank_hits(
+        "diagnostic sensitivity",
+        [diagnostic_sensitivity],
+        top_k=1,
+    )
+    assert [hit["cui"] for hit in direct_sensitivity_ranked] == ["C1511883"]
+    metastasis_ranked = rank_hits(
+        "Secondary metastatic disease was found in the liver.",
+        [neoplasm_metastasis],
+        top_k=1,
+    )
+    assert [hit["cui"] for hit in metastasis_ranked] == ["C0027627"]
+
+
+def test_query_ranker_filters_zero_evidence_overqualified_label_fallback() -> None:
+    ranked = rank_hits(
+        "A patient with diabetic foot osteomyelitis had exposed bone. "
+        "Bone biopsy was planned before narrowing antibiotics.",
+        [
+            {
+                "cui": "C0003232",
+                "name": "Antibiotics",
+                "labels": ["Antibiotics"],
+                "score": 1.19,
+                "match_type": "umls_label",
+                "matched_query_span": "antibiotics",
+                "evidence_count": 6,
+                "semantic_types": [{"name": "Antibiotic"}],
+            },
+            {
+                "cui": "C3540706",
+                "name": "Antibiotic throat preparations",
+                "labels": ["Antibiotic throat preparations"],
+                "score": 1.19,
+                "match_type": "umls_label",
+                "matched_query_span": "antibiotics",
+                "evidence_count": 0,
+                "semantic_types": [{"name": "Pharmacologic Substance"}],
+            },
+            {
+                "cui": "C1456868",
+                "name": "Diabetic foot ulcer",
+                "labels": ["Diabetic foot ulcer"],
+                "score": 1.05,
+                "match_type": "umls_label",
+                "matched_query_span": "diabetic foot",
+                "evidence_count": 0,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C0029443",
+                "name": "Osteomyelitis",
+                "labels": ["Osteomyelitis"],
+                "score": 1.05,
+                "match_type": "umls_label",
+                "matched_query_span": "osteomyelitis",
+                "evidence_count": 12,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C0005558",
+                "name": "Biopsy",
+                "labels": ["Biopsy"],
+                "score": 0.9,
+                "evidence_count": 11,
+                "semantic_types": [{"name": "Diagnostic Procedure"}],
+            },
+        ],
+        top_k=5,
+    )
+
+    cuis = [hit["cui"] for hit in ranked]
+    assert "C3540706" not in cuis
+    assert "C0003232" in cuis
+    assert "C1456868" in cuis
+
+
+def test_query_ranker_filters_scalar_qualifier_noise_and_contextless_large_gene() -> None:
+    ranked = rank_hits(
+        "large vessel occlusion tenecteplase mechanical thrombectomy aphasia",
+        [
+            {
+                "cui": "C0549177",
+                "name": "Large",
+                "labels": ["Large"],
+                "score": 1.34,
+                "match_type": "umls_label",
+                "matched_label": "Large",
+                "matched_query_span": "large",
+                "sources": ["umls_label"],
+                "semantic_types": [{"name": "Quantitative Concept"}],
+            },
+            {
+                "cui": "C1416798",
+                "name": "LARGE1 gene",
+                "labels": ["LARGE1 gene", "LARGE"],
+                "score": 1.34,
+                "match_type": "umls_label",
+                "matched_label": "LARGE",
+                "matched_query_span": "large",
+                "sources": ["umls_label"],
+                "semantic_types": [{"name": "Gene or Genome"}],
+            },
+            {
+                "cui": "C0225990",
+                "name": "Large blood vessel structure",
+                "labels": ["Large blood vessel structure", "Large vessel"],
+                "score": 1.13,
+                "match_type": "umls_label",
+                "matched_label": "Large vessel",
+                "matched_query_span": "large vessel",
+                "sources": ["umls_label"],
+                "evidence_count": 2,
+                "semantic_types": [{"name": "Body Part, Organ, or Organ Component"}],
+            },
+        ],
+        top_k=5,
+    )
+
+    assert [hit["cui"] for hit in ranked] == []
+    gene_query = rank_hits(
+        "LARGE gene",
+        [
+            {
+                "cui": "C1416798",
+                "name": "LARGE1 gene",
+                "labels": ["LARGE1 gene", "LARGE"],
+                "score": 1.34,
+                "match_type": "umls_label",
+                "matched_label": "LARGE",
+                "matched_query_span": "large",
+                "sources": ["umls_label"],
+                "semantic_types": [{"name": "Gene or Genome"}],
+            },
+        ],
+        top_k=1,
+    )
+    assert [hit["cui"] for hit in gene_query] == ["C1416798"]
+
+
+def test_query_ranker_filters_take_and_disease_management_noise() -> None:
+    ranked = rank_hits(
+        "patient should take antibiotics for diabetes disease management",
+        [
+            {
+                "cui": "C1515187",
+                "name": "Take",
+                "labels": ["Take"],
+                "score": 0.64,
+                "sources": ["ncbi_bookshelf_oa"],
+                "semantic_types": [{"name": "Functional Concept"}],
+            },
+            {
+                "cui": "C0376636",
+                "name": "Disease Management",
+                "labels": ["Disease Management", "management"],
+                "score": 1.34,
+                "match_type": "umls_label",
+                "matched_label": "Disease Management",
+                "matched_query_span": "disease management",
+                "sources": ["umls_label"],
+                "semantic_types": [{"name": "Therapeutic or Preventive Procedure"}],
+            },
+            {
+                "cui": "C0003232",
+                "name": "Antibiotics",
+                "labels": ["Antibiotics"],
+                "score": 0.92,
+                "evidence_count": 4,
+                "semantic_types": [{"name": "Antibiotic"}],
+            },
+        ],
+        top_k=5,
+    )
+
+    assert [hit["cui"] for hit in ranked] == ["C0003232"]
+
+
+def test_query_ranker_filters_overly_broad_long_paragraph_artifacts() -> None:
+    chronic_disease = {
+        "cui": "C0008679",
+        "name": "Chronic disease",
+        "labels": ["Chronic disease", "Chronic diseases"],
+        "score": 0.84,
+        "evidence_count": 8,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    copd = {
+        "cui": "C0024117",
+        "name": "Chronic Obstructive Airway Disease",
+        "labels": ["Chronic obstructive pulmonary disease", "COPD"],
+        "score": 0.94,
+        "match_type": "umls_label",
+        "matched_label": "Chronic obstructive pulmonary disease",
+        "matched_query_span": "chronic obstructive pulmonary disease",
+        "evidence_count": 12,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+    wheezing = {
+        "cui": "C0043144",
+        "name": "Wheezing",
+        "labels": ["Wheezing"],
+        "score": 0.72,
+        "match_type": "umls_label",
+        "matched_label": "Wheezing",
+        "matched_query_span": "wheezing",
+        "evidence_count": 4,
+        "semantic_types": [{"name": "Sign or Symptom"}],
+    }
+
+    ranked = rank_hits(
+        "A patient with chronic obstructive pulmonary disease had worsening dyspnea and wheezing.",
+        [chronic_disease, copd, wheezing],
+        top_k=5,
+    )
+    ordered = [hit["cui"] for hit in ranked]
+    assert ordered.index("C0024117") < ordered.index("C0008679")
+    assert ordered.index("C0043144") < ordered.index("C0008679")
+
+    exact_chronic = rank_hits(
+        "chronic disease management",
+        [chronic_disease],
+        top_k=1,
+    )
+    assert [hit["cui"] for hit in exact_chronic] == ["C0008679"]
+
+    blood_pressure = {
+        "cui": "C0005824",
+        "name": "Blood pressure determination",
+        "labels": ["Blood pressure determination", "Blood Pressure"],
+        "score": 0.74,
+        "evidence_count": 5,
+        "semantic_types": [{"name": "Health Care Activity"}],
+    }
+    lead_poisoning = {
+        "cui": "C0023176",
+        "name": "Lead Poisoning",
+        "labels": ["Lead Poisoning", "blood lead level"],
+        "score": 0.9,
+        "match_type": "umls_label",
+        "matched_label": "Lead Poisoning",
+        "matched_query_span": "lead poisoning",
+        "evidence_count": 7,
+        "semantic_types": [{"name": "Disease or Syndrome"}],
+    }
+
+    ranked = rank_hits(
+        "A toddler with pica had lead poisoning after an elevated blood lead level.",
+        [blood_pressure, lead_poisoning],
+        top_k=3,
+    )
+    ordered = [hit["cui"] for hit in ranked]
+    assert ordered.index("C0023176") < ordered.index("C0005824")
+
+    explicit_blood_pressure = rank_hits(
+        "The patient had severe range blood pressure with preeclampsia.",
+        [blood_pressure],
+        top_k=1,
+    )
+    assert [hit["cui"] for hit in explicit_blood_pressure] == ["C0005824"]
 
 
 def test_extension_concept_ids_are_provisional_and_stable() -> None:
@@ -10057,6 +13327,26 @@ def test_hashing_search_finds_query_evidence() -> None:
     vectors = embed_documents(documents, embedder)
     hits = search_vectors(vectors, "a fib", embedder, top_k=2)
     assert hits[0].cui == "C0004238"
+
+
+def test_idf_hashing_downweights_common_features(tmp_path: Path) -> None:
+    texts = [
+        "common testing covid",
+        "common testing stool",
+        "common testing clostridioides difficile toxin",
+    ]
+    weights = build_hashing_idf_weights(texts)
+    assert weights.weights["common"] < weights.weights["covid"]
+    idf_path = tmp_path / "hashing_idf.json"
+    write_hashing_idf_weights(idf_path, weights)
+    loaded = load_hashing_idf_weights(idf_path)
+    embedder = IdfHashingEmbedder(dim=32, idf_weights=loaded, idf_path=idf_path)
+    common_vector = embedder.embed(["common testing"])[0]
+    specific_vector = embedder.embed(["clostridioides difficile toxin"])[0]
+
+    assert embedder.provider_name == "hashing-idf"
+    assert embedder.metadata["hashing_idf_doc_count"] == 3
+    assert common_vector != specific_vector
 
 
 def test_vector_metadata_does_not_duplicate_document_by_default() -> None:
@@ -10221,10 +13511,18 @@ def test_elastic_client_helpers_resolve_parts_and_build_knn(tmp_path: Path) -> N
     (tmp_path / "bulk.part-000001.ndjson").write_text("{}\n", encoding="utf-8")
     (tmp_path / "bulk.part-000002.ndjson").write_text("{}\n", encoding="utf-8")
     paths = resolve_bulk_paths([tmp_path / "bulk.ndjson"])
-    body = build_knn_search_body(vector=[0.1, 0.2], k=5, num_candidates=25)
+    body = build_knn_search_body(
+        vector=[0.1, 0.2],
+        k=5,
+        num_candidates=25,
+        exclude_source_prefixes=["mimic"],
+    )
     assert [path.name for path in paths] == ["bulk.part-000001.ndjson", "bulk.part-000002.ndjson"]
     assert body["knn"]["k"] == 5
     assert body["knn"]["num_candidates"] == 25
+    assert body["knn"]["filter"] == {
+        "bool": {"must_not": [{"prefix": {"sources": "mimic"}}]}
+    }
 
 
 def test_sqlite_document_builder_matches_views(tmp_path: Path) -> None:
@@ -10815,6 +14113,89 @@ def test_trie_linker_links_corpus_context(tmp_path: Path) -> None:
     assert len(evidence) >= 1
     assert evidence[0].cui == "C0004238"
     assert "a fib" in evidence[0].text
+
+
+def test_linkers_accept_dominant_preferred_label_when_same_norm_is_ambiguous(tmp_path: Path) -> None:
+    mrconso = tmp_path / "MRCONSO.RRF"
+    mrconso.write_text(
+        "C_DRUG|ENG|P|L1|PF|S1|Y|A1|||D001|MSH|MH|D001|Clopidogrel|0|N||\n"
+        "C_STEREO|ENG|S|L2|PF|S2|N|A2|||D002|DRUGBANK|SY|D002|Clopidogrel|0|N||\n",
+        encoding="utf-8",
+    )
+    index_path = tmp_path / "labels.sqlite"
+    build_label_index(mrconso_path=mrconso, out_path=index_path, replace=True)
+
+    document = CorpusDocument(
+        doc_id="SRC:1",
+        source="source",
+        title="",
+        text="Clopidogrel response after PCI was reviewed.",
+    )
+
+    trie = LabelTrie.from_sqlite(index_path)
+    trie_evidence = list(link_document_to_evidence_trie(document, trie, max_ambiguity=1))
+
+    from qe_evidence_vectors.linker import link_document_to_evidence
+
+    with LabelIndex(index_path) as index:
+        sqlite_evidence = list(link_document_to_evidence(document, index, max_ambiguity=1))
+
+    assert [record.cui for record in trie_evidence] == ["C_DRUG"]
+    assert [record.cui for record in sqlite_evidence] == ["C_DRUG"]
+
+
+def test_trie_linker_rejects_edge_stopword_and_embedded_hyphen_matches(tmp_path: Path) -> None:
+    mrconso = tmp_path / "MRCONSO.RRF"
+    mrconso.write_text(
+        "C_A_DNA|ENG|P|L1|PF|S1|Y|A1|||D001|MSH|MH|D001|A-DNA|0|N||\n"
+        "C_ABD_AND|ENG|P|L2|PF|S2|Y|A2|||D002|MSH|MH|D002|Abdomen and|0|N||\n"
+        "C_BETA|ENG|P|L3|PF|S3|Y|A3|||D003|MSH|MH|D003|Beta alanine|0|N||\n"
+        "C_VITA|ENG|P|L4|PF|S4|Y|A4|||D004|MSH|MH|D004|Vitamin A|0|N||\n",
+        encoding="utf-8",
+    )
+    index_path = tmp_path / "labels.sqlite"
+    build_label_index(mrconso_path=mrconso, out_path=index_path, replace=True)
+
+    document = CorpusDocument(
+        doc_id="SRC:1",
+        source="source",
+        title="",
+        text=(
+            "A DNA vaccine was studied. "
+            "N-carbamyl-beta-alanine was mentioned as a metabolite. "
+            "The surgeon cut the abdomen and uterus. "
+            "Vitamin A and standalone beta-alanine were also listed."
+        ),
+    )
+    trie = LabelTrie.from_sqlite(index_path)
+    evidence = list(link_document_to_evidence_trie(document, trie))
+
+    assert {record.cui for record in evidence} == {"C_BETA", "C_VITA"}
+    assert any(record.metadata["matched_text"] == "Vitamin A" for record in evidence)
+    assert any(record.metadata["matched_text"] == "beta-alanine" for record in evidence)
+
+
+def test_sqlite_linker_rejects_edge_stopword_and_embedded_hyphen_matches(tmp_path: Path) -> None:
+    mrconso = tmp_path / "MRCONSO.RRF"
+    mrconso.write_text(
+        "C_A_DNA|ENG|P|L1|PF|S1|Y|A1|||D001|MSH|MH|D001|A-DNA|0|N||\n"
+        "C_ABD_AND|ENG|P|L2|PF|S2|Y|A2|||D002|MSH|MH|D002|Abdomen and|0|N||\n"
+        "C_VITA|ENG|P|L3|PF|S3|Y|A3|||D003|MSH|MH|D003|Vitamin A|0|N||\n",
+        encoding="utf-8",
+    )
+    index_path = tmp_path / "labels.sqlite"
+    build_label_index(mrconso_path=mrconso, out_path=index_path, replace=True)
+
+    document = CorpusDocument(
+        doc_id="SRC:1",
+        source="source",
+        title="",
+        text="A DNA sample was collected near the abdomen and pelvis. Vitamin A was listed.",
+    )
+    with LabelIndex(index_path) as index:
+        evidence = link_corpus_to_evidence([document], index)
+
+    assert {record.cui for record in evidence} == {"C_VITA"}
 
 
 def test_trie_linker_evidence_tag_separates_views(tmp_path: Path) -> None:

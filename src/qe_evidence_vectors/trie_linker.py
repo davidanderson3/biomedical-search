@@ -5,7 +5,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Iterator
 
-from .linker import _evidence_id, context_window, evidence_type_for_source, token_spans
+from .linker import (
+    _evidence_id,
+    context_window,
+    evidence_type_for_source,
+    is_acceptable_label_match,
+    token_spans,
+)
 from .schema import CorpusDocument, EvidenceRecord
 from .text import clean_text, normalized_key
 
@@ -111,6 +117,20 @@ def _best_entry_for_cui(entries: tuple[LabelEntry, ...], cui: str) -> LabelEntry
     return min((entry for entry in entries if entry.cui == cui), key=_entry_sort_key)
 
 
+def _selected_cui_for_entries(entries: tuple[LabelEntry, ...], *, max_ambiguity: int) -> str:
+    cuis = sorted({entry.cui for entry in entries})
+    if len(cuis) <= max_ambiguity:
+        return cuis[0] if cuis else ""
+    if max_ambiguity != 1:
+        return ""
+    best_entries = sorted((_best_entry_for_cui(entries, cui) for cui in cuis), key=_entry_sort_key)
+    if len(best_entries) < 2:
+        return best_entries[0].cui if best_entries else ""
+    best_weight = label_weight(best_entries[0])
+    next_weight = label_weight(best_entries[1])
+    return best_entries[0].cui if best_weight > next_weight else ""
+
+
 def normalized_span_tokens(text: str) -> tuple[list, list[str]]:
     spans = token_spans(text)
     # token_spans only emits ASCII alphanumeric tokens, so lowercasing is
@@ -139,7 +159,7 @@ def link_document_to_evidence_trie(
         if start_index in occupied_tokens:
             continue
         node = trie.root
-        best: tuple[int, tuple[LabelEntry, ...]] | None = None
+        best: tuple[int, tuple[LabelEntry, ...], str] | None = None
         max_end = min(len(spans), start_index + max_label_tokens)
         for end_index in range(start_index, max_end):
             if end_index in occupied_tokens:
@@ -149,15 +169,24 @@ def link_document_to_evidence_trie(
                 break
             node = node.children[token]
             if node.entries:
-                cuis = {entry.cui for entry in node.entries}
-                if len(cuis) <= max_ambiguity:
-                    best = (end_index + 1, node.entries)
+                selected_cui = _selected_cui_for_entries(
+                    node.entries,
+                    max_ambiguity=max_ambiguity,
+                )
+                phrase_start = spans[start_index].start
+                phrase_end = spans[end_index].end
+                norm = " ".join(tokens[start_index : end_index + 1])
+                if selected_cui and is_acceptable_label_match(
+                    text,
+                    phrase_start,
+                    phrase_end,
+                    norm,
+                ):
+                    best = (end_index + 1, node.entries, selected_cui)
         if best is None:
             continue
 
-        end_index, entries = best
-        cuis = sorted({entry.cui for entry in entries})
-        cui = cuis[0]
+        end_index, entries, cui = best
         if counts_by_cui.get(cui, 0) >= max_mentions_per_cui:
             continue
 

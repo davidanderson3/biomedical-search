@@ -1,0 +1,1372 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Source Contribution Report</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --text: #18202a;
+      --muted: #5e6978;
+      --line: #dce2ea;
+      --accent: #1167a8;
+      --accent-soft: #e7f1f8;
+      --green: #2d7a46;
+      --green-soft: #e9f5ed;
+      --orange: #a65d00;
+      --orange-soft: #fff2dc;
+      --red: #9e2f35;
+      --red-soft: #fae8ea;
+      --shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 32px 24px 56px;
+    }
+
+    header {
+      margin-bottom: 24px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 34px;
+      font-weight: 720;
+    }
+
+    h2 {
+      margin-top: 32px;
+      margin-bottom: 12px;
+      font-size: 22px;
+    }
+
+    h3 {
+      margin-top: 18px;
+      margin-bottom: 8px;
+      font-size: 17px;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    code {
+      padding: 1px 5px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: #f4f6f8;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .dek {
+      max-width: 900px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .section {
+      margin-top: 22px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .metric {
+      min-height: 92px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .metric .value {
+      display: block;
+      font-size: 27px;
+      font-weight: 740;
+      line-height: 1.1;
+    }
+
+    .metric .label {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    table {
+      width: 100%;
+      min-width: 860px;
+      border-collapse: collapse;
+    }
+
+    .inventory-table {
+      min-width: 1560px;
+    }
+
+    .inventory-table td.num,
+    .inventory-table th.num {
+      white-space: normal;
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eef2f6;
+      color: #303946;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    td.num,
+    th.num {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .source-name {
+      font-weight: 700;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #f6f8fa;
+      color: #2f3a47;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .pill.open {
+      border-color: #b8dbc3;
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .pill.restricted {
+      border-color: #efc2c6;
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .callout {
+      padding: 14px;
+      border: 1px solid #d3e4f2;
+      border-radius: 8px;
+      background: var(--accent-soft);
+    }
+
+    .callout.warning {
+      border-color: #f0d09c;
+      background: var(--orange-soft);
+      color: #4f3000;
+    }
+
+    ul,
+    ol {
+      margin: 8px 0 0;
+      padding-left: 22px;
+    }
+
+    li {
+      margin: 5px 0;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+
+    @media (max-width: 820px) {
+      main {
+        padding: 24px 16px 42px;
+      }
+
+      h1 {
+        font-size: 28px;
+      }
+
+      .metric-grid,
+      .two-col,
+      .three-col {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      main {
+        max-width: none;
+        padding: 0;
+      }
+
+      .section,
+      .metric,
+      .table-wrap {
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="muted">Generated 2026-05-13</p>
+      <h1>Source Contribution Report</h1>
+      <p class="dek">
+        This report summarizes the source inventory currently present in local
+        build artifacts. Sources differ by integration state: some are already
+        materialized in the permitted public/source-subset add-on pack, some are
+        broader literature or enrichment layers, and some are relation/index or
+        licensed local index sources. Permission-required clinician references remain
+        excluded from the default public corpus.
+      </p>
+      <div class="pill-row">
+        <span class="pill open">Public/permitted sources</span>
+        <span class="pill open">81,484 concept documents</span>
+        <span class="pill open">81,484 vectors</span>
+        <span class="pill restricted">Restricted references excluded</span>
+      </div>
+    </header>
+
+    <section class="metric-grid" aria-label="Current aggregate metrics">
+      <div class="metric">
+        <span class="value">81,484</span>
+        <span class="label">Concept documents in <code>permitted_sources_concept_documents.jsonl</code></span>
+      </div>
+      <div class="metric">
+        <span class="value">81,484</span>
+        <span class="label">Hashing vectors in <code>permitted_sources_concept_vectors.hashing.jsonl</code></span>
+      </div>
+      <div class="metric">
+        <span class="value">566,444</span>
+        <span class="label">Linked evidence signals feeding the current public concept docs/vectors</span>
+      </div>
+      <div class="metric">
+        <span class="value">48,249</span>
+        <span class="label">Source records across integrated public source builds</span>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Current Aggregate</h2>
+      <p>
+        There is also an older broad evidence artifact,
+        <code>build/public/permitted_sources_evidence.jsonl</code>, with
+        <code>79,650</code> evidence signals for the first four sources only. The current
+        concept/vector pack is better represented by the profile-sharded
+        evidence for the original four sources plus the newer
+        <code>source_subsets/*/*_evidence.jsonl</code> files.
+      </p>
+      <p>
+        This is not the whole repository source inventory. It is the smaller
+        public reference/source-subset pack that can be loaded alongside the
+        larger literature and local builds described below.
+      </p>
+      <p>Think of the counts as three pipeline stages:</p>
+      <ul>
+        <li><strong>Source records</strong> are the raw items fetched from a source, such as one article abstract, ontology term, clinical trial, drug label, reference page, image record, or structured local record.</li>
+        <li><strong>Linked evidence / relation signals</strong> are the useful CUI-linked matches extracted from those raw items. One source record can produce many signals.</li>
+        <li><strong>Retrieval records</strong> are the final searchable concept documents or index records. These are what the search layer can retrieve directly; many evidence signals can be rolled into one retrieval record.</li>
+      </ul>
+      <p>
+        Example: one DailyMed drug label is one source record. It can produce
+        many linked signals for indications, adverse effects, warnings, and
+        contraindications. Those signals are then grouped into concept-level
+        retrieval records and vectors.
+      </p>
+    </section>
+
+    <section>
+      <h2>Source Inventory And Contribution</h2>
+      <p class="muted">
+        All source layers and tracked source candidates are listed in one table.
+        The comparable takeaway column explains how to read each row. For
+        sources integrated into the public pack, it reports the share of
+        <code>permitted_sources_concept_documents.jsonl</code> and matching
+        vectors attributable to that source. For broader local layers, it says
+        they are outside the public add-on pack instead of treating them as
+        directly comparable public-pack shares.
+      </p>
+      <div class="table-wrap">
+        <table class="inventory-table">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Status</th>
+              <th class="num">Source Records</th>
+              <th class="num">Linked Evidence / Relation Signals</th>
+              <th class="num">Retrieval Records</th>
+              <th>Comparable Takeaway</th>
+              <th>Contribution</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="source-name">Human Phenotype Ontology</span></td>
+              <td>Integrated concept/vector pack</td>
+              <td class="num">19,389</td>
+              <td class="num">138,554</td>
+              <td class="num">30,439</td>
+              <td>In the public pack, this source supplies <code>37.4%</code> of searchable retrieval records and <code>24.5%</code> of linked evidence signals. Density: <code>7.1</code> signals per source record.</td>
+              <td>Phenotype labels, definitions, synonyms, UMLS/SNOMED/NCIT/MEDDRA-style xrefs, parent terms, and HPO relationship text.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Mondo Disease Ontology</span></td>
+              <td>Integrated concept/vector pack</td>
+              <td class="num">27,990</td>
+              <td class="num">381,816</td>
+              <td class="num">40,486</td>
+              <td>In the public pack, this source supplies <code>49.7%</code> of searchable retrieval records and <code>67.4%</code> of linked evidence signals. Density: <code>13.6</code> signals per source record.</td>
+              <td>Harmonized disease labels, definitions, synonyms, xrefs, and hierarchy text.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">NCBI Bookshelf / NLM LitArch OA</span></td>
+              <td>Integrated concept/vector pack</td>
+              <td class="num">49</td>
+              <td class="num">19,775</td>
+              <td class="num">2,652</td>
+              <td>In the public pack, this source supplies <code>3.3%</code> of searchable retrieval records and <code>3.5%</code> of linked evidence signals. Density: <code>403.6</code> signals per source record.</td>
+              <td>Open-access guideline/report/book-chapter language; current subset covers adult obesity evaluation/treatment and asthma diagnosis/management reports.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">MedlinePlus Genetics</span></td>
+              <td>Integrated concept/vector pack</td>
+              <td class="num">500</td>
+              <td class="num">12,900</td>
+              <td class="num">3,116</td>
+              <td>In the public pack, this source supplies <code>3.8%</code> of searchable retrieval records and <code>2.3%</code> of linked evidence signals. Density: <code>25.8</code> signals per source record.</td>
+              <td>Genetic conditions, phenotypes, inheritance language, related genes/chromosomes, consumer-readable disease descriptions.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">MedlinePlus</span></td>
+              <td>Integrated concept/vector pack</td>
+              <td class="num">250</td>
+              <td class="num">6,696</td>
+              <td class="num">2,118</td>
+              <td>In the public pack, this source supplies <code>2.6%</code> of searchable retrieval records and <code>1.2%</code> of linked evidence signals. Density: <code>26.8</code> signals per source record.</td>
+              <td>Lay symptom names, condition summaries, test names, patient-facing aliases, topic groupings.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">ClinicalTrials.gov</span></td>
+              <td>Integrated concept/vector pack</td>
+              <td class="num">50</td>
+              <td class="num">3,271</td>
+              <td class="num">1,417</td>
+              <td>In the public pack, this source supplies <code>1.7%</code> of searchable retrieval records and <code>0.6%</code> of linked evidence signals. Density: <code>65.4</code> signals per source record.</td>
+              <td>Trial-design language: conditions, interventions, eligibility criteria, outcomes, populations, phases, status.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">DailyMed</span></td>
+              <td>Integrated concept/vector pack</td>
+              <td class="num">10</td>
+              <td class="num">1,695</td>
+              <td class="num">555</td>
+              <td>In the public pack, this source supplies <code>0.7%</code> of searchable retrieval records and <code>0.3%</code> of linked evidence signals. Density: <code>169.5</code> signals per source record.</td>
+              <td>Drug-label language: indications, dosage, contraindications, warnings, adverse reactions, interactions, use in populations, clinical pharmacology.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">NCI</span></td>
+              <td>Integrated concept/vector pack</td>
+              <td class="num">3</td>
+              <td class="num">639</td>
+              <td class="num">258</td>
+              <td>In the public pack, this source supplies <code>0.3%</code> of searchable retrieval records and <code>0.1%</code> of linked evidence signals. Density: <code>213.0</code> signals per source record.</td>
+              <td>Cancer diagnosis, treatment modality, risk-factor, testing, biopsy, imaging, and oncology workup language.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">NIDDK</span></td>
+              <td>Integrated concept/vector pack</td>
+              <td class="num">3</td>
+              <td class="num">542</td>
+              <td class="num">239</td>
+              <td>In the public pack, this source supplies <code>0.3%</code> of searchable retrieval records and <code>0.1%</code> of linked evidence signals. Density: <code>180.7</code> signals per source record.</td>
+              <td>Diabetes, kidney disease, digestive disease, endocrine/nutrition education, complications, tests, management terms.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">FDA</span></td>
+              <td>Integrated concept/vector pack</td>
+              <td class="num">2</td>
+              <td class="num">232</td>
+              <td class="num">105</td>
+              <td>In the public pack, this source supplies <code>0.1%</code> of searchable retrieval records and <code>0.04%</code> of linked evidence signals. Density: <code>116.0</code> signals per source record.</td>
+              <td>Drug-safety and consumer/professional drug-information language; labeling, recalls, warnings, and safety infrastructure terms.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">CDC</span></td>
+              <td>Integrated concept/vector pack</td>
+              <td class="num">3</td>
+              <td class="num">324</td>
+              <td class="num">99</td>
+              <td>In the public pack, this source supplies <code>0.1%</code> of searchable retrieval records and <code>0.06%</code> of linked evidence signals. Density: <code>108.0</code> signals per source record.</td>
+              <td>Public-health and prevention language; current subset covers diabetes, influenza, and sepsis.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">PubMed abstracts and recent-bulk literature</span></td>
+              <td>Broader corpus/vector layer</td>
+              <td class="num">467,556</td>
+              <td class="num">Profile evidence counted below</td>
+              <td class="num">398,654 compact vectors</td>
+              <td>Outside the public add-on pack; contributes to the local literature vector layer.</td>
+              <td>Core biomedical research prose, abstracts, disease/drug/procedure language, and current literature phrasing.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Europe PMC abstracts</span></td>
+              <td>Broader corpus layer</td>
+              <td class="num">41,839</td>
+              <td class="num">Profile evidence counted below</td>
+              <td class="num">0 standalone vectors</td>
+              <td>Outside the public add-on pack; contributes to the local literature corpus layer.</td>
+              <td>Additional literature coverage and abstracts that overlap with, extend, or complement PubMed.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">PMC Open Access full text</span></td>
+              <td>Broader corpus/evidence layer</td>
+              <td class="num">2,397</td>
+              <td class="num">545,863</td>
+              <td class="num">0 standalone vectors</td>
+              <td>Outside the public add-on pack. In the common-clinical profile, density is <code>227.7</code> evidence signals per source record.</td>
+              <td>Open full-text article context, longer methods/results/discussion prose, and dense co-mention evidence.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Literature profile evidence</span></td>
+              <td>Broader evidence layer</td>
+              <td class="num">Derived from PubMed / Europe PMC</td>
+              <td class="num">236,894 biomedicine; 427,573 expanded</td>
+              <td class="num">Feeds broader concept builds</td>
+              <td>Outside the public add-on pack; profile-sharded evidence for broader local retrieval builds.</td>
+              <td>Profile-sharded CUI evidence derived from PubMed/Europe PMC literature.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">cui2vec</span></td>
+              <td>External CUI embedding-neighbor index</td>
+              <td class="num">30,207 source CUIs</td>
+              <td class="num">241,656 neighbor edges</td>
+              <td class="num">56,264 target CUIs</td>
+              <td>External neighbor index, not source text. Density: <code>8.0</code> neighbor edges per source CUI.</td>
+              <td>Distributional CUI-CUI similarity signal derived from external biomedical embeddings. Useful for related-concept expansion and weak association discovery, not direct textual evidence.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">BioConceptVec</span></td>
+              <td>External CUI embedding-neighbor index</td>
+              <td class="num">17,104 source CUIs</td>
+              <td class="num">136,832 neighbor edges</td>
+              <td class="num">55,097 target CUIs</td>
+              <td>External neighbor index, not source text. Density: <code>8.0</code> neighbor edges per source CUI.</td>
+              <td>Distributional biomedical concept-neighbor signal. Complements UMLS relations and local corpus evidence with embedding-based associations from a third-party vector source.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">OpenAlex top-cited evidence</span></td>
+              <td>Enrichment concept/vector layer</td>
+              <td class="num">124</td>
+              <td class="num">2,340</td>
+              <td class="num">878 concept docs/vectors</td>
+              <td>Outside the public add-on pack. In the enrichment layer, density is <code>18.9</code> evidence signals per source record.</td>
+              <td>High-citation metadata and abstracts for high-impact clinical, diagnostic, drug, genomic, and procedure topics.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Drug enrichment</span></td>
+              <td>Enrichment concept/vector layer</td>
+              <td class="num">27 target drug CUIs</td>
+              <td class="num">Code-index and literature signals</td>
+              <td class="num">27 concept docs/vectors</td>
+              <td>Outside the public add-on pack; one retrieval record per targeted drug concept.</td>
+              <td>Open literature plus RxNorm/ATC/MTHSPL/DrugBank code-index signals for targeted drug concepts.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Wikipedia enrichment</span></td>
+              <td>Enrichment concept/vector layer</td>
+              <td class="num">2 selected concepts</td>
+              <td class="num">0 linked evidence signals</td>
+              <td class="num">2 concept docs/vectors</td>
+              <td>Outside the public add-on pack; one retrieval record per selected concept.</td>
+              <td>Open encyclopedia text for selected concepts where license-compatible.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Wikimedia/open image enrichment</span></td>
+              <td>Enrichment metadata layer</td>
+              <td class="num">37 image records</td>
+              <td class="num">37 image provenance signals</td>
+              <td class="num">21 image-enriched concept docs/vectors</td>
+              <td>Outside the public add-on pack; metadata enrichment, not primary clinical evidence.</td>
+              <td>Visual/media metadata and image provenance for selected concepts; useful for UI enrichment, not primary clinical reasoning.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">HPO native annotations and xrefs</span></td>
+              <td>Relation/index source</td>
+              <td class="num">19,944 OBO terms; 612,062 annotation records</td>
+              <td class="num">58,976 relation signals</td>
+              <td class="num">0 vector docs</td>
+              <td>Outside the public vector pack; opt-in relation/index contribution rather than searchable public vectors.</td>
+              <td>Disease-to-phenotype, gene-to-phenotype, disease-to-gene, and gene-to-disease links using HPO annotations plus HPO UMLS xrefs and OMIM/ORPHA/DECIPHER mappings. Treat annotation-derived artifacts as opt-in for redistribution because upstream disease annotations may carry source-specific reuse caveats.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">UMLS-derived local indexes</span></td>
+              <td>Licensed identity/index source</td>
+              <td class="num">84,972 definitions</td>
+              <td class="num">9,112,359 code mappings; 483,677 related-concept records; 3,876,927 semantic-type records</td>
+              <td class="num">0 public vectors</td>
+              <td>Licensed local index contribution; not public vector content or source text.</td>
+              <td>CUI identity backbone, code resolution, source-vocabulary labels, definitions, semantic type routing, and relation expansion.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Permission-required clinician references</span></td>
+              <td>Tracked restricted/candidate sources</td>
+              <td class="num">0 public/default source records</td>
+              <td class="num">0 public/default evidence signals</td>
+              <td class="num">0 public/default concept docs/vectors</td>
+              <td>No public/default contribution until permission, licensed content, or a compliant reuse strategy exists.</td>
+              <td>Potential clinician-reference contribution remains zero unless a deployment has permission, licensed content, or a compliant reuse strategy.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted" style="margin-top: 10px;">
+        Representative combined concept-document builds include
+        <code>build/biomedicine_scaled_top12_concept_documents.jsonl</code>
+        with <code>21,998</code> concept documents. These broader local build products
+        are separate from the public permitted-source add-on pack.
+      </p>
+    </section>
+
+    <section>
+      <h2>Subset Selection Rationale</h2>
+      <p class="muted">
+        The current subsets are seed slices, not claims that these are the only
+        useful records in each source. They were chosen to keep the public build
+        license-safe, reproducible, and small enough to rebuild quickly while
+        covering retrieval gaps that UMLS labels and literature alone do not
+        handle well.
+      </p>
+      <div class="table-wrap">
+        <table class="inventory-table">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Current subset rule</th>
+              <th>Why this slice was chosen</th>
+              <th>What it intentionally omits</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="source-name">Human Phenotype Ontology</span></td>
+              <td>Current non-obsolete HPO OBO terms from <code>hp.obo</code>.</td>
+              <td>The ontology is compact enough to include broadly, and phenotype labels/synonyms/xrefs are a major gap in plain UMLS label retrieval.</td>
+              <td>Obsolete terms by default. Annotation-derived disease/gene phenotype relationships remain opt-in until upstream annotation reuse terms are reviewed.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Mondo Disease Ontology</span></td>
+              <td>Current MONDO OBO term corpus from <code>mondo.obo</code>; linked and vectorized into the public concept pack.</td>
+              <td>MONDO gives normalized disease names, synonyms, definitions, xrefs, and hierarchy in a license-compatible form.</td>
+              <td>Obsolete terms by default. Native MONDO xref and hierarchy semantics are still not a separate first-class relation graph.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">MedlinePlus</span></td>
+              <td>Bounded English health-topic XML subset from the current MedlinePlus feed.</td>
+              <td>It adds patient-facing language, common symptom terms, aliases, tests, and topic groupings that users actually type.</td>
+              <td>Spanish topics and the full health-topic feed are omitted from the current bounded public pack.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">MedlinePlus Genetics</span></td>
+              <td>Bounded set from the current MedlinePlus Genetics / GHR summaries XML.</td>
+              <td>It gives rare-disease and genetics language, including gene symbols, inheritance, chromosomes, and phenotype descriptions.</td>
+              <td>The current bounded slice is not exhaustive genetics coverage.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">ClinicalTrials.gov</span></td>
+              <td>Query seed: <code>cancer OR diabetes OR migraine OR sepsis OR pneumonia</code>, bounded by record count.</td>
+              <td>Those conditions exercise common clinical domains and produce useful trial language for interventions, eligibility, outcomes, phases, and populations.</td>
+              <td>It is not a representative sample of all trials and is not evidence that interventions work.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">DailyMed</span></td>
+              <td>One bounded label per seed drug: metformin, insulin, osimertinib, sumatriptan, pantoprazole, cephalexin, amoxicillin, warfarin, semaglutide, and acetaminophen.</td>
+              <td>The list covers common chronic medications, antibiotics, anticoagulation, migraine therapy, oncology therapy, OTC analgesics, and high-value label sections such as warnings and contraindications.</td>
+              <td>It omits the full DailyMed label universe, duplicate manufacturer labels, and most drug classes.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">NCBI Bookshelf / NLM LitArch OA</span></td>
+              <td>Open Access LitArch packages matched by guideline/report terms; current records come from one obesity evidence report and two asthma expert panel reports.</td>
+              <td>This is the safest route to long-form guideline/report language because package licenses are preserved and non-OA Bookshelf material is avoided.</td>
+              <td>StatPearls and other Bookshelf titles with restrictive or uncertain reuse terms are omitted, as are most specialties.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">NCI</span></td>
+              <td>Default public pages for cancer diagnosis, treatment types, and risk factors.</td>
+              <td>These pages add practical oncology workup, treatment-modality, and risk-factor language from a reusable government source.</td>
+              <td>Broader PDQ, dictionary, and cancer-specific pages are not yet included.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">CDC</span></td>
+              <td>Default public pages for diabetes, influenza, and sepsis.</td>
+              <td>These cover high-volume public-health and clinical topics with prevention, symptom, testing, and care language.</td>
+              <td>Most CDC condition pages, vaccine pages, outbreak pages, and data reports are omitted.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">FDA</span></td>
+              <td>Default public pages for drug safety/availability and consumer/patient drug information.</td>
+              <td>The goal is general drug-safety vocabulary and FDA-facing medication information without relying only on individual SPL labels.</td>
+              <td>Product-specific safety communications, recalls, approvals, and device pages are omitted.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">NIDDK</span></td>
+              <td>Default public pages for diabetes overview, kidney disease, and digestive diseases.</td>
+              <td>These pages fill endocrine, kidney, and GI education gaps with reusable NIH institute content.</td>
+              <td>Deeper NIDDK subtopic pages and non-default institute pages are omitted.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">PubMed, Europe PMC, and PMC OA</span></td>
+              <td>Topic-driven literature chunks focused on biomedicine, common clinical problems, drug safety, abbreviation language, diagnostics, procedures, and devices.</td>
+              <td>The chunks target search-quality gaps and current biomedical phrasing while keeping local indexing tractable.</td>
+              <td>They are not a systematic literature review or a complete biomedical literature corpus.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">OpenAlex top-cited evidence</span></td>
+              <td>Six broad clinical/biomedical queries over a recent five-year window, filtered to high-citation works.</td>
+              <td>This adds high-impact literature metadata and abstracts for common clinical, diagnostic, drug, genomic, and procedure topics.</td>
+              <td>Lower-cited papers, older classics outside the window, and niche topic areas are underrepresented.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Drug enrichment</span></td>
+              <td>Twenty-seven target drug CUIs with open literature plus RxNorm, ATC, MTHSPL, and DrugBank mapping signals.</td>
+              <td>The targets were chosen to improve known drug-query gaps and to preserve code-vocabulary signals around common and high-impact medications.</td>
+              <td>It is not a comprehensive drug ontology or complete formulary expansion.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Wikipedia and Wikimedia/open images</span></td>
+              <td>Selected concepts and image targets from local enrichment configs, with compatible source/license metadata.</td>
+              <td>These layers are meant for UI enrichment and occasional open encyclopedia context, not primary clinical reasoning.</td>
+              <td>They intentionally avoid broad scraping and do not attempt comprehensive medical coverage.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">cui2vec and BioConceptVec</span></td>
+              <td>Locally available external CUI-neighbor indexes with bounded nearest-neighbor rows.</td>
+              <td>They add distributional related-concept recall when curated relations or text evidence are sparse.</td>
+              <td>They are not textual evidence and should be treated as association signals, not curated clinical facts.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">UMLS-derived local indexes</span></td>
+              <td>Licensed local indexes for code mappings, definitions, semantic types, and related concepts.</td>
+              <td>These provide the identity backbone needed to resolve labels, codes, CUIs, and semantic routing.</td>
+              <td>They are not redistributable public source text and do not replace source-specific evidence.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Permission-required clinician references</span></td>
+              <td>No public/default records.</td>
+              <td>They are tracked because they would be useful for clinician-style differential diagnosis and management language.</td>
+              <td>They remain excluded until a deployment has permission, licensed content, or a compliant source-specific reuse strategy.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Count Choice And Expansion Guidance</h2>
+      <p class="muted">
+        The counts are current artifact counts, not targets chosen to make sources
+        numerically equal. They come from different extraction rules: complete
+        ontology slices, bounded seed pulls, topic/profile-filtered literature,
+        external index caps, or licensed local indexes. A useful expansion should
+        be driven by measured retrieval gaps, clear reuse terms, and evaluation
+        gains rather than by row size alone.
+      </p>
+      <div class="callout">
+        <h3>Measured source-aware acquisition policy</h3>
+        <p>
+          The acquisition policy is now executable. The
+          <code>plan-source-acquisition</code> command reads
+          <code>paragraph_quality_summary.tsv</code> files, joins benchmark query
+          specs for expected CUIs, infers review-only candidate false positives
+          from high-ranking non-expected hits, and creates expected-CUI
+          association pairs. When relation indexes are available, those pairs are
+          filtered against existing UMLS/MRREL, research-relation, and
+          relationship-edge indexes so the queue emphasizes associations not
+          already available from local UMLS-derived sources.
+          All acquisition scores are prevalence-weighted: the planner starts
+          with measured failure weight, then applies a bounded
+          prevalence/commonness multiplier before ranking source actions and
+          relationship-edge work. Pair-level candidates also use novelty,
+          relation clarity, sourceability, and text proximity. The CLI loads
+          <code>config/source_acquisition_prevalence_priors.tsv</code> by
+          default when present; pass <code>--no-default-prevalence-prior</code>
+          to use heuristic commonness only. When
+          <code>build/umls_biomedicine_search_label_index.sqlite</code> exists,
+          it is used by default for acquisition labeling because measured source
+          builds need broad drug, gene, condition, lab, procedure, and synonym
+          coverage.
+        </p>
+        <pre><code>python3 scripts/evidence_vectors.py plan-source-acquisition \
+  --quality-summary build/improvements/&lt;run&gt;/paragraph_quality_summary.tsv \
+  --out-json build/source_acquisition/plan.json \
+  --out-tsv build/source_acquisition/recommendations.tsv \
+  --out-associations-tsv build/source_acquisition/association_candidates.tsv \
+  --out-association-review-tsv build/source_acquisition/association_review.tsv \
+  --out-bundle-dir build/source_acquisition/bundle \
+  --out-md build/source_acquisition/plan.md</code></pre>
+        <p>
+          The output is a review queue and acquisition bundle, not an automatic
+          corpus merge. Recommendations include the source, action, seed,
+          measured query evidence, missing CUIs, configured and candidate
+          disallowed CUIs, unavailable association pairs, ranked association
+          evidence candidates, and a suggested next command. The bundle also
+          writes source seed TSVs, literature topic TSVs, review templates, and a
+          command checklist for the highest-utility acquisition actions.
+          TSV/JSON outputs include raw failure weight, weighted failure weight,
+          prevalence score, and prevalence multiplier.
+        </p>
+        <pre><code>python3 scripts/evidence_vectors.py build-reviewed-association-edges \
+  --review build/source_acquisition/association_review.tsv \
+  --out build/source_acquisition/reviewed_relationship_edges.jsonl</code></pre>
+        <h4>Live acquisition test result</h4>
+        <p>
+          The first measured acquisition pass showed why acquisition has to be
+          tested, not just queued. A narrow clinical label index produced fewer
+          useful anchors and slightly reduced focused recall@10. Rebuilding with
+          <code>build/umls_biomedicine_search_label_index.sqlite</code> fixed the
+          coverage issue for drug, gene, oncology, lab, and disease labels.
+        </p>
+        <p>
+          Current staged acquisition artifacts are under
+          <code>build/source_acquisition/acquired_biomedicine/</code>,
+          <code>build/source_acquisition/acquired_round2/</code>,
+          <code>build/source_acquisition/acquired_round3/</code>, and
+          <code>build/source_acquisition/acquired_round4/</code>. The tested
+          evidence includes DailyMed labels, NCI reference pages, MedlinePlus
+          Genetics gene summaries, expanded PubMed association topics, a focused
+          severe-hypoglycemia PubMed slice, and a corrected default-ambiguity
+          DailyMed clopidogrel/osimertinib slice.
+        </p>
+        <p>
+          The progression is reproducible from
+          <code>config/source_acquisition_progression.tsv</code>. Regenerate the
+          stage manifest and report with:
+        </p>
+        <pre><code>python3 scripts/source_acquisition_progression.py --fail-on-regression</code></pre>
+        <p>
+          This writes
+          <code>build/source_acquisition/progression_manifest.json</code> and
+          <code>build/source_acquisition/progression_report.md</code>. The
+          manifest records each stage's hypothesis, source scope, benchmark
+          metrics, artifact inventory, small-file hashes, decision, and
+          deterministic gate result. Gates compare each stage with the previous
+          retained stage in the same group; rejected diagnostic stages are
+          recorded without lowering the next gate. Group summaries keep the
+          final delta against the original baseline.
+        </p>
+        <p>
+          On a fresh GitHub clone before historical <code>build/</code>
+          artifacts exist, run the same command with
+          <code>--allow-missing-stage-metrics</code> to inspect the ledger shape
+          without requiring local metric files.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Run</th>
+              <th>Verdicts</th>
+              <th>Recall@5</th>
+              <th>Recall@10</th>
+              <th>Recall@20</th>
+              <th>Disallowed@10</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Baseline</td>
+              <td>5 good / 1 mixed</td>
+              <td>25/35</td>
+              <td>34/35</td>
+              <td>34/35</td>
+              <td>0/6</td>
+            </tr>
+            <tr>
+              <td>Acquired evidence</td>
+              <td>6 good / 0 mixed</td>
+              <td>24/35</td>
+              <td>34/35</td>
+              <td>35/35</td>
+              <td>0/6</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          The gain comes mainly from paragraph_161, where acquired oncology
+          evidence moves brain-metastasis coverage into the useful window. The
+          remaining top-10 miss is paragraph_156's accepted severe-hypoglycemia
+          concept; it is present by rank 20, so the remaining work is
+          ranking/crowding rather than evidence absence.
+        </p>
+        <h4>Recent missing high-citation articles</h4>
+        <p>
+          Round 5 acquired a candidate OpenAlex shard of recent highly cited
+          articles that were missing from the existing OpenAlex cited layer and
+          local recent PubMed bulk corpora. The reproducible query set is
+          <code>config/openalex_missing_high_citation_queries.tsv</code>; the
+          build used a five-year window ending 2026-05-14, a minimum citation
+          count of 500, and exclusion against the existing OpenAlex corpus plus
+          recent PubMed bulk corpora. It selected <code>72</code> missing
+          articles from <code>718</code> deduplicated candidates, removed
+          <code>604</code> below the citation floor and <code>42</code>
+          already represented articles, then built <code>1,289</code> evidence
+          records and <code>552</code> concept vectors under
+          <code>build/source_acquisition/acquired_round5/openalex_missing_high_citation/</code>.
+        </p>
+        <p>
+          This shard is not promoted into the default path yet. It is neutral on
+          the accepted six-row acquisition benchmark (<code>6</code> good,
+          <code>34/35</code> recall@10, <code>35/35</code> recall@20, no
+          disallowed@10), but the full default 161-row benchmark regressed
+          slightly from <code>144</code> good / <code>17</code> mixed and
+          <code>831/835</code> recall@10 to <code>143</code> good /
+          <code>18</code> mixed and <code>830/835</code> recall@10. It remains
+          useful candidate evidence, but needs source-aware routing/filtering
+          before broad default inclusion.
+        </p>
+      </div>
+      <p class="muted">
+        <strong>Ontology weighting note:</strong> HPO and MONDO now dominate the
+        public concept-document count because the build includes broad
+        non-obsolete ontology term sets while most other public sources are still
+        small seed slices. That is reasonable for phenotype and disease recall,
+        but it should not automatically mean ontology records get most of the
+        ranking weight. General clinical retrieval should use source-aware caps,
+        boosts, or query-type routing so ontology terms do not crowd out drug
+        labels, guidelines, trials, patient education, literature, or government
+        health pages.
+      </p>
+      <div class="table-wrap">
+        <table class="inventory-table">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Why this count</th>
+              <th>Keep building?</th>
+              <th>Best next expansion</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="source-name">Human Phenotype Ontology</span></td>
+              <td>The count is the current non-obsolete HPO term set, so it is already a broad ontology slice rather than a hand-picked cap.</td>
+              <td>Yes, as a refreshed baseline; not as an uncapped ranking weight.</td>
+              <td>Refresh releases, add reviewed annotation/xref relation packs separately, and calibrate HPO boosts against non-phenotype sources.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Mondo Disease Ontology</span></td>
+              <td>The count reflects the current linked/vectorized MONDO corpus; it is now a broad ontology slice rather than a hand-picked cap.</td>
+              <td>Yes, as a refreshed baseline; not as an uncapped ranking weight.</td>
+              <td>Refresh releases, add explicit MONDO xref/hierarchy relation indexes, and calibrate disease-ontology boosts against other clinical sources.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">MedlinePlus</span></td>
+              <td>The current count is a bounded English topic slice chosen for rebuild speed and common patient-language coverage.</td>
+              <td>Yes.</td>
+              <td>Move toward the full English feed first; add Spanish as a separate bilingual retrieval decision.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">MedlinePlus Genetics</span></td>
+              <td>The bounded slice gives dense rare-disease and genetics language without making the public pack large on the first pass.</td>
+              <td>Yes.</td>
+              <td>Expand toward the full Genetics feed while monitoring duplicate concept merges and gene-symbol ambiguity.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">ClinicalTrials.gov</span></td>
+              <td>The count comes from a small seed query over common conditions, meant to capture trial wording without flooding the corpus.</td>
+              <td>Selective.</td>
+              <td>Add condition seeds from query logs and keep trial text clearly separated from treatment-efficacy evidence.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">DailyMed</span></td>
+              <td>The ten labels were seed drugs chosen to cover common, high-impact, and safety-sensitive medication classes.</td>
+              <td>Yes, high priority.</td>
+              <td>Expand to top prescribed, high-risk, and high-query medications, then de-duplicate manufacturer label variants.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">NCBI Bookshelf / NLM LitArch OA</span></td>
+              <td>The count reflects license-compatible OA packages that matched guideline/report terms in the current pass.</td>
+              <td>Yes, high priority.</td>
+              <td>Add more OA reports and guidelines after preserving package license metadata and excluding uncertain titles.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">NCI</span></td>
+              <td>The three-page count is a public-domain oncology smoke test for diagnosis, treatment, and risk-factor language.</td>
+              <td>Yes.</td>
+              <td>Add public cancer topic, PDQ, dictionary, staging, testing, and treatment pages in controlled batches.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">CDC</span></td>
+              <td>The three-page count is a public-health seed slice for high-volume topics and prevention/testing language.</td>
+              <td>Yes.</td>
+              <td>Add high-volume condition, vaccine, outbreak, testing, and prevention pages with page-level provenance.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">FDA</span></td>
+              <td>The two-page count seeds general drug-safety vocabulary without pulling broad product-specific notices yet.</td>
+              <td>Yes.</td>
+              <td>Add recalls, approvals, device, safety communication, and consumer drug pages by product class with dedupe.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">NIDDK</span></td>
+              <td>The three-page count seeds endocrine, kidney, nutrition, and digestive disease language from reusable institute pages.</td>
+              <td>Yes.</td>
+              <td>Add deeper diabetes complication, CKD, digestive disease, endocrine, and nutrition pages.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">PubMed abstracts and recent-bulk literature</span></td>
+              <td>The large count is the result of local topic/profile filters over available literature, not an intended share of the public pack.</td>
+              <td>Yes, evaluation-driven.</td>
+              <td>Expand where query failures show missing current terminology; avoid bulk growth that does not improve retrieval metrics.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Europe PMC abstracts</span></td>
+              <td>The count is the staged Europe PMC complement to PubMed after local filters and availability checks.</td>
+              <td>Selective.</td>
+              <td>Use it to fill coverage gaps and de-duplicate aggressively by DOI, PMID, title, and concept evidence.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">PMC Open Access full text</span></td>
+              <td>The count is smaller because only OA full-text records are included, but each full-text article can produce many evidence signals.</td>
+              <td>Selective, with license checks.</td>
+              <td>Expand OA full-text subsets by topic and tune chunking so long papers do not dominate concept evidence.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Literature profile evidence</span></td>
+              <td>The evidence counts are generated outputs from CUI-linking profile shards over the broader literature corpus.</td>
+              <td>Yes, as a build product.</td>
+              <td>Tune profile queries, linking thresholds, and evidence weighting against held-out retrieval examples.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">cui2vec</span></td>
+              <td>The count reflects the local external embedding index and a bounded neighbor fan-out of about eight edges per source CUI.</td>
+              <td>Keep as support signal.</td>
+              <td>Tune top-k, weights, and filters; do not treat embedding neighbors as textual clinical evidence.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">BioConceptVec</span></td>
+              <td>The count reflects the available BioConceptVec CUI coverage with the same bounded neighbor fan-out.</td>
+              <td>Keep as support signal.</td>
+              <td>Use it to supplement sparse concepts and compare its neighbors against curated relations before boosting.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">OpenAlex top-cited evidence</span></td>
+              <td>The count comes from six broad recent queries filtered to highly cited works, so it favors broad signal over exhaustive coverage.</td>
+              <td>Yes, selectively.</td>
+              <td>Expand query topics and time windows where high-level evidence metadata improves ranking or snippets.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Drug enrichment</span></td>
+              <td>The 27 target CUIs were selected to address known drug-query gaps and preserve code-vocabulary links around priority medications.</td>
+              <td>Yes, high priority.</td>
+              <td>Expand by drug class and query frequency while preserving RxNorm, ATC, MTHSPL, and DrugBank provenance.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Wikipedia enrichment</span></td>
+              <td>The two selected concepts keep encyclopedia text supplemental rather than a primary clinical source.</td>
+              <td>Low priority.</td>
+              <td>Add only where open encyclopedia context fills nonclinical background gaps that source evidence misses.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Wikimedia/open image enrichment</span></td>
+              <td>The image count is based on selected visual targets with compatible license/provenance metadata.</td>
+              <td>Optional.</td>
+              <td>Expand for concepts where visual media materially helps the UI and the license metadata is clear.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">HPO native annotations and xrefs</span></td>
+              <td>The relation count comes from staged HPO annotation and xref artifacts, not from public text vectorization.</td>
+              <td>Yes, after reuse review.</td>
+              <td>Publish as an opt-in relation pack rather than blending all annotation-derived signals into default text vectors.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">UMLS-derived local indexes</span></td>
+              <td>The counts are licensed local identity, code, semantic-type, definition, and relation indexes, not redistributable public text.</td>
+              <td>Yes, for licensed deployments.</td>
+              <td>Keep refreshed and improve CUI/code resolution, semantic routing, and provenance-aware relation expansion.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Permission-required clinician references</span></td>
+              <td>The count is zero because these sources are excluded until permission, licensed content, or a compliant reuse strategy exists.</td>
+              <td>Only with permission.</td>
+              <td>Add as a separate licensed deployment pack if rights are cleared; keep the public default at zero.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Implementation Status</h2>
+      <p class="muted">
+        "Fully implemented" depends on the layer being discussed. In this report,
+        the strongest implementation state is inclusion in the public
+        <code>permitted_sources_concept_documents.jsonl</code> and matching vector
+        pack. Several other sources are implemented locally or staged as relation
+        indexes, but they are not fully integrated into that public pack.
+      </p>
+      <div class="table-wrap">
+        <table class="inventory-table">
+          <thead>
+            <tr>
+              <th>Source or layer</th>
+              <th>Public concept/vector pack?</th>
+              <th>Current implementation state</th>
+              <th>What is not fully implemented</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="source-name">HPO term documents</span></td>
+              <td>Yes</td>
+              <td>Implemented as public concept documents/vectors from non-obsolete HPO terms.</td>
+              <td>Ranking normalization is still a policy/evaluation decision; HPO annotation-derived relations remain separate.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">MedlinePlus, MedlinePlus Genetics, ClinicalTrials.gov, DailyMed, NCBI Bookshelf / NLM LitArch OA, NCI, CDC, FDA, NIDDK</span></td>
+              <td>Yes</td>
+              <td>Implemented in the public pack as bounded seed subsets.</td>
+              <td>These are not full-source imports. They need broader source coverage, dedupe, and evaluation before being considered complete.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Mondo Disease Ontology</span></td>
+              <td>Yes</td>
+              <td>Implemented as public concept documents/vectors from non-obsolete MONDO terms.</td>
+              <td>Ranking normalization and native MONDO xref/hierarchy relation indexes are still separate follow-up work.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">PubMed, Europe PMC, PMC OA, and literature profile evidence</span></td>
+              <td>No</td>
+              <td>Implemented as broader local corpus/evidence/vector build products.</td>
+              <td>Not part of the public permitted-source add-on pack; Europe PMC and PMC OA are not standalone public vectors in this report.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">OpenAlex, drug enrichment, Wikipedia, and Wikimedia/open images</span></td>
+              <td>No</td>
+              <td>Implemented as enrichment or metadata layers outside the public add-on pack.</td>
+              <td>Not broadly integrated into the default public concept/vector aggregate.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">cui2vec and BioConceptVec</span></td>
+              <td>No</td>
+              <td>Implemented as external neighbor indexes.</td>
+              <td>They are not source text, not public evidence documents, and should only support ranking/expansion with source-aware weighting.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">HPO native annotations and xrefs</span></td>
+              <td>No</td>
+              <td>Staged as relation/index signals.</td>
+              <td>Not part of the public vector pack by default; annotation reuse terms need review before public redistribution.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">UMLS-derived local indexes</span></td>
+              <td>No</td>
+              <td>Implemented as licensed local identity/code/definition/semantic-type indexes.</td>
+              <td>Not redistributable public source text and not public vectors.</td>
+            </tr>
+            <tr>
+              <td><span class="source-name">Permission-required clinician references</span></td>
+              <td>No</td>
+              <td>Not implemented in the public/default corpus.</td>
+              <td>They remain zero until rights, licensing, or a compliant source-specific reuse strategy exists.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Source Roles</h2>
+      <h3>MedlinePlus</h3>
+      <p>
+        Bridges user and patient language to CUIs. It is strong for plain-English
+        symptoms, disease summaries, common diagnostic tests, and "also called"
+        labels.
+      </p>
+      <h3>MedlinePlus Genetics</h3>
+      <p>
+        Adds gene symbols, condition names, inheritance and phenotype language,
+        related chromosomes, and cross-database identifiers.
+      </p>
+      <h3>Human Phenotype Ontology</h3>
+      <p>
+        Present in two ways: HPO term documents add labels, synonyms,
+        definitions, xrefs, parents, and relationship text, while the
+        research-relation index uses staged HPO annotations for phenotype,
+        disease-gene, and gene-disease links that UMLS alone does not provide.
+      </p>
+      <h3>cui2vec and BioConceptVec</h3>
+      <p>
+        Contribute external embedding-neighbor signals, not source text. They
+        are useful for recall-oriented related-concept expansion and exploratory
+        associations, but should be treated as co-occurrence or distributional
+        support rather than curated clinical knowledge.
+      </p>
+      <h3>DailyMed</h3>
+      <p>
+        Contributes drug-label contexts for indications, adverse effects,
+        contraindications, interactions, populations, and clinical pharmacology.
+      </p>
+      <h3>ClinicalTrials.gov</h3>
+      <p>
+        Connects diseases, interventions, populations, biomarkers, procedures,
+        and outcomes. It should not be interpreted as evidence that an
+        intervention is effective.
+      </p>
+      <h3>NCBI Bookshelf / NLM LitArch Open Access</h3>
+      <p>
+        The closest currently integrated open source to long-form guideline
+        text. The fetcher uses the NLM LitArch Open Access FTP file list and
+        tarball packages, preserving package license metadata.
+      </p>
+      <ul>
+        <li>21 documents from <em>Clinical Guidelines on the Identification, Evaluation, and Treatment of Overweight and Obesity in Adults: The Evidence Report</em></li>
+        <li>12 documents from <em>Expert Panel Report 2: Guidelines for the Diagnosis and Management of Asthma</em></li>
+        <li>16 documents from <em>Expert Panel Report 3: Guidelines for the Diagnosis and Management of Asthma</em></li>
+      </ul>
+      <h3>NCI, CDC, FDA, and NIDDK</h3>
+      <p>
+        Fill practical government-reference gaps with public-domain or mostly
+        reusable disease, diagnostic, treatment, drug-safety, and public-health
+        language.
+      </p>
+    </section>
+
+    <section>
+      <h2>Semantic Coverage</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Profile</th>
+              <th class="num">Evidence Signals</th>
+              <th>Strongest Contributing Sources</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Clinical</td>
+              <td class="num">14,382</td>
+              <td>MedlinePlus Genetics, MedlinePlus, ClinicalTrials.gov</td>
+            </tr>
+            <tr>
+              <td>Procedures / devices</td>
+              <td class="num">2,818</td>
+              <td>MedlinePlus, ClinicalTrials.gov, DailyMed</td>
+            </tr>
+            <tr>
+              <td>Labs / measurements</td>
+              <td class="num">2,587</td>
+              <td>MedlinePlus, MedlinePlus Genetics, ClinicalTrials.gov</td>
+            </tr>
+            <tr>
+              <td>Anatomy</td>
+              <td class="num">2,384</td>
+              <td>MedlinePlus Genetics, MedlinePlus</td>
+            </tr>
+            <tr>
+              <td>Chemicals / drugs</td>
+              <td class="num">1,318</td>
+              <td>MedlinePlus, MedlinePlus Genetics, ClinicalTrials.gov, DailyMed</td>
+            </tr>
+            <tr>
+              <td>Genes / proteins</td>
+              <td class="num">903</td>
+              <td>MedlinePlus Genetics</td>
+            </tr>
+            <tr>
+              <td>Organisms</td>
+              <td class="num">170</td>
+              <td>MedlinePlus, ClinicalTrials.gov</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="muted" style="margin-top: 10px;">
+        The newer source-subset builds
+        (<code>hpo</code>, <code>ncbi_bookshelf_oa</code>, <code>nci</code>,
+        <code>cdc</code>, <code>fda</code>, <code>niddk</code>) are currently
+        linked through the source-subset path rather than the profile-sharded
+        path.
+      </p>
+      <p class="muted" style="margin-top: 10px;">
+        The current local research-relation index also contains 58,976
+        HPO-derived relation signals: 24,945 <code>has_phenotype</code>, 24,052
+        <code>gene_has_phenotype</code>, 6,392
+        <code>gene_associated_with_disease</code>, and 3,587
+        <code>disease_has_associated_gene</code>.
+      </p>
+    </section>
+
+    <section class="section">
+      <h2>Licensing And Access Boundary</h2>
+      <div class="two-col">
+        <div class="callout">
+          <h3>Public/default sources</h3>
+          <ul>
+            <li>MedlinePlus and MedlinePlus Genetics: public NLM XML feeds.</li>
+            <li>DailyMed: public SPL label service.</li>
+            <li>ClinicalTrials.gov: public API.</li>
+            <li>NCI, CDC, FDA, NIDDK: reusable government pages with page-level caveats.</li>
+            <li>NCBI Bookshelf / NLM LitArch OA: only the Open Access subset, fetched through the NLM LitArch FTP route.</li>
+            <li>HPO and MONDO: public OBO ontology sources with attribution/version metadata. HPO annotation-derived phenotype relationships are useful but should remain opt-in for redistributable builds until upstream annotation-source terms are reviewed.</li>
+          </ul>
+        </div>
+        <div class="callout warning">
+          <h3>Restricted/candidate sources</h3>
+          <p>
+            Merck/MSD Manual Professional, AAFP, Medscape, BMJ Best Practice,
+            NICE CKS, StatPearls outside the NLM LitArch OA subset,
+            Patient.info Professional, GPnotebook, and WikEM remain
+            policy-tracked but blocked from the public rebuild unless a
+            deployment has permission, licensed content, or a compliant
+            source-specific reuse strategy.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Practical Implications</h2>
+      <div class="three-col">
+        <div>
+          <h3>Good For</h3>
+          <ul>
+            <li>Symptom and patient-language expansion</li>
+            <li>Genetics and phenotype expansion</li>
+            <li>Rare-disease phenotype, disease-gene, and gene-phenotype relationships</li>
+            <li>Drug safety and drug-label relationships</li>
+            <li>Trial eligibility, intervention, and outcome language</li>
+            <li>Large-scale literature-backed biomedical co-mention and context evidence</li>
+            <li>External embedding-neighbor expansion from cui2vec and BioConceptVec</li>
+            <li>Open full-text article evidence where PMC OA coverage exists</li>
+            <li>Public-domain oncology, diabetes, kidney, digestive, infectious disease, and drug-safety reference language</li>
+            <li>Some guideline-style reasoning from open Bookshelf packages</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Weaker For</h3>
+          <ul>
+            <li>Broad clinician-style differential diagnosis across all specialties</li>
+            <li>Up-to-date management recommendations outside selected open packages</li>
+            <li>Physical exam maneuvers and practical diagnostic algorithms absent from government pages or selected Bookshelf titles</li>
+            <li>Explicit symptom-to-disease differential tables comparable to paid clinician tools</li>
+            <li>Fully actionable HPO/MONDO xref graph edges beyond the subset currently materialized through UMLS CUI mappings and text metadata</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Search Test</h3>
+          <p>
+            Ultimately, we are trying to find what we are looking for. The
+            purpose of the UMLS - whether you call it interoperability, NLP, a
+            crosswalk, or a thesaurus - is to find the right concepts.
+          </p>
+          <p>
+            Find the right concepts. How do we test whether the UMLS can find
+            the right concepts? The best test is to search. If we focus on
+            search instead of synonymy, we will be closer to real use cases,
+            because every use case involves search of some kind or another:
+            identifying the right identifier, string, or concept.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Recommended Next Steps</h2>
+      <ol>
+        <li>Add explicit HPO/MONDO xref and hierarchy indexes so native xrefs such as SNOMEDCT_US, NCIT, MEDDRA, OMIM, Orphanet, and MONDO are first-class relationship/code-crosswalk edges rather than only corpus metadata/text.</li>
+        <li>Expand Bookshelf OA with explicit accession IDs for high-value clinical guideline/report titles after checking each package license.</li>
+        <li>Rebuild the newer HPO/NCI/CDC/FDA/NIDDK/Bookshelf source subsets through profile-sharded linking so their views align with the original permitted source profiles.</li>
+        <li>Add ClinVar/ClinGen/CIViC/CPIC for variant interpretation and pharmacogenomic relationships.</li>
+        <li>Add WHO guideline/publication ingestion only after preserving per-publication license metadata.</li>
+        <li>Add a generated source-contribution command so this report can be refreshed from artifacts rather than maintained manually.</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>

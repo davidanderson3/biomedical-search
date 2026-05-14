@@ -279,6 +279,7 @@ class CodeIndex:
         self._local = threading.local()
         self.cache: dict[tuple, list[dict]] = {}
         self.preferred_cache: dict[str, str] = {}
+        self.active_cui_cache: dict[str, bool] = {}
         self._mapping_count: int | None = None
 
     def connection(self) -> sqlite3.Connection:
@@ -323,8 +324,32 @@ class CodeIndex:
         label = ""
         if rows:
             label = str(sorted(rows, key=_preferred_sort_key)[0]["label"] or "")
+        if not label:
+            mapping_rows = self.lookup_cui(cui, limit=1)
+            if mapping_rows:
+                label = str(mapping_rows[0].get("label") or "")
         self.preferred_cache[cui] = label
         return label
+
+    def has_active_cui(self, cui: str) -> bool:
+        cui = cui.strip().upper()
+        if not cui:
+            return False
+        cached = self.active_cui_cache.get(cui)
+        if cached is not None:
+            return cached
+        row = self.connection().execute(
+            """
+            SELECT 1
+            FROM code_mappings
+            WHERE cui = ? AND suppress = 'N'
+            LIMIT 1
+            """,
+            (cui,),
+        ).fetchone()
+        active = row is not None
+        self.active_cui_cache[cui] = active
+        return active
 
     def lookup_cui(self, cui: str, *, sabs: Iterable[str] | None = None, limit: int = 100) -> list[dict]:
         cui = cui.strip().upper()

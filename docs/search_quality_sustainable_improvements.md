@@ -46,11 +46,12 @@ Each ranking rule should have at least one positive test and one protection agai
 For every improvement:
 
 1. Identify the failure from a stored benchmark, user example, or focused query.
-2. Make the smallest durable change.
-3. Add or update tests.
-4. Run focused evaluation for the affected rows when practical.
-5. Document the measured effect in `improvements/`.
-6. Periodically run the full paragraph benchmark to catch regressions outside the focused set.
+2. State the hypothesis and expected measurable movement before changing code or evidence.
+3. Make the smallest durable change.
+4. Add or update tests.
+5. Run focused evaluation for the affected rows when practical.
+6. Document the measured effect in `improvements/`, including the exact query file, output directory, command, before/after metrics, and decision.
+7. Periodically run the full paragraph benchmark to catch regressions outside the focused set.
 
 Use focused evaluation for known misses:
 
@@ -63,3 +64,19 @@ Use the full benchmark periodically:
 ```sh
 python3 scripts/evaluate_paragraph_quality.py --output-dir build/improvements/<run_name> --top-k 60
 ```
+
+## Progression Records
+
+Source-acquisition work has an executable progression ledger:
+
+```sh
+python3 scripts/source_acquisition_progression.py --fail-on-regression
+```
+
+This reads `config/source_acquisition_progression.tsv` and writes
+`build/source_acquisition/progression_manifest.json` plus
+`build/source_acquisition/progression_report.md`. Treat this as the model for
+other result-improvement progressions: every retained stage should have a
+hypothesis, artifact inventory, measured metrics, a deterministic gate, and a
+decision. Rejected diagnostic stages may be recorded for learning, but they
+must not lower the reference bar for the next accepted or neutral stage.

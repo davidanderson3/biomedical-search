@@ -11,6 +11,37 @@ from .text import clean_text, normalized_key
 
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
+LEADING_LABEL_EDGE_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "by",
+    "for",
+    "from",
+    "in",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "with",
+    "without",
+}
+TRAILING_LABEL_EDGE_STOPWORDS = {
+    "an",
+    "and",
+    "by",
+    "for",
+    "from",
+    "in",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "with",
+    "without",
+}
 
 
 @dataclass(frozen=True)
@@ -27,6 +58,21 @@ def _evidence_id(document: CorpusDocument, cui: str, start: int, end: int) -> st
 
 def token_spans(text: str) -> list[TokenSpan]:
     return [TokenSpan(match.group(0), match.start(), match.end()) for match in TOKEN_RE.finditer(text)]
+
+
+def is_acceptable_label_match(text: str, start: int, end: int, norm: str) -> bool:
+    tokens = norm.split()
+    if not tokens:
+        return False
+    if tokens[0] in LEADING_LABEL_EDGE_STOPWORDS:
+        return False
+    if tokens[-1] in TRAILING_LABEL_EDGE_STOPWORDS:
+        return False
+    if start > 0 and text[start - 1] == "-":
+        return False
+    if end < len(text) and text[end] == "-":
+        return False
+    return True
 
 
 def context_window(text: str, start: int, end: int, *, chars: int) -> str:
@@ -50,6 +96,29 @@ def _label_weight(row) -> float:
     if row["tty"] in {"PT", "MH", "PN", "FN"}:
         weight += 0.25
     return weight
+
+
+def _selected_cui_for_rows(rows, *, max_ambiguity: int) -> str:
+    best_by_cui = {}
+    for row in rows:
+        cui = row["cui"]
+        current = best_by_cui.get(cui)
+        if current is None or (-_label_weight(row), row["label"]) < (
+            -_label_weight(current),
+            current["label"],
+        ):
+            best_by_cui[cui] = row
+    cuis = sorted(best_by_cui)
+    if len(cuis) <= max_ambiguity:
+        return cuis[0] if cuis else ""
+    if max_ambiguity != 1:
+        return ""
+    best_rows = sorted(best_by_cui.values(), key=lambda row: (-_label_weight(row), row["label"]))
+    if len(best_rows) < 2:
+        return best_rows[0]["cui"] if best_rows else ""
+    best_weight = _label_weight(best_rows[0])
+    next_weight = _label_weight(best_rows[1])
+    return best_rows[0]["cui"] if best_weight > next_weight else ""
 
 
 def evidence_type_for_source(source: str, evidence_tag: str = "") -> str:
@@ -87,13 +156,14 @@ def link_document_to_evidence(
             norm = normalized_key(phrase)
             if len(norm) < 3:
                 continue
+            if not is_acceptable_label_match(text, phrase_start, phrase_end, norm):
+                continue
             rows = index.lookup(norm, limit=100)
             if not rows:
                 continue
-            cuis = sorted({row["cui"] for row in rows})
-            if len(cuis) > max_ambiguity:
+            cui = _selected_cui_for_rows(rows, max_ambiguity=max_ambiguity)
+            if not cui:
                 continue
-            cui = cuis[0]
             if counts_by_cui.get(cui, 0) >= max_mentions_per_cui:
                 break
             context = context_window(text, phrase_start, phrase_end, chars=context_chars)
@@ -101,7 +171,10 @@ def link_document_to_evidence(
             emit_key = (cui, context_key)
             if emit_key in emitted:
                 break
-            best_row = sorted(rows, key=lambda row: (-_label_weight(row), row["label"]))[0]
+            best_row = sorted(
+                (row for row in rows if row["cui"] == cui),
+                key=lambda row: (-_label_weight(row), row["label"]),
+            )[0]
             emitted.add(emit_key)
             occupied_tokens.update(range(start_index, end_index))
             counts_by_cui[cui] = counts_by_cui.get(cui, 0) + 1

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
+from collections import Counter
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Iterable, Iterator, Protocol
 
 from .compat import silence_urllib3_libressl_warning
@@ -38,6 +42,105 @@ class HashingEmbedder:
             index = number % self.dim
             sign = 1.0 if (number >> 63) == 0 else -1.0
             vector[index] += sign
+        norm = math.sqrt(sum(value * value for value in vector))
+        if norm:
+            vector = [value / norm for value in vector]
+        return vector
+
+
+@dataclass(frozen=True)
+class HashingIdfWeights:
+    doc_count: int
+    weights: dict[str, float]
+    default_idf: float
+    formula: str = "log((1 + n_docs) / (1 + df)) + 1"
+
+
+def build_hashing_idf_weights(texts: Iterable[str]) -> HashingIdfWeights:
+    doc_freq: Counter[str] = Counter()
+    doc_count = 0
+    for text in texts:
+        features = set(feature_tokens(text))
+        if not features:
+            continue
+        doc_count += 1
+        doc_freq.update(features)
+    if doc_count <= 0:
+        return HashingIdfWeights(doc_count=0, weights={}, default_idf=1.0)
+    weights = {
+        feature: math.log((1.0 + doc_count) / (1.0 + df)) + 1.0
+        for feature, df in doc_freq.items()
+    }
+    default_idf = math.log(1.0 + doc_count) + 1.0
+    return HashingIdfWeights(
+        doc_count=doc_count,
+        weights=weights,
+        default_idf=default_idf,
+    )
+
+
+def write_hashing_idf_weights(path: str | Path, weights: HashingIdfWeights) -> None:
+    path = Path(path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "doc_count": weights.doc_count,
+        "default_idf": weights.default_idf,
+        "formula": weights.formula,
+        "weights": weights.weights,
+    }
+    path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+
+
+def load_hashing_idf_weights(path: str | Path) -> HashingIdfWeights:
+    payload = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    raw_weights = payload.get("weights") or {}
+    if not isinstance(raw_weights, dict):
+        raise ValueError(f"invalid hashing IDF weights file: {path}")
+    return HashingIdfWeights(
+        doc_count=int(payload.get("doc_count") or 0),
+        weights={str(key): float(value) for key, value in raw_weights.items()},
+        default_idf=float(payload.get("default_idf") or 1.0),
+        formula=str(payload.get("formula") or "log((1 + n_docs) / (1 + df)) + 1"),
+    )
+
+
+class IdfHashingEmbedder:
+    provider_name = "hashing-idf"
+
+    def __init__(
+        self,
+        *,
+        dim: int = 384,
+        idf_weights: HashingIdfWeights,
+        idf_path: str | Path | None = None,
+    ) -> None:
+        if dim <= 0:
+            raise ValueError("dim must be positive")
+        self.dim = dim
+        self.idf_weights = idf_weights
+        self.idf_path = str(idf_path or "")
+        self.model_name = f"signed-token-char-hashing-idf-{dim}"
+        self.metadata = {
+            "hashing_idf_doc_count": idf_weights.doc_count,
+            "hashing_idf_formula": idf_weights.formula,
+        }
+        if self.idf_path:
+            self.metadata["hashing_idf_path"] = self.idf_path
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return [self._embed_one(text) for text in texts]
+
+    def _embed_one(self, text: str) -> list[float]:
+        vector = [0.0] * self.dim
+        counts = Counter(feature_tokens(text))
+        for feature, count in counts.items():
+            digest = hashlib.blake2b(feature.encode("utf-8"), digest_size=8).digest()
+            number = int.from_bytes(digest, "big")
+            index = number % self.dim
+            sign = 1.0 if (number >> 63) == 0 else -1.0
+            tf = 1.0 + math.log(float(count))
+            idf = self.idf_weights.weights.get(feature, self.idf_weights.default_idf)
+            vector[index] += sign * tf * idf
         norm = math.sqrt(sum(value * value for value in vector))
         if norm:
             vector = [value / norm for value in vector]
@@ -159,12 +262,21 @@ def make_embedder(
     *,
     model: str | None = None,
     dim: int = 384,
+    idf_path: str | Path | None = None,
     local_files_only: bool = False,
     max_seq_length: int | None = None,
     device: str | None = None,
 ) -> Embedder:
     if provider == "hashing":
         return HashingEmbedder(dim=dim)
+    if provider == "hashing-idf":
+        if not idf_path:
+            raise ValueError("--idf-path is required for --provider hashing-idf")
+        return IdfHashingEmbedder(
+            dim=dim,
+            idf_weights=load_hashing_idf_weights(idf_path),
+            idf_path=idf_path,
+        )
     if provider == "sentence-transformers":
         if not model:
             raise ValueError("--model is required for sentence-transformers")
