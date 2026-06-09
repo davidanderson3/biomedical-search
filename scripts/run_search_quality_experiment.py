@@ -2062,11 +2062,11 @@ def translation_next_quality_work_html() -> str:
           </p>
           <ul class="plain-steps">
             <li>
-              <strong>Better long-document handling:</strong>
-              PubMed abstracts and pasted clinical pages need section-aware chunking,
-              per-section linking, and a merge step that preserves the best supported
-              concepts without letting incidental context dominate. The PubMed abstract
-              scores above make this a current recall and ranking gap, not a theoretical issue.
+              <strong>Long-document validation:</strong>
+              Section-aware chunking, per-section linking, and merged chunk support are
+              now in the search path. Use the PubMed dev misses to tune reranking so
+              secondary concepts survive long abstracts without letting incidental
+              context dominate.
             </li>
             <li>
               <strong>Entity attributes:</strong>

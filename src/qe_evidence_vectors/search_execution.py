@@ -8,6 +8,7 @@ from urllib.error import URLError
 from qe_evidence_vectors.generic_filters import is_blocked_generic_query
 from qe_evidence_vectors.search_hit_features import semantic_type_names
 from qe_evidence_vectors.search_hydration import normalize_return_code_sabs
+from qe_evidence_vectors.search_long_documents import LongDocumentChunk, plan_long_document_chunks
 from qe_evidence_vectors.search_semantics import semantic_group_metadata
 from qe_evidence_vectors.search_semantic_buckets import (
     hit_relevance_score,
@@ -1022,7 +1023,13 @@ class SearchExecutionMixin:
                 debug=debug,
             )
             return self.store_search_result_cache(cache_key, result)
-        query_vector = array("f", self.embedder.embed([query])[0])
+        long_document_chunks = plan_long_document_chunks(query)
+        embed_inputs = [query, *[chunk.text for chunk in long_document_chunks]]
+        embedded_vectors = self.embedder.embed(embed_inputs)
+        query_vector = array("f", embedded_vectors[0])
+        long_document_chunk_vectors = [
+            array("f", vector) for vector in embedded_vectors[1:]
+        ]
         if self.records and len(query_vector) != self.dim:
             raise ValueError(
                 f"query vector dimension {len(query_vector)} does not match index dimension {self.dim}"
@@ -1047,6 +1054,8 @@ class SearchExecutionMixin:
                     search_scope=search_scope,
                     return_code_sabs=return_code_sabs,
                     debug=debug,
+                    long_document_chunks=long_document_chunks,
+                    long_document_chunk_vectors=long_document_chunk_vectors,
                 )
                 return self.store_search_result_cache(cache_key, result)
             try:
@@ -1063,6 +1072,8 @@ class SearchExecutionMixin:
                     search_scope=search_scope,
                     return_code_sabs=return_code_sabs,
                     debug=debug,
+                    long_document_chunks=long_document_chunks,
+                    long_document_chunk_vectors=long_document_chunk_vectors,
                 )
                 self.elastic_disabled_until = 0.0
                 self.elastic_failure_reason = ""
@@ -1085,6 +1096,8 @@ class SearchExecutionMixin:
                     search_scope=search_scope,
                     return_code_sabs=return_code_sabs,
                     debug=debug,
+                    long_document_chunks=long_document_chunks,
+                    long_document_chunk_vectors=long_document_chunk_vectors,
                 )
                 return self.store_search_result_cache(cache_key, result)
         self.require_elasticsearch_or_raise("missing --elastic-url or --elastic-index")
@@ -1101,8 +1114,146 @@ class SearchExecutionMixin:
             search_scope=search_scope,
             return_code_sabs=return_code_sabs,
             debug=debug,
+            long_document_chunks=long_document_chunks,
+            long_document_chunk_vectors=long_document_chunk_vectors,
         )
         return self.store_search_result_cache(cache_key, result)
+
+    def long_document_local_vector_hits(
+        self,
+        *,
+        chunks: list[LongDocumentChunk],
+        chunk_vectors: list[array],
+        candidate_pool_k: int,
+    ) -> list[dict]:
+        if not chunks or not chunk_vectors:
+            return []
+        limit = max(8, min(candidate_pool_k, 24))
+        hits: list[dict] = []
+        for chunk, vector in zip(chunks, chunk_vectors):
+            for candidate_rank, item in enumerate(
+                self.local_vector_candidates(vector, candidate_pool_k=limit),
+                start=1,
+            ):
+                hit = self.hit_from_record(
+                    item["record"],
+                    score=float(item["score"]),
+                    hydrate_details=False,
+                    include_codes=False,
+                )
+                if not hit.get("name"):
+                    continue
+                hit["retrieval"] = {
+                    "kind": "long_document_local_chunk_vector",
+                    "candidate_rank": candidate_rank,
+                    "chunk_index": chunk.index,
+                    "section": chunk.section,
+                    "vector_backend": getattr(self, "vector_matrix_backend", "python"),
+                }
+                self.add_long_document_support(
+                    hit,
+                    source="chunk_vector",
+                    section=chunk.section,
+                    chunk_index=chunk.index,
+                    score=float(item["score"]),
+                    candidate_rank=candidate_rank,
+                    section_weight=chunk.weight,
+                    matched_text=chunk.text,
+                )
+                hits.append(hit)
+        return hits
+
+    def long_document_elastic_vector_hits(
+        self,
+        *,
+        chunks: list[LongDocumentChunk],
+        chunk_vectors: list[array],
+        candidate_pool_k: int,
+    ) -> list[dict]:
+        if not chunks or not chunk_vectors or not self.elastic_url or not self.elastic_index:
+            return []
+        limit = max(8, min(candidate_pool_k, 24))
+        hits: list[dict] = []
+        for chunk, vector in zip(chunks, chunk_vectors):
+            raw_hits = self.search_knn(
+                base_url=self.elastic_url or "",
+                index=self.elastic_index or "",
+                vector=list(vector),
+                k=limit,
+                num_candidates=max(self.elastic_num_candidates, limit),
+                exclude_source_prefixes=getattr(self, "elastic_exclude_source_prefixes", ()),
+            )
+            for candidate_rank, raw_hit in enumerate(raw_hits, start=1):
+                source = raw_hit.get("_source", {}) or {}
+                doc_id = str(source.get("doc_id") or raw_hit.get("_id") or "")
+                record = self.records_by_doc_id.get(doc_id)
+                if record is None:
+                    continue
+                cui = str(source.get("cui") or record.cui)
+                if not cui:
+                    continue
+                semantic_types = self.semantic_types_for_cui(cui)
+                labels = self.labels_for_cui(
+                    cui,
+                    list(source.get("labels") or record.labels),
+                )
+                name = self.display_label_for_cui(cui, labels)
+                if not name:
+                    continue
+                hit = {
+                    "doc_id": doc_id,
+                    "cui": cui,
+                    "name": name,
+                    "view": str(source.get("view") or record.view),
+                    "score": float(raw_hit.get("_score", 0.0)),
+                    "labels": labels,
+                    "sources": list(source.get("sources") or record.sources),
+                    "evidence_count": int(source.get("evidence_count") or record.evidence_count),
+                    "source_bundle": record.source_bundle,
+                    "vector_path": record.vector_path,
+                    "vector_row": record.vector_row,
+                    "vector_lineage": {
+                        "vector_path": record.vector_path,
+                        "vector_row": record.vector_row,
+                        "source_bundle": record.source_bundle,
+                        "doc_id": record.doc_id,
+                        "cui": record.cui,
+                        "view": record.view,
+                    },
+                    "retrieval": {
+                        "kind": "long_document_elasticsearch_chunk_vector",
+                        "elastic_index": self.elastic_index or "",
+                        "candidate_rank": candidate_rank,
+                        "chunk_index": chunk.index,
+                        "section": chunk.section,
+                    },
+                    "source_mix": source_mix_from_evidence_items(
+                        list(record.evidence_items),
+                        declared_sources=list(source.get("sources") or record.sources),
+                        evidence_count=int(source.get("evidence_count") or record.evidence_count),
+                    ),
+                    "semantic_types": semantic_types,
+                    **semantic_group_metadata(semantic_types),
+                    "definitions": [],
+                    "images": [],
+                    "codes": [],
+                    "source_asserted_codes": [],
+                    "text": record.text,
+                    "evidence_items": [dict(item) for item in record.evidence_items],
+                    "related_concepts": [],
+                }
+                self.add_long_document_support(
+                    hit,
+                    source="chunk_vector",
+                    section=chunk.section,
+                    chunk_index=chunk.index,
+                    score=float(raw_hit.get("_score", 0.0)),
+                    candidate_rank=candidate_rank,
+                    section_weight=chunk.weight,
+                    matched_text=chunk.text,
+                )
+                hits.append(hit)
+        return hits
 
     def search_local(
         self,
@@ -1121,6 +1272,8 @@ class SearchExecutionMixin:
         search_scope: object = None,
         return_code_sabs: object = None,
         debug: bool = False,
+        long_document_chunks: list[LongDocumentChunk] | None = None,
+        long_document_chunk_vectors: list[array] | None = None,
     ) -> dict:
         search_mode = normalize_search_mode(search_mode)
         search_scope = normalize_search_scope(search_scope)
@@ -1144,6 +1297,17 @@ class SearchExecutionMixin:
             }
             hits.append(hit)
         hits = self.merge_label_fallback(query, hits, top_k=rank_top_k)
+        hits = self.merge_long_document_candidates(
+            query,
+            hits,
+            chunks=list(long_document_chunks or []),
+            chunk_hits=self.long_document_local_vector_hits(
+                chunks=list(long_document_chunks or []),
+                chunk_vectors=list(long_document_chunk_vectors or []),
+                candidate_pool_k=candidate_pool_k,
+            ),
+            top_k=rank_top_k,
+        )
         hits = self.filter_hits_by_search_mode(hits, search_mode=search_mode)
         hits = self.filter_hits_by_semantic_buckets(
             hits,
@@ -1202,6 +1366,7 @@ class SearchExecutionMixin:
             "mentions": mentions,
             "mentions_enabled": bool(include_linked_concepts),
             "mention_count": len(mentions),
+            **self.long_document_response_metadata(long_document_chunks or []),
             **(
                 {
                     "rankable_linked_label_promotions": list(
@@ -1244,6 +1409,8 @@ class SearchExecutionMixin:
         search_scope: object = None,
         return_code_sabs: object = None,
         debug: bool = False,
+        long_document_chunks: list[LongDocumentChunk] | None = None,
+        long_document_chunk_vectors: list[array] | None = None,
     ) -> dict:
         search_mode = normalize_search_mode(search_mode)
         search_scope = normalize_search_scope(search_scope)
@@ -1325,6 +1492,17 @@ class SearchExecutionMixin:
                 best_by_cui[cui] = result
         hits = sorted(best_by_cui.values(), key=lambda item: item["score"], reverse=True)[:candidate_pool_k]
         hits = self.merge_label_fallback(query, hits, top_k=rank_top_k)
+        hits = self.merge_long_document_candidates(
+            query,
+            hits,
+            chunks=list(long_document_chunks or []),
+            chunk_hits=self.long_document_elastic_vector_hits(
+                chunks=list(long_document_chunks or []),
+                chunk_vectors=list(long_document_chunk_vectors or []),
+                candidate_pool_k=candidate_pool_k,
+            ),
+            top_k=rank_top_k,
+        )
         hits = self.filter_hits_by_search_mode(hits, search_mode=search_mode)
         hits = self.filter_hits_by_semantic_buckets(
             hits,
@@ -1383,6 +1561,7 @@ class SearchExecutionMixin:
             "mentions": mentions,
             "mentions_enabled": bool(include_linked_concepts),
             "mention_count": len(mentions),
+            **self.long_document_response_metadata(long_document_chunks or []),
             **(
                 {
                     "rankable_linked_label_promotions": list(

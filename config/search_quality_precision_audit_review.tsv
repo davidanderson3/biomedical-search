@@ -1,0 +1,70 @@
+id	cui	label	review_class	action	why
+paragraph_01	C0016860	furosemide	useful_extra	add_useful_extra	Explicitly mentioned drug in the paragraph; useful secondary concept, not a core expected CUI.
+paragraph_03	C0024485	Magnetic Resonance Imaging	useful_extra	add_useful_extra	Explicitly mentioned MRI procedure; useful secondary concept.
+paragraph_05	C0040822	Tremor	useful_extra	add_useful_extra	Explicit tremor symptom in thyrotoxicosis paragraph.
+paragraph_06	C0332477	Erythematous plaque	useful_extra	add_useful_extra	Explicit plaque morphology in psoriasis paragraph.
+paragraph_07	C0027051	Myocardial Infarction	useful_extra	add_useful_extra	Explicit myocardial infarction context in NSTEMI paragraph.
+paragraph_08	C0040405	X-Ray Computed Tomography	useful_extra	add_useful_extra	Explicit computed tomography angiography procedure; useful secondary concept.
+paragraph_08	C2926613	Chest pain	true_false_positive	keep_rule_candidate	Generic clinical-attribute chest pain duplicate; paragraph denies pleuritic chest pain and tests pulmonary embolus/right-heart strain.
+paragraph_09	C0001924	Albumins	useful_extra	add_useful_extra	Explicit albumin creatinine ratio component; useful secondary concept.
+paragraph_10	C0750164	venous access	useful_extra	add_useful_extra	Explicit venous access procedure context for central-line placement.
+paragraph_10	C0041618	Ultrasonography	useful_extra	add_useful_extra	Explicit ultrasound guidance procedure context.
+paragraph_12	C0042313	vancomycin	useful_extra	add_useful_extra	Explicit antibiotic treatment in diabetic foot osteomyelitis paragraph.
+paragraph_15	C1369672	Oncology Note	true_false_positive	keep_rule_candidate	Note-type artifact from oncology note text; not a biomedical concept to reward.
+paragraph_24	C0266813	Fecal occult blood: positive	useful_extra	add_useful_extra	Explicit positive fecal occult blood test finding.
+paragraph_26	C0020615	Hypoglycemia	useful_extra	add_useful_extra	Explicit severe hypoglycemia condition.
+paragraph_33	C0043144	Wheezing	useful_extra	add_useful_extra	Explicit symptom in COPD exacerbation paragraph.
+paragraph_34	C1142306	Atrial fibrillation with rapid ventricular response	useful_extra	add_useful_extra	Explicit specific atrial fibrillation presentation.
+paragraph_36	C0004936	Mental disorders	true_false_positive	keep_rule_candidate	Unanchored broad mental-disorders vector drift; specific depression, insomnia, and suicidal ideation concepts are useful targets.
+paragraph_48	C0001962	ethanol	useful_extra	add_useful_extra	Explicit alcohol exposure concept in pancreatitis paragraph.
+paragraph_49	C0235304	Acid indigestion	true_false_positive	keep_rule_candidate	Unanchored acid-indigestion drift in GERD, Barrett, and dysphagia paragraph.
+paragraph_61	C0021403	Influenza virus vaccine	true_false_positive	keep_rule_candidate	Vaccine concept from influenza infection wording; infection paragraph should not surface vaccine as a top result.
+paragraph_62	C0041834	Erythema	useful_extra	add_useful_extra	Explicit erythema in erythema migrans Lyme paragraph.
+paragraph_66	C1141639	human chorionic gonadotropin	useful_extra	add_useful_extra	Explicit beta-hCG lab/hormone concept in ectopic pregnancy paragraph.
+paragraph_69	C2707266	Vision	true_false_positive	keep_rule_candidate	Generic clinical-attribute vision concept; cataract, blurred vision, and procedure concepts carry useful meaning.
+paragraph_74	C1318973	Staphylococcus aureus infection	useful_extra	add_useful_extra	Explicit organism/infection concept in endocarditis paragraph.
+paragraph_75	C0040405	X-Ray Computed Tomography	useful_extra	add_useful_extra	Explicit computed tomography procedure in nephrolithiasis paragraph.
+paragraph_77	C0405580	Adrenal cortical hypofunction	useful_extra	add_useful_extra	Explicit adrenal insufficiency concept beside Addison disease.
+paragraph_80	C0272078	Hemoglobin SS disease without crisis	true_false_positive	keep_rule_candidate	Contradictory unanchored sickle-cell-without-crisis subtype in vaso-occlusive crisis paragraph.
+paragraph_82	C0020433	Hyperbilirubinemia	useful_extra	add_useful_extra	Explicit hyperbilirubinemia in neonatal jaundice paragraph.
+paragraph_83	C0542571	Facial edema	useful_extra	add_useful_extra	Explicit facial swelling symptom in dental abscess paragraph.
+paragraph_85	C0025202	melanoma	useful_extra	add_useful_extra	Explicit melanoma concept in cutaneous melanoma paragraph.
+paragraph_86	C0030312	Pancytopenia	useful_extra	add_useful_extra	Explicit pancytopenia finding in AML paragraph.
+paragraph_91	C0699943	Public health service	useful_extra	add_useful_extra	Explicit public-health involvement in lead poisoning paragraph.
+paragraph_94	C0231832	Respiratory rate	true_false_positive	keep_rule_candidate	Respiratory-rate attribute is a broad fragment from respiratory wording, not a target ARDS or ventilation concept.
+paragraph_95	C0151480	Anti-nuclear factor positive	useful_extra	add_useful_extra	Explicit positive antinuclear antibody finding.
+paragraph_98	C0022658	Kidney Diseases	useful_extra	add_useful_extra	Explicit nephropathy/kidney disease context in BK virus nephropathy paragraph.
+paragraph_101	C1318973	Staphylococcus aureus infection	useful_extra	add_useful_extra	Explicit organism/infection concept in infective endocarditis paragraph.
+paragraph_102	C0157749	Arthropathy associated with infection	useful_extra	add_useful_extra	Explicit joint infection concept in prosthetic joint infection paragraph.
+paragraph_109	C1737262	Recurrent kidney stone	useful_extra	add_useful_extra	Explicit recurrent nephrolithiasis concept.
+paragraph_111	C1847425	Abnormal oral glucose tolerance	useful_extra	add_useful_extra	Explicit abnormal oral glucose tolerance finding.
+paragraph_113	C0038317	Steroids	useful_extra	add_useful_extra	Explicit high-dose steroid therapy in vasculitis paragraph.
+paragraph_114	C0600139	Prostate carcinoma	useful_extra	add_useful_extra	Explicit prostate cancer context.
+paragraph_116	C0040405	X-Ray Computed Tomography	useful_extra	add_useful_extra	Explicit computed tomography imaging in pulmonary fibrosis paragraph.
+paragraph_117	C5238909	Tearing Chest Pain	useful_extra	add_useful_extra	Explicit symptom phrase in aortic dissection paragraph.
+paragraph_118	C0162869	Aneurysm, Ruptured	useful_extra	add_useful_extra	Explicit aneurysm rupture concept in ruptured AAA paragraph.
+paragraph_118	C0040405	X-Ray Computed Tomography	useful_extra	add_useful_extra	Explicit computed tomography procedure in ruptured AAA paragraph.
+paragraph_119	C0022116	Ischemia	useful_extra	add_useful_extra	Explicit ischemia concept in acute limb ischemia paragraph.
+paragraph_119	C2945695	Limb ischemia	useful_extra	add_useful_extra	Explicit limb ischemia concept.
+paragraph_120	C0241889	Family Medical History	useful_extra	add_useful_extra	Explicit family-history context in hereditary cancer paragraph.
+paragraph_122	C0429028	QT interval feature (observable entity)	useful_extra	add_useful_extra	Explicit QT interval concept in prolonged-QT paragraph despite low-specificity semantic type.
+paragraph_123	C4285234	Do not resuscitate	useful_extra	add_useful_extra	Explicit DNR status in goals-of-care paragraph.
+paragraph_129	C0014834	Escherichia coli	useful_extra	add_useful_extra	Explicit organism in ESBL E. coli UTI paragraph.
+paragraph_129	C1442099	Resistance	useful_extra	add_useful_extra	Explicit antimicrobial resistance concept in susceptibility context.
+paragraph_130	C0042313	vancomycin	useful_extra	add_useful_extra	Explicit vancomycin in VRE bacteremia paragraph.
+paragraph_132	C0458990	Recurrent falls	useful_extra	add_useful_extra	Explicit recurrent falls in frailty paragraph.
+paragraph_133	C0034927	Patient referral	useful_extra	add_useful_extra	Explicit social-work referral in domestic-violence paragraph.
+paragraph_135	C0008031	Chest Pain	useful_extra	add_useful_extra	Explicit pleuritic chest pain symptom concept.
+paragraph_135	C2926613	Chest pain	true_false_positive	keep_rule_candidate	Generic clinical-attribute chest pain duplicate; disease/symptom CUI carries useful pleuritic chest pain meaning.
+paragraph_136	C0427055	Facial Paresis	useful_extra	add_useful_extra	Explicit facial droop/paresis in stroke paragraph.
+paragraph_136	C5392833	Acute Ischemic Stroke	useful_extra	add_useful_extra	Explicit acute ischemic stroke concept.
+paragraph_140	C0037473	sodium	useful_extra	add_useful_extra	Explicit sodium zirconium cyclosilicate component in hyperkalemia paragraph.
+paragraph_141	C0740441	Acute diarrhea	true_false_positive	keep_rule_candidate	Unanchored acute-diarrhea vector drift; base diarrhea and antibiotic-associated diarrhea are already expected or acceptable.
+paragraph_141	C3842347	Diarrhea/constipation	true_false_positive	keep_rule_candidate	Unanchored diarrhea-constipation aggregate drift; base diarrhea is already expected.
+paragraph_148	C0231240	Fluctuant	useful_extra	add_useful_extra	Explicit fluctuant abscess descriptor despite low-specificity semantic type.
+paragraph_150	C0024485	Magnetic Resonance Imaging	useful_extra	add_useful_extra	Explicit MRI procedure in NSCLC staging paragraph.
+paragraph_153	C5392833	Acute Ischemic Stroke	useful_extra	add_useful_extra	Explicit acute ischemic stroke concept in long stroke paragraph.
+paragraph_156	C3811844	Estimated Glomerular Filtration Rate	useful_extra	add_useful_extra	Explicit eGFR monitoring concept in diabetes/CKD trial paragraph.
+paragraph_156	C0944911	Body weight	useful_extra	add_useful_extra	Explicit body-weight outcome in trial paragraph.
+paragraph_157	C0024485	Magnetic Resonance Imaging	useful_extra	add_useful_extra	Explicit magnetic-resonance enterography procedure in Crohn disease paragraph.
+paragraph_161	C2939419	Metastatic malignant neoplasm	useful_extra	add_useful_extra	Explicit metastases concept in EGFR-mutated NSCLC abstract.

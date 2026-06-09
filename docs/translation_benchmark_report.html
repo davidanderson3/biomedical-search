@@ -140,8 +140,8 @@
     <ul>
       <li><strong>Clinical examples:</strong> 164 of 167 found every expected ID. This says the clinical-note examples are mostly working.</li>
       <li><strong>PubMed abstracts:</strong> 2 of 7 practice abstracts and 1 of 6 locked abstracts found every expected ID. This is the weakest area.</li>
-      <li><strong>Official UMLS comparison:</strong> For short phrases, our search found the expected ID 11 of 15 times. The official UMLS search found it 15 of 15 times.</li>
-      <li><strong>Code mappings:</strong> 7 of 8 concepts had all expected code types, and 12 of 13 expected links to SNOMED CT, RxNorm, LOINC, or ICD-10-CM were present.</li>
+      <li><strong>Official UMLS comparison:</strong> For short phrases, our search found the expected ID 18 of 18 times. The official UMLS search found it 18 of 18 times.</li>
+      <li><strong>Code mappings:</strong> 8 of 8 concepts had all expected code types, and 13 of 13 expected links to SNOMED CT, RxNorm, LOINC, or ICD-10-CM were present.</li>
     </ul>
   </section>
     
@@ -162,8 +162,8 @@
       <tr><td>Clinical smoke regression</td><td>regression</td><td>167</td><td>866</td><td><span class="status locked">locked</span></td><td>164/167 rows found every expected ID in the first 10 answers (98.2%); 99.3% of expected IDs found; score 98.6</td></tr>
 <tr><td>PubMed literature dev</td><td>dev</td><td>7</td><td>36</td><td><span class="status locked">locked</span></td><td>2/7 rows found every expected ID in the first 10 answers (28.6%); 72.2% of expected IDs found; score 39.3</td></tr>
 <tr><td>PubMed literature held-out</td><td>heldout</td><td>6</td><td>24</td><td><span class="status locked">locked</span></td><td>1/6 rows found every expected ID in the first 10 answers (16.7%); 70.8% of expected IDs found; score 40.2</td></tr>
-<tr><td>Exact/UMLS API comparison</td><td>diagnostic</td><td>18</td><td>18</td><td><span class="status locked">locked</span></td><td>our search found the expected ID 11/15 times (73.3%); official UMLS found it 15/15 times (100.0%)</td></tr>
-<tr><td>Code coverage</td><td>diagnostic</td><td>8</td><td>8</td><td><span class="status locked">locked</span></td><td>7/8 concepts had all expected code types; 12/13 expected code links found</td></tr>
+<tr><td>Exact/UMLS API comparison</td><td>diagnostic</td><td>18</td><td>18</td><td><span class="status locked">locked</span></td><td>our search found the expected ID 18/18 times (100.0%); official UMLS found it 18/18 times (100.0%)</td></tr>
+<tr><td>Code coverage</td><td>diagnostic</td><td>8</td><td>9</td><td><span class="status locked">locked</span></td><td>8/8 concepts had all expected code types; 13/13 expected code links found</td></tr>
     </tbody>
   </table>
 
@@ -204,15 +204,15 @@
 <tr><td>pubmed_lupus_preeclampsia_8659509</td><td>C0009506</td><td>C0033687</td><td>Proteinuria</td></tr>
 <tr><td>pubmed_cyp2c19_clopidogrel_36890711</td><td>C3845231</td><td>C1332828</td><td>CYP2C19 gene</td></tr></tbody></table>
     </section>
-<section><h2>Exact/UMLS API comparison</h2><table><thead><tr><th>Run</th><th>Rows</th><th>Our search found expected ID</th><th>Official UMLS found expected ID</th><th>Same first answer</th><th>Shared first-10 answers</th></tr></thead><tbody><tr><td>Default local search, related=0</td><td>18</td><td>11/15 (73.3%)</td><td>15/15 (100.0%)</td><td>12/18</td><td>1.33</td></tr><tr><td>Explicit UMLS+evidence, related=1</td><td>18</td><td>11/15 (73.3%)</td><td>15/15 (100.0%)</td><td>12/18</td><td>1.33</td></tr><tr><td>Exact local mode, UMLS+evidence scope, related=0</td><td>18</td><td>10/15 (66.7%)</td><td>15/15 (100.0%)</td><td>11/18</td><td>0.83</td></tr></tbody></table></section>
-<section><h2>Code coverage</h2><p>7/8 concepts had all expected code types; 12/13 expected code links found.</p><table><thead><tr><th>Row</th><th>ID</th><th>Expected code systems</th><th>Found</th><th>Missing</th></tr></thead><tbody><tr><td>code_atrial_fibrillation</td><td>C0004238</td><td>SNOMEDCT_US|ICD10CM</td><td>SNOMEDCT_US</td><td>ICD10CM</td></tr><tr><td>code_type_2_diabetes</td><td>C0011860</td><td>SNOMEDCT_US|ICD10CM</td><td>ICD10CM|SNOMEDCT_US</td><td></td></tr><tr><td>code_metoprolol</td><td>C0025859</td><td>RXNORM|SNOMEDCT_US</td><td>RXNORM|SNOMEDCT_US</td><td></td></tr><tr><td>code_hba1c</td><td>C0019018</td><td>LNC</td><td>LNC</td><td></td></tr><tr><td>code_chest_pain</td><td>C0008031</td><td>SNOMEDCT_US|ICD10CM</td><td>ICD10CM|SNOMEDCT_US</td><td></td></tr><tr><td>code_electrolytes_outside_reference_range</td><td>C0151613</td><td>SNOMEDCT_US</td><td>SNOMEDCT_US</td><td></td></tr><tr><td>code_chronic_cough</td><td>C0010201</td><td>SNOMEDCT_US|ICD10CM</td><td>ICD10CM|SNOMEDCT_US</td><td></td></tr><tr><td>code_septic_shock</td><td>C0036983</td><td>SNOMEDCT_US</td><td>SNOMEDCT_US</td><td></td></tr></tbody></table></section>
+<section><h2>Exact/UMLS API comparison</h2><table><thead><tr><th>Run</th><th>Rows</th><th>Our search found expected ID</th><th>Official UMLS found expected ID</th><th>Same first answer</th><th>Shared first-10 answers</th></tr></thead><tbody><tr><td>Current local search, active-label supplement, related=0</td><td>18</td><td>18/18 (100.0%)</td><td>18/18 (100.0%)</td><td>17/18</td><td>1.78</td></tr><tr><td>Default local search, related=0</td><td>18</td><td>11/15 (73.3%)</td><td>15/15 (100.0%)</td><td>12/18</td><td>1.33</td></tr><tr><td>Explicit UMLS+evidence, related=1</td><td>18</td><td>11/15 (73.3%)</td><td>15/15 (100.0%)</td><td>12/18</td><td>1.33</td></tr><tr><td>Exact local mode, UMLS+evidence scope, related=0</td><td>18</td><td>10/15 (66.7%)</td><td>15/15 (100.0%)</td><td>11/18</td><td>0.83</td></tr></tbody></table></section>
+<section><h2>Code coverage</h2><p>8/8 concepts had all expected code types; 13/13 expected code links found.</p><table><thead><tr><th>Row</th><th>ID</th><th>Expected code systems</th><th>Found</th><th>Missing</th></tr></thead><tbody><tr><td>code_atrial_fibrillation</td><td>C0004238|C3264374</td><td>SNOMEDCT_US|ICD10CM</td><td>ICD10CM|SNOMEDCT_US</td><td></td></tr><tr><td>code_type_2_diabetes</td><td>C0011860</td><td>SNOMEDCT_US|ICD10CM</td><td>ICD10CM|SNOMEDCT_US</td><td></td></tr><tr><td>code_metoprolol</td><td>C0025859</td><td>RXNORM|SNOMEDCT_US</td><td>RXNORM|SNOMEDCT_US</td><td></td></tr><tr><td>code_hba1c</td><td>C0019018</td><td>LNC</td><td>LNC</td><td></td></tr><tr><td>code_chest_pain</td><td>C0008031</td><td>SNOMEDCT_US|ICD10CM</td><td>ICD10CM|SNOMEDCT_US</td><td></td></tr><tr><td>code_electrolytes_outside_reference_range</td><td>C0151613</td><td>SNOMEDCT_US</td><td>SNOMEDCT_US</td><td></td></tr><tr><td>code_chronic_cough</td><td>C0010201</td><td>SNOMEDCT_US|ICD10CM</td><td>ICD10CM|SNOMEDCT_US</td><td></td></tr><tr><td>code_septic_shock</td><td>C0036983</td><td>SNOMEDCT_US</td><td>SNOMEDCT_US</td><td></td></tr></tbody></table></section>
 
   <section>
     <h2>Failure-Driven Work Queue</h2>
     <ul>
       <li>Use the PubMed dev failures for tuning and keep the PubMed held-out rows untouched for final checks.</li>
-      <li>Improve long-literature translation by chunking abstracts into title, background, methods, results, and conclusion spans, then aggregate concepts across chunks.</li>
-      <li>Score the new span-level mention output separately from ranked hits so treatments, outcomes, genes, organisms, and study entities are not lost behind the main topic.</li>
+      <li>Validate the new long-literature path that chunks abstracts into title, background, methods, results, and conclusion spans, then aggregates concepts across chunks.</li>
+      <li>Tune the span-level support score separately from ranked hits so treatments, outcomes, genes, organisms, and study entities are not lost behind the main topic.</li>
       <li>Improve exact-label ranking where the local result chooses a broad parent over the exact UMLS concept.</li>
       <li>Make code mapping coverage part of translation output checks, separate from whether the CUI ranked highly.</li>
     </ul>

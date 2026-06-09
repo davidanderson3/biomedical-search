@@ -1,5 +1,5 @@
 id	query	expected_cuis	expected_code_sabs	why
-code_atrial_fibrillation	atrial fibrillation	C0004238	SNOMEDCT_US|ICD10CM	Disorder should map to clinical condition vocabularies.
+code_atrial_fibrillation	atrial fibrillation	C0004238|C3264374	SNOMEDCT_US|ICD10CM	Disorder should map to clinical condition vocabularies; the real UMLS code index carries ICD-10-CM I48.91 on the billing-specific atrial fibrillation CUI.
 code_type_2_diabetes	type 2 diabetes	C0011860	SNOMEDCT_US|ICD10CM	Specific diabetes disorder should keep SNOMED CT and ICD-10-CM mappings.
 code_metoprolol	metoprolol	C0025859	RXNORM|SNOMEDCT_US	Medication should expose RxNorm and SNOMED CT mappings.
 code_hba1c	HbA1c	C0019018	LNC	Lab/analyte concept should expose LOINC mappings.

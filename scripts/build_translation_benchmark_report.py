@@ -641,8 +641,8 @@ def render_html(report: dict[str, Any]) -> str:
     <h2>Failure-Driven Work Queue</h2>
     <ul>
       <li>Use the PubMed dev failures for tuning and keep the PubMed held-out rows untouched for final checks.</li>
-      <li>Improve long-literature translation by chunking abstracts into title, background, methods, results, and conclusion spans, then aggregate concepts across chunks.</li>
-      <li>Score the new span-level mention output separately from ranked hits so treatments, outcomes, genes, organisms, and study entities are not lost behind the main topic.</li>
+      <li>Validate the new long-literature path that chunks abstracts into title, background, methods, results, and conclusion spans, then aggregates concepts across chunks.</li>
+      <li>Tune the span-level support score separately from ranked hits so treatments, outcomes, genes, organisms, and study entities are not lost behind the main topic.</li>
       <li>Improve exact-label ranking where the local result chooses a broad parent over the exact UMLS concept.</li>
       <li>Make code mapping coverage part of translation output checks, separate from whether the CUI ranked highly.</li>
     </ul>

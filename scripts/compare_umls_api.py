@@ -287,6 +287,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sabs", help="Override the query file sabs filter for every UMLS request.")
     parser.add_argument("--payload-dir", type=Path, help="Save <id>.local.json and <id>.umls.json payloads.")
     parser.add_argument("--from-payload-dir", type=Path, help="Read saved payloads instead of calling either API.")
+    parser.add_argument(
+        "--from-umls-payload-dir",
+        type=Path,
+        help="Read saved <id>.umls.json payloads while refreshing local API responses.",
+    )
     parser.add_argument("--fail-on-error", action="store_true")
     return parser.parse_args()
 
@@ -298,6 +303,10 @@ def read_payload_pair(payload_dir: Path, query_id: str) -> tuple[dict, dict]:
         json.loads(local_path.read_text(encoding="utf-8")),
         json.loads(umls_path.read_text(encoding="utf-8")),
     )
+
+
+def read_umls_payload(payload_dir: Path, query_id: str) -> dict:
+    return json.loads((payload_dir / f"{query_id}.umls.json").read_text(encoding="utf-8"))
 
 
 def save_payload_pair(payload_dir: Path, query_id: str, local_payload: dict | None, umls_payload: dict | None) -> None:
@@ -320,10 +329,13 @@ def main() -> int:
     if not specs:
         print(f"no queries found in {args.queries}", file=sys.stderr)
         return 2
-    if args.from_payload_dir and args.payload_dir:
-        print("--from-payload-dir and --payload-dir are mutually exclusive", file=sys.stderr)
+    if args.from_payload_dir and (args.payload_dir or args.from_umls_payload_dir):
+        print(
+            "--from-payload-dir cannot be combined with --payload-dir or --from-umls-payload-dir",
+            file=sys.stderr,
+        )
         return 2
-    if not args.from_payload_dir and not args.api_key:
+    if not args.from_payload_dir and not args.from_umls_payload_dir and not args.api_key:
         print("UMLS API key missing. Export APIKEY or UMLS_API_KEY, or pass --api-key.", file=sys.stderr)
         return 2
 
@@ -353,19 +365,26 @@ def main() -> int:
             except Exception as err:  # noqa: BLE001
                 local_error = str(err)
                 had_error = True
-            try:
-                umls_payload = umls_search(
-                    base_url=args.umls_base_url,
-                    api_key=args.api_key,
-                    spec=spec,
-                    page_size=args.umls_page_size,
-                    search_type=args.search_type,
-                    sabs=args.sabs,
-                    timeout=args.timeout,
-                )
-            except Exception as err:  # noqa: BLE001
-                umls_error = str(err)
-                had_error = True
+            if args.from_umls_payload_dir:
+                try:
+                    umls_payload = read_umls_payload(args.from_umls_payload_dir, spec.query_id)
+                except Exception as err:  # noqa: BLE001
+                    umls_error = str(err)
+                    had_error = True
+            else:
+                try:
+                    umls_payload = umls_search(
+                        base_url=args.umls_base_url,
+                        api_key=args.api_key,
+                        spec=spec,
+                        page_size=args.umls_page_size,
+                        search_type=args.search_type,
+                        sabs=args.sabs,
+                        timeout=args.timeout,
+                    )
+                except Exception as err:  # noqa: BLE001
+                    umls_error = str(err)
+                    had_error = True
             if args.payload_dir:
                 save_payload_pair(args.payload_dir, spec.query_id, local_payload, umls_payload)
             if index < len(specs) and args.sleep > 0:

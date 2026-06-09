@@ -1404,6 +1404,7 @@ class SearchHydrationMixin:
                 "mrrel_component": 0.0,
                 "mrrel_matched_tokens": [],
                 "mrrel_signal_reasons": [],
+                "long_document_support_component": 0.0,
                 "composite_intent_component": 0.0,
                 "specificity_component": 0.0,
                 "generic_penalty": 0.0,

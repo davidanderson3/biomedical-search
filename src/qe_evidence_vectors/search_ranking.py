@@ -292,6 +292,11 @@ def score_breakdown_for_hit(
         }
     )
     mrrel_signal_reasons = list(hit.get("mrrel_signal_reasons") or [])
+    long_document_support_component = (
+        0.0
+        if denied_positive_finding_penalty > 0.0
+        else long_document_support_component_for_hit(hit)
+    )
     composite_intent_component = composite_intent_component_for_hit(
         query_tokens=query_tokens,
         label_tokens=all_label_tokens,
@@ -412,6 +417,7 @@ def score_breakdown_for_hit(
         + evidence_context_component
         + definition_component
         + mrrel_component
+        + long_document_support_component
         + composite_intent_component
         + lab_result_composite_component
         + lab_result_abnormal_component
@@ -469,6 +475,7 @@ def score_breakdown_for_hit(
         "mrrel_component": round(mrrel_component, 6),
         "mrrel_matched_tokens": mrrel_matched_tokens,
         "mrrel_signal_reasons": mrrel_signal_reasons,
+        "long_document_support_component": round(long_document_support_component, 6),
         "composite_intent_component": round(composite_intent_component, 6),
         "lab_result_composite_component": round(lab_result_composite_component, 6),
         "lab_result_abnormal_component": round(lab_result_abnormal_component, 6),
@@ -557,6 +564,38 @@ def rank_hits(query: str, hits: list[SearchHit], *, top_k: int) -> list[SearchHi
     return apply_evidence_aware_cutoff(ranked, query_tokens=query_tokens, top_k=top_k)
 
 
+def long_document_support_component_for_hit(hit: SearchHit) -> float:
+    support = hit.get("long_document_support") or {}
+    if not isinstance(support, dict):
+        return 0.0
+    sources = {str(source) for source in support.get("sources") or []}
+    if not sources:
+        return 0.0
+    best_score = float(support.get("best_score") or 0.0)
+    best_rank = int(support.get("best_candidate_rank") or 0)
+    section_weight = float(support.get("best_section_weight") or 0.0)
+    chunk_count = int(support.get("chunk_count") or 0)
+    mention_count = int(support.get("mention_count") or 0)
+    component = 0.0
+    if "chunk_vector" in sources:
+        component += 0.10 * clamp((best_score - 0.68) / 0.26)
+        if best_rank and best_rank <= 4:
+            component += 0.04
+        elif best_rank and best_rank <= 10:
+            component += 0.02
+    if "mention" in sources:
+        component += 0.10
+        if mention_count >= 2:
+            component += 0.04
+    if chunk_count >= 2:
+        component += 0.03
+    if section_weight >= 0.95:
+        component += 0.03
+    elif section_weight >= 0.85:
+        component += 0.015
+    return min(component, 0.28)
+
+
 def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
     return max(low, min(high, value))
 
@@ -595,6 +634,7 @@ def annotate_hit_confidence(hit: SearchHit, *, query_tokens: list[str]) -> None:
             "evidence_context_component",
             "definition_component",
             "mrrel_component",
+            "long_document_support_component",
             "composite_intent_component",
             "lab_result_composite_component",
             "lab_result_abnormal_component",

@@ -74,9 +74,9 @@
       "group": "code",
       "split": "diagnostic",
       "path": "config/translation_code_coverage_queries.tsv",
-      "sha256": "8abf65b4a6c39a75ac9fc037c04a1017c7e94c2c831f79b24686fe30db409f48",
+      "sha256": "296f17bee11781dfdfca8014986291b81cc630016fba2091a30e911836f726b3",
       "rows": 8,
-      "expected_cuis": 8,
+      "expected_cuis": 9,
       "expected_code_sabs": 13,
       "result_path": "build/cui_code_index.sqlite"
     }

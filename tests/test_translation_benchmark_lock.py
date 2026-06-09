@@ -61,10 +61,10 @@ def test_translation_benchmark_report_keeps_slices_separate() -> None:
 
     assert slices["clinical_smoke"]["result"]["queries_all_expected_at_10"] == 164
     assert slices["pubmed_literature_heldout"]["result"]["queries_all_expected_at_10"] == 1
-    assert slices["exact_umls_api_comparison"]["result"]["variants"][0]["local_expected_top10"] == 11
+    assert slices["exact_umls_api_comparison"]["result"]["variants"][0]["local_expected_top10"] == 18
 
 
-def test_translation_benchmark_code_coverage_reports_vocab_gaps() -> None:
+def test_translation_benchmark_code_coverage_reports_complete_vocab_links() -> None:
     module = load_module(REPORT_SCRIPT, "build_translation_benchmark_report")
     report = module.build_report(module.load_lock())
     code_result = next(
@@ -74,9 +74,10 @@ def test_translation_benchmark_code_coverage_reports_vocab_gaps() -> None:
     )
     rows = {row["id"]: row for row in code_result["rows"]}
 
-    assert code_result["rows_complete"] == 7
-    assert code_result["found_sabs_total"] == 12
-    assert rows["code_atrial_fibrillation"]["missing_sabs"] == "ICD10CM"
+    assert code_result["rows_complete"] == 8
+    assert code_result["found_sabs_total"] == 13
+    assert rows["code_atrial_fibrillation"]["expected_cuis"] == "C0004238|C3264374"
+    assert rows["code_atrial_fibrillation"]["missing_sabs"] == ""
     assert rows["code_electrolytes_outside_reference_range"]["complete"] is True
 
 

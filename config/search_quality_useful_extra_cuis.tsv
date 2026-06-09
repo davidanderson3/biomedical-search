@@ -52,3 +52,61 @@ paragraph_113	C0194073	Kidney biopsy	Useful specific procedure concept when the 
 paragraph_115	C0004604	Back Pain	Explicit inflammatory back pain finding in ankylosing spondylitis paragraph.
 paragraph_115	C1415561	HLA-B gene	Gene-level HLA-B result is useful when the paragraph says positive HLA-B27, though the antigen measurement CUI is preferred.
 paragraph_116	C6025453	Progressive pulmonary fibrosis	Specific progressive pulmonary fibrosis concept is useful beside interstitial lung disease and pulmonary fibrosis.
+paragraph_01	C0016860	furosemide	Explicitly mentioned drug in the paragraph; useful secondary concept, not a core expected CUI.
+paragraph_03	C0024485	Magnetic Resonance Imaging	Explicitly mentioned MRI procedure; useful secondary concept.
+paragraph_05	C0040822	Tremor	Explicit tremor symptom in thyrotoxicosis paragraph.
+paragraph_06	C0332477	Erythematous plaque	Explicit plaque morphology in psoriasis paragraph.
+paragraph_07	C0027051	Myocardial Infarction	Explicit myocardial infarction context in NSTEMI paragraph.
+paragraph_08	C0040405	X-Ray Computed Tomography	Explicit computed tomography angiography procedure; useful secondary concept.
+paragraph_09	C0001924	Albumins	Explicit albumin creatinine ratio component; useful secondary concept.
+paragraph_10	C0750164	venous access	Explicit venous access procedure context for central-line placement.
+paragraph_10	C0041618	Ultrasonography	Explicit ultrasound guidance procedure context.
+paragraph_12	C0042313	vancomycin	Explicit antibiotic treatment in diabetic foot osteomyelitis paragraph.
+paragraph_24	C0266813	Fecal occult blood: positive	Explicit positive fecal occult blood test finding.
+paragraph_26	C0020615	Hypoglycemia	Explicit severe hypoglycemia condition.
+paragraph_33	C0043144	Wheezing	Explicit symptom in COPD exacerbation paragraph.
+paragraph_34	C1142306	Atrial fibrillation with rapid ventricular response	Explicit specific atrial fibrillation presentation.
+paragraph_48	C0001962	ethanol	Explicit alcohol exposure concept in pancreatitis paragraph.
+paragraph_62	C0041834	Erythema	Explicit erythema in erythema migrans Lyme paragraph.
+paragraph_66	C1141639	human chorionic gonadotropin	Explicit beta-hCG lab/hormone concept in ectopic pregnancy paragraph.
+paragraph_74	C1318973	Staphylococcus aureus infection	Explicit organism/infection concept in endocarditis paragraph.
+paragraph_75	C0040405	X-Ray Computed Tomography	Explicit computed tomography procedure in nephrolithiasis paragraph.
+paragraph_77	C0405580	Adrenal cortical hypofunction	Explicit adrenal insufficiency concept beside Addison disease.
+paragraph_82	C0020433	Hyperbilirubinemia	Explicit hyperbilirubinemia in neonatal jaundice paragraph.
+paragraph_83	C0542571	Facial edema	Explicit facial swelling symptom in dental abscess paragraph.
+paragraph_85	C0025202	melanoma	Explicit melanoma concept in cutaneous melanoma paragraph.
+paragraph_86	C0030312	Pancytopenia	Explicit pancytopenia finding in AML paragraph.
+paragraph_91	C0699943	Public health service	Explicit public-health involvement in lead poisoning paragraph.
+paragraph_95	C0151480	Anti-nuclear factor positive	Explicit positive antinuclear antibody finding.
+paragraph_98	C0022658	Kidney Diseases	Explicit nephropathy/kidney disease context in BK virus nephropathy paragraph.
+paragraph_101	C1318973	Staphylococcus aureus infection	Explicit organism/infection concept in infective endocarditis paragraph.
+paragraph_102	C0157749	Arthropathy associated with infection	Explicit joint infection concept in prosthetic joint infection paragraph.
+paragraph_109	C1737262	Recurrent kidney stone	Explicit recurrent nephrolithiasis concept.
+paragraph_111	C1847425	Abnormal oral glucose tolerance	Explicit abnormal oral glucose tolerance finding.
+paragraph_113	C0038317	Steroids	Explicit high-dose steroid therapy in vasculitis paragraph.
+paragraph_114	C0600139	Prostate carcinoma	Explicit prostate cancer context.
+paragraph_116	C0040405	X-Ray Computed Tomography	Explicit computed tomography imaging in pulmonary fibrosis paragraph.
+paragraph_117	C5238909	Tearing Chest Pain	Explicit symptom phrase in aortic dissection paragraph.
+paragraph_118	C0162869	Aneurysm, Ruptured	Explicit aneurysm rupture concept in ruptured AAA paragraph.
+paragraph_118	C0040405	X-Ray Computed Tomography	Explicit computed tomography procedure in ruptured AAA paragraph.
+paragraph_119	C0022116	Ischemia	Explicit ischemia concept in acute limb ischemia paragraph.
+paragraph_119	C2945695	Limb ischemia	Explicit limb ischemia concept.
+paragraph_120	C0241889	Family Medical History	Explicit family-history context in hereditary cancer paragraph.
+paragraph_122	C0429028	QT interval feature (observable entity)	Explicit QT interval concept in prolonged-QT paragraph despite low-specificity semantic type.
+paragraph_123	C4285234	Do not resuscitate	Explicit DNR status in goals-of-care paragraph.
+paragraph_129	C0014834	Escherichia coli	Explicit organism in ESBL E. coli UTI paragraph.
+paragraph_129	C1442099	Resistance	Explicit antimicrobial resistance concept in susceptibility context.
+paragraph_130	C0042313	vancomycin	Explicit vancomycin in VRE bacteremia paragraph.
+paragraph_132	C0458990	Recurrent falls	Explicit recurrent falls in frailty paragraph.
+paragraph_133	C0034927	Patient referral	Explicit social-work referral in domestic-violence paragraph.
+paragraph_135	C0008031	Chest Pain	Explicit pleuritic chest pain symptom concept.
+paragraph_136	C0427055	Facial Paresis	Explicit facial droop/paresis in stroke paragraph.
+paragraph_136	C5392833	Acute Ischemic Stroke	Explicit acute ischemic stroke concept.
+paragraph_140	C0037473	sodium	Explicit sodium zirconium cyclosilicate component in hyperkalemia paragraph.
+paragraph_148	C0231240	Fluctuant	Explicit fluctuant abscess descriptor despite low-specificity semantic type.
+paragraph_150	C0024485	Magnetic Resonance Imaging	Explicit MRI procedure in NSCLC staging paragraph.
+paragraph_153	C5392833	Acute Ischemic Stroke	Explicit acute ischemic stroke concept in long stroke paragraph.
+paragraph_156	C3811844	Estimated Glomerular Filtration Rate	Explicit eGFR monitoring concept in diabetes/CKD trial paragraph.
+paragraph_156	C0944911	Body weight	Explicit body-weight outcome in trial paragraph.
+paragraph_157	C0024485	Magnetic Resonance Imaging	Explicit magnetic-resonance enterography procedure in Crohn disease paragraph.
+paragraph_161	C2939419	Metastatic malignant neoplasm	Explicit metastases concept in EGFR-mutated NSCLC abstract.

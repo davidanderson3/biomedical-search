@@ -49,6 +49,7 @@ class ScoreBreakdown(TypedDict, total=False):
     evidence_context_component: float
     definition_component: float
     mrrel_component: float
+    long_document_support_component: float
     composite_intent_component: float
     lab_result_abnormal_component: float
     specificity_component: float

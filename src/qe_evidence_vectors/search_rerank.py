@@ -87,6 +87,20 @@ TEMPORAL_WORD_CHEMICAL_SEMANTIC_TYPES = {
 }
 MIN_RANKED_LINKED_LABEL_TOKEN_COUNT = 3
 MAX_ENTITY_CANDIDATES_PER_SURFACE = 3
+LONG_DOCUMENT_SUPPORT_RESULT_GROUPS = {
+    "ANAT",
+    "CHEM",
+    "DEVI",
+    "DISO",
+    "FIND",
+    "GENE",
+    "LIVB",
+    "OBS",
+    "PHEN",
+    "PHYS",
+    "PROC",
+}
+LONG_DOCUMENT_SUPPORT_TEXT_LIMIT = 180
 
 
 def active_label_context_values(value: str) -> list[str]:
@@ -1000,6 +1014,229 @@ class SearchRerankMixin:
             hit["mrrel_component"] = round(component, 6)
             hit["mrrel_matched_tokens"] = matched_tokens
             hit["mrrel_signal_reasons"] = reasons
+
+    def add_long_document_support(
+        self,
+        hit: dict,
+        *,
+        source: str,
+        section: str,
+        chunk_index: int,
+        score: float,
+        candidate_rank: int = 0,
+        section_weight: float = 1.0,
+        matched_text: str = "",
+    ) -> None:
+        support = hit.setdefault(
+            "long_document_support",
+            {
+                "sources": [],
+                "sections": [],
+                "chunk_indices": [],
+                "matched_texts": [],
+                "chunk_count": 0,
+                "mention_count": 0,
+                "best_score": 0.0,
+                "best_candidate_rank": 0,
+                "best_section_weight": 0.0,
+            },
+        )
+        if source and source not in support["sources"]:
+            support["sources"].append(source)
+        section = str(section or "body")
+        if section not in support["sections"]:
+            support["sections"].append(section)
+        chunk_index = int(chunk_index or 0)
+        if chunk_index and chunk_index not in support["chunk_indices"]:
+            support["chunk_indices"].append(chunk_index)
+        if source == "mention":
+            support["mention_count"] = int(support.get("mention_count") or 0) + 1
+        else:
+            support["chunk_count"] = int(support.get("chunk_count") or 0) + 1
+        support["best_score"] = max(float(support.get("best_score") or 0.0), float(score or 0.0))
+        if candidate_rank:
+            current_rank = int(support.get("best_candidate_rank") or 0)
+            support["best_candidate_rank"] = int(candidate_rank) if not current_rank else min(current_rank, int(candidate_rank))
+        support["best_section_weight"] = max(
+            float(support.get("best_section_weight") or 0.0),
+            float(section_weight or 0.0),
+        )
+        matched_text = " ".join(str(matched_text or "").split())
+        if matched_text:
+            clipped = matched_text[:LONG_DOCUMENT_SUPPORT_TEXT_LIMIT]
+            if clipped not in support["matched_texts"]:
+                support["matched_texts"].append(clipped)
+                support["matched_texts"] = support["matched_texts"][:5]
+
+    def merge_long_document_hit(self, best_by_cui: dict[str, dict], incoming: dict) -> None:
+        cui = str(incoming.get("cui") or "")
+        if not cui:
+            return
+        current = best_by_cui.get(cui)
+        if current is None:
+            best_by_cui[cui] = incoming
+            return
+        current["labels"] = self.labels_for_cui(
+            cui,
+            merge_labels(list(current.get("labels") or []), list(incoming.get("labels") or [])),
+        )
+        current["sources"] = merge_labels(
+            list(current.get("sources") or []),
+            list(incoming.get("sources") or []),
+        )
+        current["score"] = max(float(current.get("score") or 0.0), float(incoming.get("score") or 0.0))
+        if not current.get("matched_query_span") and incoming.get("matched_query_span"):
+            current["matched_query_span"] = incoming.get("matched_query_span") or ""
+        if not current.get("matched_label") and incoming.get("matched_label"):
+            current["matched_label"] = incoming.get("matched_label") or ""
+        current["label_fallback_score"] = max(
+            float(current.get("label_fallback_score") or 0.0),
+            float(incoming.get("label_fallback_score") or incoming.get("score") or 0.0),
+        )
+        support = incoming.get("long_document_support") or {}
+        if support:
+            merged_support = current.setdefault(
+                "long_document_support",
+                {
+                    "sources": [],
+                    "sections": [],
+                    "chunk_indices": [],
+                    "matched_texts": [],
+                    "chunk_count": 0,
+                    "mention_count": 0,
+                    "best_score": 0.0,
+                    "best_candidate_rank": 0,
+                    "best_section_weight": 0.0,
+                },
+            )
+            for key in ("sources", "sections", "chunk_indices"):
+                for value in support.get(key) or []:
+                    if value not in merged_support[key]:
+                        merged_support[key].append(value)
+            for text in support.get("matched_texts") or []:
+                clipped = " ".join(str(text or "").split())[:LONG_DOCUMENT_SUPPORT_TEXT_LIMIT]
+                if clipped and clipped not in merged_support["matched_texts"]:
+                    merged_support["matched_texts"].append(clipped)
+                    merged_support["matched_texts"] = merged_support["matched_texts"][:5]
+            merged_support["chunk_count"] = int(merged_support.get("chunk_count") or 0) + int(
+                support.get("chunk_count") or 0
+            )
+            merged_support["mention_count"] = int(merged_support.get("mention_count") or 0) + int(
+                support.get("mention_count") or 0
+            )
+            merged_support["best_score"] = max(
+                float(merged_support.get("best_score") or 0.0),
+                float(support.get("best_score") or 0.0),
+            )
+            incoming_rank = int(support.get("best_candidate_rank") or 0)
+            if incoming_rank:
+                current_rank = int(merged_support.get("best_candidate_rank") or 0)
+                merged_support["best_candidate_rank"] = (
+                    incoming_rank if not current_rank else min(current_rank, incoming_rank)
+                )
+            merged_support["best_section_weight"] = max(
+                float(merged_support.get("best_section_weight") or 0.0),
+                float(support.get("best_section_weight") or 0.0),
+            )
+
+    def long_document_mention_is_rankable(self, mention: dict) -> bool:
+        if (mention.get("assertion") or {}).get("status") == "negated":
+            return False
+        group = str(mention.get("semantic_group") or "")
+        if group not in LONG_DOCUMENT_SUPPORT_RESULT_GROUPS:
+            return False
+        if str(mention.get("match_source") or "") not in {
+            "active_label_supplement",
+            "extension_label",
+            "umls_label",
+        }:
+            return False
+        if float(mention.get("score") or 0.0) < 0.55:
+            return False
+        text_tokens = content_tokens(str(mention.get("text") or ""))
+        if len(text_tokens) <= 1 and group not in {"CHEM", "DISO", "FIND", "GENE", "LIVB", "OBS"}:
+            return False
+        return True
+
+    def long_document_mention_hit(self, mention: dict) -> dict:
+        cui = str(mention.get("cui") or "")
+        if not cui:
+            return {}
+        score = max(0.86, min(1.18, 0.78 + (0.18 * float(mention.get("score") or 0.0))))
+        candidate = self.candidate_from_cui(
+            cui,
+            score=score,
+            source="umls_label",
+            matched=str(mention.get("text") or ""),
+            label=str(mention.get("matched_label") or mention.get("name") or ""),
+        )
+        if not candidate:
+            return {}
+        hit = self.hit_from_candidate(candidate)
+        if not hit:
+            return {}
+        hit["match_type"] = "umls_label"
+        hit["matched_label"] = mention.get("matched_label") or mention.get("name") or ""
+        hit["matched_query_span"] = mention.get("text") or ""
+        hit["matched_sab"] = mention.get("matched_sab") or ""
+        hit["matched_tty"] = mention.get("matched_tty") or ""
+        hit["matched_ispref"] = mention.get("matched_ispref") or ""
+        hit["label_fallback_score"] = score
+        self.add_long_document_support(
+            hit,
+            source="mention",
+            section=str(mention.get("section") or "body"),
+            chunk_index=0,
+            score=score,
+            section_weight=1.0,
+            matched_text=str(mention.get("text") or ""),
+        )
+        return hit
+
+    def merge_long_document_candidates(
+        self,
+        query: str,
+        hits: list[dict],
+        *,
+        chunks: list[object],
+        chunk_hits: list[dict],
+        top_k: int,
+    ) -> list[dict]:
+        if not chunks:
+            return hits
+        best_by_cui = {str(hit.get("cui") or ""): hit for hit in hits if hit.get("cui")}
+        for hit in chunk_hits:
+            self.merge_long_document_hit(best_by_cui, hit)
+        for mention in self.query_entity_mentions(query, limit=max(top_k * 8, 240)):
+            if not self.long_document_mention_is_rankable(mention):
+                continue
+            hit = self.long_document_mention_hit(mention)
+            if hit:
+                self.merge_long_document_hit(best_by_cui, hit)
+        merged = list(best_by_cui.values())
+        self.attach_mrrel_rank_signals(query, merged, candidate_limit=self.mrrel_rank_candidate_limit(top_k))
+        return rank_hits(query, merged, top_k=top_k)
+
+    def long_document_response_metadata(self, chunks: list[object]) -> dict:
+        if not chunks:
+            return {"long_document": {"enabled": False, "chunk_count": 0}}
+        return {
+            "long_document": {
+                "enabled": True,
+                "chunk_count": len(chunks),
+                "chunks": [
+                    {
+                        "index": int(getattr(chunk, "index", 0) or 0),
+                        "section": str(getattr(chunk, "section", "") or ""),
+                        "start": int(getattr(chunk, "start", 0) or 0),
+                        "end": int(getattr(chunk, "end", 0) or 0),
+                        "token_count": int(getattr(chunk, "token_count", 0) or 0),
+                        "weight": round(float(getattr(chunk, "weight", 0.0) or 0.0), 3),
+                    }
+                    for chunk in chunks
+                ],
+            }
+        }
 
     def merge_label_fallback(
         self,

@@ -153,6 +153,7 @@ from qe_evidence_vectors.search_semantic_buckets import (
     semantic_result_buckets_for_response,
 )
 from qe_evidence_vectors.search_hydration import rank_evidence_items_for_query
+from qe_evidence_vectors.search_long_documents import plan_long_document_chunks
 from qe_evidence_vectors.search_utils import sentence_bounded_evidence_text
 from qe_evidence_vectors.search_rerank import (
     definition_fallback_query_is_too_generic,
@@ -2140,6 +2141,83 @@ def test_ranker_boosts_repeated_concept_mentions_in_long_text() -> None:
     assert by_cui["C0019693"]["score_breakdown"]["mention_frequency_component"] == 0.0
     assert by_cui["C0205090"]["score_breakdown"]["mention_count"] == 0
     assert by_cui["C0205090"]["score_breakdown"]["mention_frequency_component"] == 0.0
+
+
+def test_long_document_planner_uses_section_chunks() -> None:
+    text = (
+        "PubMed PMID 1. Treatment response in long abstracts. "
+        "BACKGROUND: The background sentence introduces the cohort and repeats the main disease. "
+        "METHODS: Investigators searched multiple databases and selected randomized trials. "
+        "RESULTS: Osimertinib improved progression free survival in patients with brain metastases. "
+        "CONCLUSIONS: Section aware processing should retain secondary treatment and outcome concepts. "
+    ) * 3
+
+    chunks = plan_long_document_chunks(text)
+    sections = {chunk.section for chunk in chunks}
+
+    assert len(chunks) >= 3
+    assert "background" in sections
+    assert "methods" in sections
+    assert "results" in sections
+    assert all(chunk.token_count <= 95 for chunk in chunks)
+    assert max(chunk.weight for chunk in chunks if chunk.section == "results") >= 0.95
+
+
+def test_ranker_boosts_long_document_chunk_supported_secondary_concepts() -> None:
+    query = (
+        "PubMed PMID 1. EGFR-mutant non-small cell lung cancer review. "
+        "BACKGROUND: Non-small cell lung cancer was the primary topic of the review. "
+        "METHODS: The methods section described database searches and randomized trials. "
+        "RESULTS: Osimertinib improved progression free survival in patients with brain metastases. "
+        "CONCLUSIONS: Long-document handling should preserve secondary treatment and outcome concepts."
+    )
+    nsclc = {
+        "cui": "C0007131",
+        "name": "Non-Small Cell Lung Carcinoma",
+        "labels": ["Non-Small Cell Lung Carcinoma", "non-small cell lung cancer"],
+        "score": 0.92,
+        "match_type": "umls_label",
+        "matched_label": "non-small cell lung cancer",
+        "matched_query_span": "non-small cell lung cancer",
+        "sources": ["umls_label"],
+        "evidence_count": 10,
+        "semantic_types": [{"name": "Neoplastic Process"}],
+        "semantic_group": "DISO",
+    }
+    osimertinib = {
+        "cui": "C4058811",
+        "name": "osimertinib",
+        "labels": ["osimertinib"],
+        "score": 0.82,
+        "match_type": "umls_label",
+        "matched_label": "osimertinib",
+        "matched_query_span": "Osimertinib",
+        "sources": ["umls_label"],
+        "evidence_count": 6,
+        "semantic_types": [{"name": "Pharmacologic Substance"}],
+        "semantic_group": "CHEM",
+        "long_document_support": {
+            "sources": ["mention", "chunk_vector"],
+            "sections": ["results"],
+            "chunk_indices": [3],
+            "matched_texts": ["Osimertinib improved progression free survival."],
+            "chunk_count": 1,
+            "mention_count": 1,
+            "best_score": 0.93,
+            "best_candidate_rank": 2,
+            "best_section_weight": 0.95,
+        },
+    }
+    baseline_osimertinib = dict(osimertinib)
+    baseline_osimertinib.pop("long_document_support")
+
+    baseline = rank_hits(query, [nsclc, baseline_osimertinib], top_k=2)
+    ranked = rank_hits(query, [nsclc, osimertinib], top_k=2)
+    baseline_hit = next(hit for hit in baseline if hit["cui"] == "C4058811")
+    by_cui = {hit["cui"]: hit for hit in ranked}
+
+    assert by_cui["C4058811"]["score_breakdown"]["long_document_support_component"] > 0.0
+    assert by_cui["C4058811"]["rank_score"] > baseline_hit["rank_score"]
 
 
 def test_ranker_counts_specialist_lexical_variant_mentions() -> None:
