@@ -364,6 +364,7 @@ def _embed_batch(
         metadata = {
             "embedding_provider": embedder.provider_name,
             "embedding_model": embedder.model_name,
+            "document_text_hash": hashlib.sha256(record.text.encode("utf-8")).hexdigest(),
             "evidence_count": record.evidence_count,
             "sources": record.sources,
             "labels": record.labels,

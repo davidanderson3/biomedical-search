@@ -67,7 +67,7 @@
       "label": "Build current baseline CUI/view concept documents",
       "artifacts": [
         {
-          "path": "build/biomedicine_expanded_literature_mimic_structured_top12_concept_documents.jsonl",
+          "path": "build/scaling_chunk_002_common_clinical_concept_documents.jsonl",
           "kind": "jsonl",
           "min_rows": 1
         }
@@ -1066,28 +1066,6 @@
       "artifacts": [
         {
           "path": "build/scaling_runs/full_pubmed_ingest.marker",
-          "kind": "file"
-        }
-      ]
-    },
-    {
-      "id": "full_mimic_available",
-      "label": "Full MIMIC data available locally",
-      "status_if_incomplete": "paused",
-      "artifacts": [
-        {
-          "path": "build/scaling_runs/full_mimic_available.marker",
-          "kind": "file"
-        }
-      ]
-    },
-    {
-      "id": "full_mimic_ingest",
-      "label": "Full MIMIC ingest and linking",
-      "status_if_incomplete": "paused",
-      "artifacts": [
-        {
-          "path": "build/scaling_runs/full_mimic_ingest.marker",
           "kind": "file"
         }
       ]

@@ -27,7 +27,7 @@ This keeps the current `hashing` query embedder aligned with the indexed vectors
 
 Exported and loaded the same vector files used by the current UI server:
 
-- `build/biomedicine_expanded_literature_mimic_structured_top12_concept_vectors.lean.hashing.jsonl`
+- `build/scaling_chunk_002_common_clinical_concept_vectors.sapbert_cls.jsonl`
 - `build/new_umls_iterations/iteration_002_existing_data/extension_concept_vectors.cumulative.hashing.jsonl`
 - `build/wikipedia_enrichment/wikipedia_concept_vectors.hashing.jsonl`
 - `build/drug_enrichment/drug_enrichment_concept_vectors.hashing.jsonl`

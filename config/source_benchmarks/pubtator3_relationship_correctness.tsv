@@ -1,0 +1,4 @@
+id	query	expected_cuis	why	disallowed_cuis
+pubtator3_rel_01	BRCA1 mutation relationship to breast cancer risk	C0376571|C1511022|C0006142	PubTator3 relationship checks should keep the gene, mutation, and disease endpoints visible.
+pubtator3_rel_02	EGFR mutation relationship in non-small cell lung cancer	C0034802|C0007131	PubTator3 relationship checks should connect EGFR language with the lung cancer endpoint without drifting to unrelated EGFR-like labels.
+pubtator3_rel_03	osimertinib EGFR non-small cell lung cancer literature relationship	C4058811|C0034802|C0007131	PubTator3 relationship checks should preserve drug-gene-disease relation endpoints.

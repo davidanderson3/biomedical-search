@@ -13,6 +13,7 @@ from qe_evidence_vectors.search_semantics import (
     semantic_group_from_types,
 )
 from qe_evidence_vectors.search_semantic_buckets import (
+    is_noisy_symptom_to_organism_relation,
     related_result_buckets_for_response,
     semantic_result_buckets_for_response,
 )
@@ -245,6 +246,8 @@ class SearchRelatedMixin:
             category = str(relation.get("category") or "").strip()
             target_cui = str(relation.get("cui") or "").strip()
             if not category or not target_cui:
+                continue
+            if is_noisy_symptom_to_organism_relation(relation, {"key": "ORGANISM"}):
                 continue
             key = (category, target_cui)
             if key in seen:
@@ -1028,11 +1031,11 @@ class SearchRelatedMixin:
         if include_related:
             semantic_view_sources = self.semantic_view_sources_for_hits(
                 hits,
-                source_limit=getattr(self, "related_source_limit", 16),
+                source_limit=getattr(self, "related_source_limit", 8),
                 include_external=True,
             )
             semantic_group_views = self.semantic_group_views_from_sources(semantic_view_sources)
-            semantic_views = self.semantic_views_for_hits(hits, include_external=True)
+            semantic_views = list(semantic_view_sources[0].get("views") or []) if semantic_view_sources else []
         return {
             "top_semantic_group": top_group,
             "top_semantic_group_label": SEMANTIC_GROUP_LABELS.get(top_group, "Other") if top_group else "",

@@ -18,8 +18,7 @@ than 10 minutes on the local machine or stop at a clean intermediate artifact.
 - Use small topic files first, then increase retmax or topic count after quality
   review.
 - Keep DRG excluded.
-- Hold off on MIMIC ingest or MIMIC-dependent rebuilds until the full local
-  MIMIC download is available.
+- Keep the default chunk loop public-source only.
 - After every chunk, check row counts and run a few search-quality queries before
   merging into the main artifact.
 - Use `sapbert` or another CLS-pooled BERT provider for quality assessment.
@@ -33,8 +32,7 @@ Purpose: add a small amount of literature evidence for under-covered areas:
 organisms, anatomy, genes/proteins, device safety, pathology, and molecular
 testing.
 
-Scope: PubMed and Europe PMC only. MIMIC is intentionally excluded until the
-local download is available.
+Scope: PubMed and Europe PMC only.
 
 Topic file:
 
@@ -77,8 +75,7 @@ Purpose: add breadth for common clinical search language across high-volume
 conditions, symptoms, labs, imaging, pediatrics, oncology, psychiatry, renal,
 liver, autoimmune, cardiopulmonary, and neurologic topics.
 
-Scope: PubMed and Europe PMC only. MIMIC remains paused until the local download
-is available.
+Scope: PubMed, Europe PMC, and PMC Open Access only.
 
 Topic file:
 

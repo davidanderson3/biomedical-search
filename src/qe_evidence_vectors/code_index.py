@@ -8,6 +8,12 @@ from typing import Iterable
 
 
 CUI_RE = re.compile(r"^C\d{7}$", re.IGNORECASE)
+AUI_RE = re.compile(r"^A\d{7,8}$", re.IGNORECASE)
+LUI_RE = re.compile(r"^L\d{7,8}$", re.IGNORECASE)
+SUI_RE = re.compile(r"^S\d{7,8}$", re.IGNORECASE)
+RUI_RE = re.compile(r"^R\d{7,8}$", re.IGNORECASE)
+ATUI_RE = re.compile(r"^AT\d+$", re.IGNORECASE)
+TUI_RE = re.compile(r"^T\d{3}$", re.IGNORECASE)
 SYSTEM_CODE_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_ -]{1,31}):(.+)$")
 LIKELY_CODE_RE = re.compile(
     r"^(?:"
@@ -39,8 +45,25 @@ SAB_ALIASES = {
     "RXNORM": "RXNORM",
     "SNOMED": "SNOMEDCT_US",
     "SNOMEDCT": "SNOMEDCT_US",
+    "SNOMEDCTUS": "SNOMEDCT_US",
     "SNOMEDCT_US": "SNOMEDCT_US",
+    "CODE": "CODE",
+    "SCUI": "SCUI",
+    "SDUI": "SDUI",
+    "AUI": "AUI",
+    "LUI": "LUI",
+    "SUI": "SUI",
+    "RUI": "RUI",
+    "ATUI": "ATUI",
+    "TUI": "TUI",
 }
+
+UMLS_IDENTIFIER_SYSTEMS = frozenset(
+    {"CUI", "CODE", "SCUI", "SDUI", "AUI", "LUI", "SUI", "RUI", "ATUI", "TUI"}
+)
+CODE_IDENTIFIER_SYSTEMS = frozenset({"CODE", "SCUI", "SDUI", "AUI", "LUI", "SUI"})
+PATTERNED_UMLS_IDENTIFIER_SYSTEMS = frozenset({"CUI", "AUI", "LUI", "SUI", "RUI", "ATUI", "TUI"})
+KNOWN_SOURCE_SYSTEMS = frozenset(SAB_ALIASES.values()) | UMLS_IDENTIFIER_SYSTEMS
 
 SAB_PRIORITY = {
     "MTH": 0,
@@ -87,6 +110,19 @@ CREATE TABLE IF NOT EXISTS preferred_terms (
     tty TEXT NOT NULL,
     suppress TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS identifier_mappings (
+    cui TEXT NOT NULL,
+    identifier_type TEXT NOT NULL,
+    identifier TEXT NOT NULL,
+    sab TEXT NOT NULL,
+    code TEXT NOT NULL,
+    scui TEXT NOT NULL,
+    sdui TEXT NOT NULL,
+    tty TEXT NOT NULL,
+    label TEXT NOT NULL,
+    ispref TEXT NOT NULL,
+    suppress TEXT NOT NULL
+);
 """
 
 INDEX_SCHEMA = """
@@ -102,6 +138,10 @@ CREATE INDEX IF NOT EXISTS idx_code_mappings_sdui
 ON code_mappings(sdui COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_preferred_terms_cui
 ON preferred_terms(cui);
+CREATE INDEX IF NOT EXISTS idx_identifier_mappings_identifier
+ON identifier_mappings(identifier_type, identifier COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_identifier_mappings_sab_identifier
+ON identifier_mappings(sab, identifier_type, identifier COLLATE NOCASE);
 """
 
 
@@ -125,12 +165,54 @@ def is_cui(value: str) -> bool:
     return bool(CUI_RE.match((value or "").strip()))
 
 
+def infer_umls_identifier_type(value: str) -> str:
+    text = (value or "").strip()
+    if not text:
+        return ""
+    checks = (
+        ("CUI", CUI_RE),
+        ("AUI", AUI_RE),
+        ("LUI", LUI_RE),
+        ("SUI", SUI_RE),
+        ("RUI", RUI_RE),
+        ("ATUI", ATUI_RE),
+        ("TUI", TUI_RE),
+    )
+    for identifier_type, pattern in checks:
+        if pattern.match(text):
+            return identifier_type
+    return ""
+
+
+def looks_like_umls_identifier(value: str, identifier_type: str | None = None) -> bool:
+    inferred = infer_umls_identifier_type(value)
+    if not identifier_type:
+        return bool(inferred)
+    return inferred == normalize_sab(identifier_type)
+
+
 def parse_system_code(value: str) -> tuple[str, str] | None:
-    match = SYSTEM_CODE_RE.match((value or "").strip())
-    if not match:
-        return None
-    system = normalize_sab(match.group(1))
-    code = match.group(2).strip()
+    text = (value or "").strip()
+    match = SYSTEM_CODE_RE.match(text)
+    if match:
+        system = normalize_sab(match.group(1))
+        code = match.group(2).strip()
+        if system in PATTERNED_UMLS_IDENTIFIER_SYSTEMS:
+            if not looks_like_umls_identifier(code, system):
+                return None
+    else:
+        parts = text.rsplit(None, 1)
+        if len(parts) != 2:
+            return None
+        system_text, code = parts[0], parts[1].strip()
+        system = normalize_sab(system_text)
+        if system not in KNOWN_SOURCE_SYSTEMS:
+            return None
+        if system in PATTERNED_UMLS_IDENTIFIER_SYSTEMS:
+            if not looks_like_umls_identifier(code, system):
+                return None
+        elif not looks_like_code(code):
+            return None
     if not system or not code:
         return None
     return system, code
@@ -141,6 +223,8 @@ def looks_like_code(value: str) -> bool:
     if not text or any(char.isspace() for char in text):
         return False
     if is_cui(text):
+        return True
+    if infer_umls_identifier_type(text):
         return True
     return bool(LIKELY_CODE_RE.match(text)) and any(char.isdigit() for char in text)
 
@@ -156,7 +240,7 @@ def _sort_key(row: sqlite3.Row) -> tuple[int, int, int, str, str]:
 
 
 def _row_dict(row: sqlite3.Row) -> dict:
-    return {
+    result = {
         "cui": row["cui"],
         "sab": row["sab"],
         "code": row["code"],
@@ -167,6 +251,11 @@ def _row_dict(row: sqlite3.Row) -> dict:
         "ispref": row["ispref"],
         "suppress": row["suppress"],
     }
+    if "identifier_type" in row.keys():
+        result["matched_identifier_type"] = row["identifier_type"]
+    if "identifier" in row.keys():
+        result["matched_identifier"] = row["identifier"]
+    return result
 
 
 def _preferred_sort_key(row: sqlite3.Row) -> tuple[int, int, int, str]:
@@ -203,16 +292,24 @@ def build_code_index(
     if replace:
         conn.execute("DROP TABLE IF EXISTS code_mappings")
         conn.execute("DROP TABLE IF EXISTS preferred_terms")
+        conn.execute("DROP TABLE IF EXISTS identifier_mappings")
     conn.executescript(TABLE_SCHEMA)
     mapping_sql = """
         INSERT INTO code_mappings(cui, sab, code, scui, sdui, tty, label, ispref, suppress)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    identifier_sql = """
+        INSERT INTO identifier_mappings(
+            cui, identifier_type, identifier, sab, code, scui, sdui, tty, label, ispref, suppress
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     preferred_sql = """
         INSERT INTO preferred_terms(cui, label, sab, code, tty, suppress)
         VALUES (?, ?, ?, ?, ?, ?)
     """
     batch = []
+    identifier_batch = []
     preferred_batch = []
     count = 0
     with Path(mrconso_path).expanduser().open("r", encoding="utf-8", errors="replace") as handle:
@@ -227,6 +324,11 @@ def build_code_index(
                 continue
             code = fields[13].strip()
             label = fields[14].strip()
+            aui = fields[7].strip()
+            scui = fields[9].strip()
+            sdui = fields[10].strip()
+            sab = fields[11].strip()
+            tty = fields[12].strip()
             if not code or not label:
                 continue
             if fields[2] == "P" and fields[4] == "PF" and fields[6] == "Y":
@@ -234,35 +336,65 @@ def build_code_index(
                     (
                         fields[0],
                         label,
-                        fields[11],
+                        sab,
                         code,
-                        fields[12],
+                        tty,
                         suppress,
                     )
                 )
             batch.append(
                 (
                     fields[0],
-                    fields[11],
+                    sab,
                     code,
-                    fields[9],
-                    fields[10],
-                    fields[12],
+                    scui,
+                    sdui,
+                    tty,
                     label,
                     fields[6],
                     suppress,
                 )
             )
+            for identifier_type, identifier in (
+                ("CODE", code),
+                ("SCUI", scui),
+                ("SDUI", sdui),
+                ("AUI", aui),
+                ("LUI", fields[3].strip()),
+                ("SUI", fields[5].strip()),
+            ):
+                if not identifier:
+                    continue
+                identifier_batch.append(
+                    (
+                        fields[0],
+                        identifier_type,
+                        identifier,
+                        sab,
+                        code,
+                        scui,
+                        sdui,
+                        tty,
+                        label,
+                        fields[6],
+                        suppress,
+                    )
+                )
             if len(batch) >= batch_size:
                 conn.executemany(mapping_sql, batch)
+                if identifier_batch:
+                    conn.executemany(identifier_sql, identifier_batch)
                 if preferred_batch:
                     conn.executemany(preferred_sql, preferred_batch)
                 conn.commit()
                 count += len(batch)
                 batch.clear()
+                identifier_batch.clear()
                 preferred_batch.clear()
     if batch:
         conn.executemany(mapping_sql, batch)
+        if identifier_batch:
+            conn.executemany(identifier_sql, identifier_batch)
         if preferred_batch:
             conn.executemany(preferred_sql, preferred_batch)
         conn.commit()
@@ -281,6 +413,7 @@ class CodeIndex:
         self.preferred_cache: dict[str, str] = {}
         self.active_cui_cache: dict[str, bool] = {}
         self._mapping_count: int | None = None
+        self._identifier_table_available: bool | None = None
 
     def connection(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)
@@ -300,6 +433,19 @@ class CodeIndex:
             row = self.connection().execute("SELECT COUNT(*) AS count FROM code_mappings").fetchone()
             self._mapping_count = int(row["count"] or 0)
         return self._mapping_count
+
+    def identifier_table_available(self) -> bool:
+        if self._identifier_table_available is None:
+            row = self.connection().execute(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type = 'table' AND name = 'identifier_mappings'
+                LIMIT 1
+                """
+            ).fetchone()
+            self._identifier_table_available = row is not None
+        return self._identifier_table_available
 
     def preferred_label(self, cui: str) -> str:
         cui = cui.strip().upper()
@@ -403,10 +549,15 @@ class CodeIndex:
                 """
                 SELECT cui, sab, code, scui, sdui, tty, label, ispref, suppress
                 FROM code_mappings
-                WHERE sab = ? AND code = ? COLLATE NOCASE
+                WHERE sab = ?
+                  AND (
+                    code = ? COLLATE NOCASE
+                    OR scui = ? COLLATE NOCASE
+                    OR sdui = ? COLLATE NOCASE
+                  )
                 LIMIT ?
                 """,
-                (sab_value, code, query_limit),
+                (sab_value, code, code, code, query_limit),
             )
         else:
             rows = self.connection().execute(
@@ -419,6 +570,87 @@ class CodeIndex:
                 LIMIT ?
                 """,
                 (code, code, code, query_limit),
+            )
+        results = _dedupe_rows(rows)[:limit]
+        self.cache[key] = results
+        return results
+
+    def lookup_identifier(
+        self,
+        identifier: str,
+        *,
+        identifier_type: str | None = None,
+        sab: str | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        identifier = str(identifier or "").strip()
+        if not identifier:
+            return []
+        identifier_type_value = normalize_sab(identifier_type or infer_umls_identifier_type(identifier) or "CODE")
+        sab_value = normalize_sab(sab or "") if sab else ""
+        key = ("identifier", identifier_type_value, sab_value, identifier.lower(), limit)
+        cached = self.cache.get(key)
+        if cached is not None:
+            return cached
+        if identifier_type_value == "CUI":
+            results = self.lookup_cui(identifier, sabs=[sab_value] if sab_value else None, limit=limit)
+            self.cache[key] = results
+            return results
+        if identifier_type_value in {"CODE", "SCUI", "SDUI"}:
+            column = {"CODE": "code", "SCUI": "scui", "SDUI": "sdui"}[identifier_type_value]
+            query_limit = max(limit * 4, limit + 50)
+            if sab_value:
+                rows = self.connection().execute(
+                    f"""
+                    SELECT cui, sab, code, scui, sdui, tty, label, ispref, suppress
+                    FROM code_mappings
+                    WHERE sab = ?
+                      AND {column} = ? COLLATE NOCASE
+                    LIMIT ?
+                    """,
+                    (sab_value, identifier, query_limit),
+                )
+            else:
+                rows = self.connection().execute(
+                    f"""
+                    SELECT cui, sab, code, scui, sdui, tty, label, ispref, suppress
+                    FROM code_mappings
+                    WHERE {column} = ? COLLATE NOCASE
+                    LIMIT ?
+                    """,
+                    (identifier, query_limit),
+                )
+            results = _dedupe_rows(rows)[:limit]
+            self.cache[key] = results
+            return results
+        if identifier_type_value not in {"AUI", "LUI", "SUI"} or not self.identifier_table_available():
+            self.cache[key] = []
+            return []
+        query_limit = max(limit * 4, limit + 50)
+        if sab_value:
+            rows = self.connection().execute(
+                """
+                SELECT
+                    cui, identifier_type, identifier, sab, code, scui, sdui, tty, label, ispref, suppress
+                FROM identifier_mappings
+                WHERE sab = ?
+                  AND identifier_type = ?
+                  AND identifier = ? COLLATE NOCASE
+                LIMIT ?
+                """,
+                (sab_value, identifier_type_value, identifier, query_limit),
+            )
+        else:
+            rows = self.connection().execute(
+                """
+                SELECT
+                    cui, identifier_type, identifier, sab, code, scui, sdui, tty, label, ispref, suppress
+                FROM identifier_mappings
+                WHERE identifier_type = ?
+                  AND identifier = ? COLLATE NOCASE
+                LIMIT ?
+                """,
+                (identifier_type_value, identifier, query_limit),
             )
         results = _dedupe_rows(rows)[:limit]
         self.cache[key] = results

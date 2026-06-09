@@ -74,8 +74,8 @@ Current local status:
 - HPO external annotation files staged under `data/external/hpo/`
 - Extension concept lane: implemented for local `NEW#######` concepts; no
   extension concepts are loaded into the current assessment alias yet
-- MIMIC full data availability marker exists; full MIMIC ingest/linking remains
-  paused until a restricted-data run is explicitly started and reviewed
+- Public-source evidence collection is the active path; credentialed clinical
+  corpora are not part of the tracked default pipeline
 
 Last reviewed quality sample:
 
@@ -135,7 +135,7 @@ Fields:
 
 - `doc_id`: stable source document id
 - `source`: source family, such as `pubmed`, `pubmed_bulk`, `europepmc`, or
-  future MIMIC sources
+  another registered corpus source
 - `text`: title, abstract, snippet, or other evidence text
 - `title`: optional title
 - `metadata`: source-specific fields such as PMID, PMCID, DOI, file name, table,
@@ -307,10 +307,9 @@ Current sources:
 - Europe PMC topic harvests
 - PubMed bulk baseline pilot from NCBI FTP
 
-Planned or paused sources:
+Planned sources:
 
 - Full PubMed baseline and update files
-- MIMIC full data, paused until the local download is ready
 
 The project started with E-utilities topic chunks for iteration. The scaling
 path is bulk PubMed ingestion because repeated search API calls are not the
@@ -387,8 +386,8 @@ build/profile_evidence_pubmed_bulk_recent_baseline/*.jsonl
 
 The linker records provenance in each evidence record. For PubMed and Europe
 PMC this includes PMID, PMCID, DOI where available, corpus document id, and the
-matched label. For future MIMIC data, public artifacts must not include raw
-patient text.
+matched label. Public artifacts must not include raw patient text from
+credentialed clinical corpora.
 
 ### 4. Aggregate Evidence Into CUI/View Documents
 
@@ -458,6 +457,12 @@ pooling: CLS
 max sequence length: 128 in the current server path
 dimensions: 768
 ```
+
+Current vector metadata stores the backend provider as `transformers-cls`; the
+SapBERT identity is the model plus `embedding_pooling=cls`.
+
+Every newly written vector record includes `document_text_hash`, so omitted-text
+vector files can still be audited against the concept-document manifest.
 
 Hashing vectors remain useful only for pipeline smoke tests. They should not be
 used for quality judgments or release artifacts.
@@ -697,6 +702,110 @@ available from a running server at `/api/openapi.json`. The main endpoints are:
   vectors, MRREL graph neighbors, cross-semantic research relations, and source
   vocabulary mappings for requested vocabularies.
 
+### 7A. Incremental UMLS Release Delta
+
+The first reproducible incremental-build artifact is a CUI atom fingerprint
+table. It scans `MRCONSO.RRF`, deduplicates atom-level searchable content in a
+temporary SQLite database, groups it by CUI, and writes one deterministic hash
+per CUI. The default fingerprint uses English, non-suppressed atoms and ignores
+atom identifier churn (`AUI`, `SAUI`, `LUI`, `SUI`) unless `--include-atom-ids`
+is passed. This means unchanged concepts can reuse existing documents/vectors
+even when a new UMLS release is available.
+
+Build one fingerprint file per release:
+
+```sh
+python3 scripts/evidence_vectors.py build-atom-fingerprints \
+  --mrconso /path/to/2025AB/META/MRCONSO.RRF \
+  --release 2025AB \
+  --out build/incremental/umls_atom_fingerprints_2025AB.tsv
+
+python3 scripts/evidence_vectors.py build-atom-fingerprints \
+  --mrconso /path/to/2026AA/META/MRCONSO.RRF \
+  --release 2026AA \
+  --out build/incremental/umls_atom_fingerprints_2026AA.tsv
+```
+
+Use `--temp-dir /path/with/free/space` if the output directory is not a good
+place for the temporary SQLite dedupe file.
+
+Diff two releases to get the conservative reprocessing list:
+
+```sh
+python3 scripts/evidence_vectors.py diff-atom-fingerprints \
+  --old build/incremental/umls_atom_fingerprints_2025AB.tsv \
+  --new build/incremental/umls_atom_fingerprints_2026AA.tsv \
+  --old-release 2025AB \
+  --new-release 2026AA \
+  --out build/incremental/changed_cuis_2025AB_to_2026AA.tsv \
+  --summary-out build/incremental/changed_cuis_2025AB_to_2026AA.summary.json
+```
+
+`changed_cuis_*.tsv` contains `added_cui`, `removed_cui`, and
+`atoms_changed` rows.
+
+After rebuilding candidate concept documents for the new release, build a
+document manifest for the old build:
+
+```sh
+python3 scripts/evidence_vectors.py build-document-manifest \
+  --docs build/old_concept_documents.jsonl \
+  --release 2025AB \
+  --out build/incremental/concept_document_manifest_2025AB.tsv
+```
+
+Then partition the new documents into reusable vectors and documents that still
+need embedding:
+
+```sh
+python3 scripts/evidence_vectors.py plan-vector-reuse \
+  --old-manifest build/incremental/concept_document_manifest_2025AB.tsv \
+  --new-docs build/new_concept_documents.jsonl \
+  --old-vectors build/old_concept_vectors.sapbert_cls.jsonl \
+  --old-release 2025AB \
+  --new-release 2026AA \
+  --out-plan build/incremental/vector_reuse_plan_2025AB_to_2026AA.tsv \
+  --out-reused-vectors build/incremental/reused_vectors_2025AB_to_2026AA.jsonl \
+  --out-docs-to-embed build/incremental/docs_to_embed_2026AA.jsonl \
+  --out-new-manifest build/incremental/concept_document_manifest_2026AA.tsv \
+  --require-old-vector-text-hash \
+  --summary-out build/incremental/vector_reuse_plan_2025AB_to_2026AA.summary.json
+```
+
+A vector is carried forward only when `doc_id`, `cui`, `view`, and the embedded
+document text hash are unchanged. Full document hashes are still recorded, so
+metadata-only drift can be audited without triggering SapBERT work. With
+`--require-old-vector-text-hash`, legacy old vectors that cannot prove the old
+manifest text are sent back through embedding. Embed only `docs_to_embed_*.jsonl`,
+then assemble the fresh vectors with the reused vectors against the new
+manifest:
+
+```sh
+python3 scripts/evidence_vectors.py assemble-incremental-vectors \
+  --manifest build/incremental/concept_document_manifest_2026AA.tsv \
+  --vectors \
+    build/incremental/reused_vectors_2025AB_to_2026AA.jsonl \
+    build/incremental/fresh_vectors_2026AA.sapbert_cls.jsonl \
+  --expect-provider transformers-cls \
+  --expect-model cambridgeltl/SapBERT-from-PubMedBERT-fulltext \
+  --expect-pooling cls \
+  --expect-dims 768 \
+  --require-text-hash \
+  --release 2026AA \
+  --out build/new_concept_vectors.sapbert_cls.jsonl \
+  --summary-out build/incremental/assembled_vectors_2026AA.summary.json
+```
+
+The assembly command fails before writing output if a manifest document is
+missing a vector, a vector record is duplicated, a vector belongs to an unknown
+`doc_id`, or a vector `cui`/`view` does not match the new manifest. When
+`--summary-out` is set, failures still write a JSON summary with diagnostic
+samples. Assembly also rejects empty vectors, mixed dimensions, and mixed
+embedding provider/model/pooling metadata so incompatible non-SapBERT shards
+cannot be silently merged into a SapBERT release vector set.
+`--require-text-hash` additionally requires each vector to match the manifest
+text hash, including vectors written with omitted text bodies.
+
 ### 8. Review Search Quality
 
 The server-backed UI persists judgments to CSV through `/api/judgments`.
@@ -753,7 +862,6 @@ python3 scripts/search_quality_server.py \
     build/pubmed_bulk_recent_1325_1324_concept_vectors.sapbert_cls.jsonl \
     build/pubmed_bulk_recent_1323_1322_concept_vectors.sapbert_cls.jsonl \
     build/pubmed_bulk_recent_1321_1320_concept_vectors.sapbert_cls.jsonl \
-    build/mimic_iv_note_local_pilot_concept_vectors.sapbert_cls.jsonl \
   --docs \
     build/scaling_chunk_001_gap_topics_concept_documents.jsonl \
     build/scaling_chunk_002_common_clinical_concept_documents.jsonl \
@@ -768,7 +876,6 @@ python3 scripts/search_quality_server.py \
     build/pubmed_bulk_recent_1325_1324_concept_documents.jsonl \
     build/pubmed_bulk_recent_1323_1322_concept_documents.jsonl \
     build/pubmed_bulk_recent_1321_1320_concept_documents.jsonl \
-    build/mimic_iv_note_local_pilot_concept_documents.jsonl \
   --evidence \
   --provenance-index build/search_quality_provenance.sqlite \
   --provider sapbert \

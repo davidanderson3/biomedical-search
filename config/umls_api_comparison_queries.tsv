@@ -1,16 +1,16 @@
 id	query	search_type	expected_cuis	why
 productive_cough	productive cough	words	C0239134	Positive symptom phrase from cough note.
 chronic_cough	chronic cough	words	C0010201	Duration-like cough concept.
-yellow_sputum	yellow sputum	words		Sputum/color phrase that exposed retrieval gaps.
+yellow_sputum	yellow sputum	words	C0457096	Sputum/color phrase that exposed retrieval gaps.
 fatigue	fatigue	words	C0015672	Single short symptom anchor.
 fever	fever	exact	C0015967	Negated fever benchmark.
 hemoptysis	hemoptysis	exact	C0019079	Negated hemoptysis benchmark.
-heart_sounds	heart sounds	words		Physical exam clinical attribute.
+heart_sounds	heart sounds	words	C0018820	Physical exam clinical attribute.
 heart_murmur	heart murmur	words	C0018808	Negated cardiac finding.
 peripheral_edema	peripheral edema	words	C0085649	Negated peripheral edema finding.
 physical_examination	physical examination	words	C0031809	Generic exam/procedure phrase.
 type_2_diabetes	type 2 diabetes	words	C0011860	Numeric specificity benchmark.
-hba1c	HbA1c	words		Lab/clinical attribute benchmark.
+hba1c	HbA1c	words	C0019018	Lab/clinical attribute benchmark.
 chest_pain	chest pain	words	C0008031	Denied symptom benchmark.
 shortness_of_breath	shortness of breath	words	C0013404	Denied symptom synonym benchmark.
 septic_shock	septic shock	words	C0036983	Composite disorder benchmark.

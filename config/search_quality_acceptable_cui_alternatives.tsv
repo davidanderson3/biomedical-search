@@ -76,3 +76,19 @@ C0338831	C0349208	Manic Episode	Manic episode is clinically acceptable when the 
 C1280474	C3517157	Measurement of lung diffusing capacity	Lung diffusing capacity measurement is clinically acceptable for reduced diffusing capacity in interstitial lung disease.
 C1414313	C3889117	EGFR exon 19 deletion	EGFR exon 19 deletion is clinically acceptable for the EGFR target when oncology wording explicitly names that mutation.
 C3845231	C4545439	CYP2C19 poor metabolizer	CYP2C19 poor metabolizer is clinically acceptable for the poor-metabolizer pharmacogenomic result.
+C0079304	C0014245	Endoscopy (procedure)	Generic endoscopy is clinically acceptable when the GI bleeding paragraph says endoscopy rather than explicitly saying EGD.
+C0018801	C3839346	Heart failure with reduced ejection fraction	HFrEF is a stricter heart-failure concept and should satisfy the broad heart failure target in decompensated HFrEF paragraphs.
+C0009319	C4761223	Immune-mediated colitis	Immune-mediated colitis is the specific colitis concept explicitly named in checkpoint-inhibitor toxicity paragraphs.
+C0441510	C0852815	Laser photocoagulation to retina	Retinal laser photocoagulation is clinically acceptable when diabetic retinopathy wording says laser photocoagulation was performed.
+C0948008	C5392833	Acute ischemic stroke	Acute ischemic stroke is clinically acceptable for the ischemic stroke target when the paragraph explicitly says acute ischemic stroke.
+C1525410	C1610653	Cyclic citrullinated peptide antibody measurement	The anti-CCP antibody measurement concept is clinically acceptable when a rheumatology paragraph says positive anti-CCP antibody.
+C0038358	C0341164	Bleeding gastric ulcer	Bleeding gastric ulcer is clinically acceptable for the gastric ulcer target when the paragraph explicitly says the ulcer is bleeding.
+C0004238	C1142306	Atrial fibrillation with rapid ventricular response	AF with rapid ventricular response is clinically acceptable for the broader atrial fibrillation target when the paragraph explicitly says that phrase.
+C0521169	C0262431	Compression fracture of vertebral column	Vertebral compression fracture is clinically acceptable for the broader compression fracture target when the paragraph says vertebral compression fracture.
+C0151779	C0025202	melanoma	Generic melanoma is clinically acceptable for the cutaneous melanoma target when the paragraph explicitly says cutaneous melanoma.
+C1704436	C0085096	Peripheral Vascular Diseases	Peripheral vascular disease is clinically acceptable for the peripheral arterial disease target in a PAD paragraph with claudication, ABI, and cilostazol.
+C1384666	C1842138	Hearing impairment, progressive	Progressive hearing impairment is clinically acceptable for hearing impairment when the paragraph says progressive hearing loss.
+C0085639	C0458990	Recurrent falls	Recurrent falls is clinically acceptable for the falls target when the paragraph explicitly says recurrent falls.
+C0106132	C0428402	Human chorionic gonadotropin measurement	Human chorionic gonadotropin measurement is acceptable for the beta-hCG target when the ectopic-pregnancy paragraph says rising beta-human chorionic gonadotropin.
+C0038172	C1318973	Staphylococcus aureus infection	Staphylococcus aureus infection is acceptable for the Staphylococcus aureus target when the paragraph says blood cultures grew Staphylococcus aureus in an infection context.
+C0343401	C1265292	Methicillin-Resistant Staphylococcus aureus	MRSA organism wording is acceptable for the MRSA infection target when the paragraph also says sepsis, hypotension, blood culture, and vancomycin.

@@ -19,7 +19,7 @@ The wrapper runs the public rebuild in this order:
 7. Run paragraph quality evaluation and precision audit.
 8. Write a reproducibility manifest and a reusable server command.
 
-It excludes MIMIC and other real EHR data.
+It excludes real EHR data.
 
 ## Why This Improves Things
 

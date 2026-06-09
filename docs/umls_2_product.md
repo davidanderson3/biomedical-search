@@ -41,7 +41,7 @@ Examples:
 - `europepmc_clinical_context`
 - `pubmed_labs_measurements_context`
 - `pubmed_procedures_devices_context`
-- `mimic_note_context`, restricted when available
+- `open_guideline_context`, optional when source terms permit it
 - `labels_only`, optional baseline
 
 Each vector record should include:
@@ -77,7 +77,7 @@ similarity: cosine
 metadata: CUI, view, labels, sources, evidence count, model
 ```
 
-The index bundle should be loadable without rebuilding PubMed/MIMIC evidence.
+The index bundle should be loadable without rebuilding the source evidence.
 
 ### 3. Evidence Provenance Pack
 
@@ -95,7 +95,7 @@ provenance can include:
 - corpus document id
 
 For credentialed clinical sources, release only what licensing and privacy
-review allow. Raw MIMIC text should not be part of a public artifact.
+review allow. Raw patient text should not be part of a public artifact.
 
 ### 4. Related Concept Graph Pack
 
@@ -291,13 +291,13 @@ Public release candidate:
 
 Restricted release candidate:
 
-- MIMIC-derived vectors or aggregate evidence, only if licensing/privacy review
-  approves
-- reproducible scripts for credentialed users to build MIMIC artifacts locally
+- credentialed-source vectors or aggregate evidence, only if licensing/privacy
+  review approves
+- reproducible scripts for credentialed users to build local-only artifacts
 
 Do not release:
 
-- raw MIMIC text
+- raw patient text
 - raw copyrighted full text unless licensing is settled
 - hashing vectors as product quality vectors
 - unreviewed synonym dumps presented as new terminology

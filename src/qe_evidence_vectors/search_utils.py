@@ -13,6 +13,24 @@ from qe_evidence_vectors.text import normalized_key
 
 
 WEIGHT_RE = re.compile(r" \(weight ([0-9.]+)\)$")
+SENTENCE_BOUNDARY_RE = re.compile(r"[.!?][\"')\]]*(?=\s+|$)")
+SENTENCE_BOUNDARY_ABBREVIATIONS = (
+    "dr.",
+    "mr.",
+    "mrs.",
+    "ms.",
+    "prof.",
+    "fig.",
+    "ref.",
+    "refs.",
+    "vs.",
+    "etc.",
+    "e.g.",
+    "i.e.",
+    "et al.",
+    "u.s.",
+    "u.k.",
+)
 
 
 def dot(left: array, right: array) -> float:
@@ -20,6 +38,21 @@ def dot(left: array, right: array) -> float:
     for left_value, right_value in zip(left, right):
         total += left_value * right_value
     return total
+
+
+def sentence_bounded_evidence_text(text: str) -> str:
+    cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not cleaned:
+        return ""
+    for match in SENTENCE_BOUNDARY_RE.finditer(cleaned):
+        candidate = cleaned[: match.end()].strip()
+        lower = candidate.lower()
+        if any(lower.endswith(abbreviation) for abbreviation in SENTENCE_BOUNDARY_ABBREVIATIONS):
+            continue
+        if re.search(r"(?:\b[a-z]\.){2,}$", lower):
+            continue
+        return candidate
+    return cleaned if cleaned.endswith((".", "!", "?")) else f"{cleaned.rstrip(' ,;:')}."
 
 
 def _source_name(source: dict | str) -> str:

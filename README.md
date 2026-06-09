@@ -237,17 +237,18 @@ python3 scripts/evidence_vectors.py fetch-clinicaltrials \
   --out build/clinicaltrials_subset_corpus.jsonl
 ```
 
-#### MedlinePlus health topic subset
+#### MedlinePlus health topic snapshot
 
 MedlinePlus XML adds patient-facing phrasing, lay synonyms, topic groupings, and
-consumer health language. The default command discovers the current health topic
-XML/ZIP link from MedlinePlus and keeps a bounded subset unless `--max-records 0`
-is supplied.
+consumer health language. Use `--max-records 0` for the full discovered
+MedlinePlus health-topic XML/ZIP feed, and `--include-spanish` when the snapshot
+should include Spanish health topics as well as English topics.
 
 ```sh
 python3 scripts/evidence_vectors.py fetch-medlineplus \
-  --max-records 500 \
-  --out build/medlineplus_subset_corpus.jsonl
+  --max-records 0 \
+  --include-spanish \
+  --out build/medlineplus_full_corpus.jsonl
 ```
 
 #### MedlinePlus Genetics subset
@@ -313,8 +314,10 @@ The public rebuild can also augment the research relation index with staged HPO
 annotation files under `data/external/hpo/` when
 `--include-hpo-research-relations` is supplied. Those files add
 disease-phenotype, gene-phenotype, disease-gene, and gene-disease links that are
-not recoverable from UMLS alone. Review the HPO annotation and upstream
-OMIM/Orphanet reuse terms before redistributing derived relation artifacts.
+not recoverable from UMLS alone. Treat Orphanet coverage as UMLS/source-code
+crosswalk coverage rather than a separate fetch target; review HPO annotation
+and upstream OMIM/Orphanet reuse terms before redistributing derived relation
+artifacts.
 
 #### Reference page subsets
 
@@ -616,7 +619,9 @@ python3 scripts/evidence_vectors.py embed \
 This uses `cambridgeltl/SapBERT-from-PubMedBERT-fulltext` by default and stores
 `embedding_pooling=cls` in vector metadata. The concept document JSONL remains
 the source of truth for text. The vector JSONL keeps `doc_id`, `cui`, `view`,
-labels, sources, evidence count, and the vector. Use
+labels, sources, evidence count, `document_text_hash`, and the vector. The
+text hash proves which source text was embedded even when `--omit-text` is set.
+Use
 `--include-document-metadata` only for debugging because it makes vector and
 Elasticsearch bulk files much larger.
 
@@ -666,7 +671,59 @@ python3 scripts/evidence_vectors.py embed \
 fast ordered prefix chunk. `--max-seq-length` keeps local transformer runs from
 spending CPU on text that would be truncated anyway.
 
-### 8. Test retrieval locally
+### 8. Reuse unchanged SapBERT vectors
+
+For UMLS release updates, avoid re-embedding unchanged concept documents. Build
+a manifest for the previous document set, plan reuse against the new document
+set, embed only `docs_to_embed_*.jsonl`, and then assemble the final vector set
+with manifest validation:
+
+```sh
+python3 scripts/evidence_vectors.py build-document-manifest \
+  --docs build/old_concept_documents.jsonl \
+  --release 2025AB \
+  --out build/incremental/concept_document_manifest_2025AB.tsv
+
+python3 scripts/evidence_vectors.py plan-vector-reuse \
+  --old-manifest build/incremental/concept_document_manifest_2025AB.tsv \
+  --new-docs build/new_concept_documents.jsonl \
+  --old-vectors build/old_concept_vectors.sapbert_cls.jsonl \
+  --old-release 2025AB \
+  --new-release 2026AA \
+  --out-plan build/incremental/vector_reuse_plan_2025AB_to_2026AA.tsv \
+  --out-reused-vectors build/incremental/reused_vectors_2025AB_to_2026AA.jsonl \
+  --out-docs-to-embed build/incremental/docs_to_embed_2026AA.jsonl \
+  --out-new-manifest build/incremental/concept_document_manifest_2026AA.tsv \
+  --require-old-vector-text-hash \
+  --summary-out build/incremental/vector_reuse_plan_2025AB_to_2026AA.summary.json
+
+python3 scripts/evidence_vectors.py assemble-incremental-vectors \
+  --manifest build/incremental/concept_document_manifest_2026AA.tsv \
+  --vectors \
+    build/incremental/reused_vectors_2025AB_to_2026AA.jsonl \
+    build/incremental/fresh_vectors_2026AA.sapbert_cls.jsonl \
+  --expect-provider transformers-cls \
+  --expect-model cambridgeltl/SapBERT-from-PubMedBERT-fulltext \
+  --expect-pooling cls \
+  --expect-dims 768 \
+  --require-text-hash \
+  --release 2026AA \
+  --out build/new_concept_vectors.sapbert_cls.jsonl \
+  --summary-out build/incremental/assembled_vectors_2026AA.summary.json
+```
+
+`--require-old-vector-text-hash` keeps reuse conservative: old vectors without
+proof of the previous manifest text are sent back through embedding.
+`assemble-incremental-vectors` is strict: it fails on missing, duplicate,
+unknown, or stale `doc_id`/`cui`/`view` records before writing the final vector
+JSONL. It also rejects empty vectors, mixed dimensions, and mixed embedding
+provider/model/pooling metadata so hashing or non-SapBERT shards cannot be
+silently combined with SapBERT output. `--require-text-hash` requires every
+vector to prove it was embedded from the manifest text, even when vector text is
+omitted. With `--summary-out`, validation failures still write diagnostic
+samples.
+
+### 9. Test retrieval locally
 
 ```sh
 python3 scripts/evidence_vectors.py search \
@@ -682,7 +739,7 @@ The local `search` command streams vector JSONL and keeps only the best score pe
 CUI in memory. It is still a validation tool, not a replacement for a production
 ANN index.
 
-### 9. Export vectors for Elasticsearch kNN
+### 10. Export vectors for Elasticsearch kNN
 
 Export a mapping with a `dense_vector` field plus bulk NDJSON. For large exports,
 split the bulk payload into part files:

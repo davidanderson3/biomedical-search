@@ -32,6 +32,8 @@ BLOCKED_GENERIC_LABELS = {
     "increase in pressure medical device problem",
     "identified",
     "intact",
+    "intake",
+    "intake treatment",
     "intimate",
     "intent",
     "irregular",
@@ -72,6 +74,7 @@ BLOCKED_GENERIC_LABELS = {
     "restart",
     "revealed",
     "reveals",
+    "rnix intake",
     "rnax nursing therapy actions",
     "second degree",
     "setting",
@@ -151,6 +154,7 @@ BLOCKED_GENERIC_CUIS = {
     "C1514721",  # Range
     "C1519941",  # Validation
     "C1515187",  # Take - dosing instruction imperative
+    "C4521161",  # Intake (treatment) - generic health-care activity fragment
     "C1548802",  # Body Site Modifier - Lower
     "C0443289",  # Revealed / reveals
     "C0028678",  # RNAx nursing therapy actions

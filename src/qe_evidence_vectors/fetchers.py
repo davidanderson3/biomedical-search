@@ -1261,6 +1261,12 @@ def _clinicaltrials_module(study: dict, name: str) -> dict:
     return module if isinstance(module, dict) else {}
 
 
+def _clinicaltrials_results_module(study: dict, name: str) -> dict:
+    results = study.get("resultsSection") or {}
+    module = results.get(name) or {}
+    return module if isinstance(module, dict) else {}
+
+
 def _clinicaltrials_intervention_text(intervention: dict) -> str:
     name = strip_markup(intervention.get("name"))
     kind = strip_markup(intervention.get("type"))
@@ -1277,7 +1283,103 @@ def _clinicaltrials_intervention_text(intervention: dict) -> str:
     return clean_text(". ".join(parts))
 
 
-def clinicaltrials_study_to_document(study: dict, *, query: str = "") -> CorpusDocument | None:
+def _clinicaltrials_posted_outcome_measures(study: dict) -> list[dict]:
+    outcomes = _clinicaltrials_results_module(study, "outcomeMeasuresModule")
+    measures = outcomes.get("outcomeMeasures") or []
+    posted: list[dict] = []
+    for measure in measures:
+        if not isinstance(measure, dict):
+            continue
+        reporting_status = str(measure.get("reportingStatus") or "").strip().upper()
+        if reporting_status and reporting_status != "POSTED":
+            continue
+        if measure.get("title") or measure.get("classes") or measure.get("groups"):
+            posted.append(measure)
+    return posted
+
+
+def _clinicaltrials_outcome_measure_text(measure: dict) -> str:
+    outcome_type = strip_markup(measure.get("type"))
+    title = strip_markup(measure.get("title"))
+    description = strip_markup(measure.get("description"))
+    population = strip_markup(measure.get("populationDescription"))
+    time_frame = strip_markup(measure.get("timeFrame"))
+    param_type = strip_markup(measure.get("paramType"))
+    unit = strip_markup(measure.get("unitOfMeasure"))
+    group_titles: dict[str, str] = {}
+    group_parts: list[str] = []
+    for group in measure.get("groups") or []:
+        if not isinstance(group, dict):
+            continue
+        group_id = str(group.get("id") or "").strip()
+        group_title = strip_markup(group.get("title"))
+        if group_id and group_title:
+            group_titles[group_id] = group_title
+        if group_title:
+            group_parts.append(group_title)
+
+    parts = [
+        f"{outcome_type.title()} outcome: {title}." if outcome_type and title else title,
+        description,
+        f"Population: {population}." if population else "",
+        f"Time frame: {time_frame}." if time_frame else "",
+        f"Measure: {' '.join(part for part in (param_type, unit) if part)}." if param_type or unit else "",
+        f"Groups: {'; '.join(group_parts[:8])}." if group_parts else "",
+    ]
+
+    denominator_parts: list[str] = []
+    for denom in measure.get("denoms") or []:
+        if not isinstance(denom, dict):
+            continue
+        denom_units = strip_markup(denom.get("units"))
+        for count in denom.get("counts") or []:
+            if not isinstance(count, dict):
+                continue
+            group = group_titles.get(str(count.get("groupId") or "").strip(), "")
+            value = strip_markup(count.get("value"))
+            if group and value:
+                denominator_parts.append(f"{group}: {value} {denom_units}".strip())
+            elif value:
+                denominator_parts.append(f"{value} {denom_units}".strip())
+    if denominator_parts:
+        parts.append(f"Denominators: {'; '.join(denominator_parts[:12])}.")
+
+    result_parts: list[str] = []
+    for class_item in measure.get("classes") or []:
+        if not isinstance(class_item, dict):
+            continue
+        class_title = strip_markup(class_item.get("title"))
+        for category in class_item.get("categories") or []:
+            if not isinstance(category, dict):
+                continue
+            category_title = strip_markup(category.get("title"))
+            context = " ".join(part for part in (class_title, category_title) if part)
+            for measurement in category.get("measurements") or []:
+                if not isinstance(measurement, dict):
+                    continue
+                group = group_titles.get(str(measurement.get("groupId") or "").strip(), "")
+                value = strip_markup(measurement.get("value"))
+                spread = strip_markup(measurement.get("spread"))
+                if not value:
+                    continue
+                prefix = f"{context} " if context else ""
+                suffix = f" ({spread})" if spread else ""
+                if group:
+                    result_parts.append(f"{prefix}{group}: {value}{suffix}".strip())
+                else:
+                    result_parts.append(f"{prefix}{value}{suffix}".strip())
+    if result_parts:
+        parts.append(f"Posted results: {'; '.join(result_parts[:24])}.")
+    return clean_text(" ".join(part for part in parts if part))
+
+
+def clinicaltrials_study_to_document(
+    study: dict,
+    *,
+    query: str = "",
+    outcomes_only: bool = False,
+    require_results: bool = False,
+) -> CorpusDocument | None:
     identification = _clinicaltrials_module(study, "identificationModule")
     description = _clinicaltrials_module(study, "descriptionModule")
     conditions = _clinicaltrials_module(study, "conditionsModule")
@@ -1286,9 +1388,13 @@ def clinicaltrials_study_to_document(study: dict, *, query: str = "") -> CorpusD
     design = _clinicaltrials_module(study, "designModule")
     status = _clinicaltrials_module(study, "statusModule")
     outcomes = _clinicaltrials_module(study, "outcomesModule")
+    posted_outcomes = _clinicaltrials_posted_outcome_measures(study)
+    has_posted_results = bool(study.get("hasResults") and posted_outcomes)
 
     nct_id = clean_text(str(identification.get("nctId") or ""))
     if not nct_id:
+        return None
+    if require_results and not has_posted_results:
         return None
     title = strip_markup(identification.get("briefTitle") or identification.get("officialTitle"))
     official_title = strip_markup(identification.get("officialTitle"))
@@ -1320,21 +1426,41 @@ def clinicaltrials_study_to_document(study: dict, *, query: str = "") -> CorpusD
             eligibility.get("healthyVolunteers", ""),
         ]
     )
-    text_parts = [
-        title,
-        official_title if official_title != title else "",
-        strip_markup(description.get("briefSummary")),
-        strip_markup(description.get("detailedDescription")),
-        f"Conditions: {', '.join(condition_names)}." if condition_names else "",
-        f"Interventions: {'; '.join(intervention_texts)}." if intervention_texts else "",
-        f"Eligibility: {strip_markup(eligibility.get('eligibilityCriteria'))}" if eligibility.get("eligibilityCriteria") else "",
-        f"Population: {', '.join(population_parts)}." if population_parts else "",
-        f"Primary outcomes: {', '.join(primary_outcomes)}." if primary_outcomes else "",
-        f"Secondary outcomes: {', '.join(secondary_outcomes)}." if secondary_outcomes else "",
-    ]
+    if outcomes_only:
+        if not has_posted_results:
+            return None
+        outcome_texts = [
+            text
+            for text in (_clinicaltrials_outcome_measure_text(measure) for measure in posted_outcomes)
+            if text
+        ]
+        text_parts = [
+            title,
+            "ClinicalTrials.gov posted outcome results.",
+            *outcome_texts,
+        ]
+    else:
+        text_parts = [
+            title,
+            official_title if official_title != title else "",
+            strip_markup(description.get("briefSummary")),
+            strip_markup(description.get("detailedDescription")),
+            f"Conditions: {', '.join(condition_names)}." if condition_names else "",
+            f"Interventions: {'; '.join(intervention_texts)}." if intervention_texts else "",
+            f"Eligibility: {strip_markup(eligibility.get('eligibilityCriteria'))}" if eligibility.get("eligibilityCriteria") else "",
+            f"Population: {', '.join(population_parts)}." if population_parts else "",
+            f"Primary outcomes: {', '.join(primary_outcomes)}." if primary_outcomes else "",
+            f"Secondary outcomes: {', '.join(secondary_outcomes)}." if secondary_outcomes else "",
+        ]
     text = clean_text(" ".join(part for part in text_parts if part))
     if not text:
         return None
+    primary_result_count = sum(
+        1 for measure in posted_outcomes if str(measure.get("type") or "").strip().upper() == "PRIMARY"
+    )
+    secondary_result_count = sum(
+        1 for measure in posted_outcomes if str(measure.get("type") or "").strip().upper() == "SECONDARY"
+    )
     return CorpusDocument(
         doc_id=f"NCT:{nct_id}",
         source="clinicaltrials_gov",
@@ -1350,6 +1476,11 @@ def clinicaltrials_study_to_document(study: dict, *, query: str = "") -> CorpusD
             "conditions": condition_names,
             "interventions": intervention_names,
             "intervention_types": intervention_types,
+            "evidence_mode": "outcomes_only" if outcomes_only else "registry_context",
+            "has_results": has_posted_results,
+            "posted_outcome_result_count": len(posted_outcomes),
+            "posted_primary_outcome_result_count": primary_result_count,
+            "posted_secondary_outcome_result_count": secondary_result_count,
             "retrieved_via": "clinicaltrials_gov_api_v2",
         },
     )
@@ -1360,6 +1491,8 @@ def fetch_clinicaltrials_documents(
     query: str,
     max_records: int = 100,
     page_size: int = 25,
+    outcomes_only: bool = False,
+    require_results: bool = False,
 ) -> Iterator[CorpusDocument]:
     fetched = 0
     page_token = ""
@@ -1379,7 +1512,12 @@ def fetch_clinicaltrials_documents(
         for study in studies:
             if not isinstance(study, dict):
                 continue
-            document = clinicaltrials_study_to_document(study, query=query)
+            document = clinicaltrials_study_to_document(
+                study,
+                query=query,
+                outcomes_only=outcomes_only,
+                require_results=require_results or outcomes_only,
+            )
             if document is None:
                 continue
             yield document

@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+	<head>
+	  <meta charset="utf-8">
+	  <meta name="viewport" content="width=device-width, initial-scale=1">
+	  <title>Search Quality Repeat Runs</title>
+	  <style>
+	    :root {
+	      --bg: #f6f8fb;
+	      --panel: #fff;
+	      --ink: #17202a;
+      --muted: #5b6673;
+      --line: #d7dde5;
+      --blue: #2563eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+	    }
+	    main { width: min(1440px, calc(100vw - 32px)); margin: 0 auto; padding: 22px 0 44px; }
+	    h1 { font-size: 22px; margin: 0 0 4px; }
+	    h2 { font-size: 16px; margin: 0 0 10px; }
+	    h3 { font-size: 14px; margin: 16px 0 8px; }
+    p { margin: 0 0 10px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-top: 14px;
+      padding: 14px;
+    }
+    .top-read-panel {
+      border-color: #c7d2fe;
+    }
+    .primary-read {
+      background: #eef4ff;
+      border: 1px solid #c7d2fe;
+      border-radius: 8px;
+      margin: 12px 0;
+      padding: 12px;
+    }
+    .primary-read strong {
+      display: block;
+      font-size: 17px;
+      line-height: 1.25;
+      margin-bottom: 4px;
+    }
+    .primary-read span {
+      color: #465467;
+      display: block;
+    }
+	    .muted, small { color: var(--muted); }
+	    .assessment {
+	      align-items: stretch;
+	      border: 1px solid var(--line);
+	      border-radius: 8px;
+	      display: grid;
+	      gap: 12px;
+	      grid-template-columns: minmax(180px, 240px) 1fr;
+	      margin-top: 12px;
+	      padding: 12px;
+	    }
+	    .assessment-good { background: #ecfdf3; border-color: #bbf7d0; }
+	    .assessment-warn { background: #fffbeb; border-color: #fde68a; }
+	    .assessment-bad { background: #fef2f2; border-color: #fecaca; }
+	    .assessment-score {
+	      border-right: 1px solid rgba(23, 32, 42, 0.12);
+	      padding-right: 12px;
+	    }
+	    .assessment-score strong { display: block; font-size: 32px; line-height: 1.05; }
+	    .assessment-score span { display: block; font-size: 12px; font-weight: 900; margin-top: 6px; }
+	    .assessment-score small { display: block; margin-top: 4px; }
+	    .assessment-recommendations h3 { margin-top: 0; }
+	    .assessment-recommendations ul { margin-top: 4px; }
+	    .summary-grid {
+	      display: grid;
+	      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+      margin: 12px 0 4px;
+    }
+	    .summary-card {
+	      border: 1px solid var(--line);
+	      border-radius: 8px;
+	      background: #f8fafc;
+	      padding: 12px;
+	      min-height: 78px;
+	    }
+	    .summary-card strong { display: block; font-size: 24px; line-height: 1.1; }
+	    .summary-card span { color: var(--muted); display: block; font-size: 12px; font-weight: 800; margin-top: 6px; }
+	    .summary-card small { display: block; margin-top: 4px; }
+	    .summary-card.good { background: #ecfdf3; border-color: #bbf7d0; color: #14532d; }
+	    .summary-card.warn { background: #fffbeb; border-color: #fde68a; color: #713f12; }
+	    .summary-card.bad { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+	    .summary-card.neutral { background: #f8fafc; border-color: var(--line); color: #334155; }
+	    .plain-explanation {
+	      background: #f8fafc;
+	      border: 1px solid var(--line);
+	      border-radius: 8px;
+	      margin: 12px 0;
+	      padding: 14px;
+	    }
+	    .plain-explanation h3 {
+	      font-size: 15px;
+	      margin: 0 0 8px;
+	    }
+	    .plain-explanation p {
+	      max-width: 980px;
+	    }
+	    .plain-metric-grid {
+	      display: grid;
+	      gap: 8px;
+	      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+	      margin: 12px 0;
+	    }
+	    .plain-metric {
+	      background: #fff;
+	      border: 1px solid #dbe3ee;
+	      border-radius: 8px;
+	      padding: 10px;
+	    }
+	    .plain-metric strong {
+	      display: block;
+	      font-size: 21px;
+	      line-height: 1.1;
+	    }
+	    .plain-metric span {
+	      color: var(--muted);
+	      display: block;
+	      font-size: 12px;
+	      font-weight: 800;
+	      margin-top: 5px;
+	    }
+	    .plain-metric small {
+	      display: block;
+	      margin-top: 3px;
+	    }
+	    .plain-steps {
+	      margin: 6px 0 10px;
+	      padding-left: 22px;
+	    }
+	    .plain-steps li {
+	      margin: 6px 0;
+	      max-width: 980px;
+	    }
+	    .latest-header {
+	      align-items: flex-start;
+	      display: flex;
+	      gap: 16px;
+	      justify-content: space-between;
+	    }
+	    .latest-header h3 { font-size: 18px; margin: 0 0 3px; }
+	    .status-badge, .delta-badge {
+	      border: 1px solid var(--line);
+	      border-radius: 999px;
+	      display: inline-flex;
+	      font-size: 12px;
+	      font-weight: 900;
+	      line-height: 1.2;
+	      padding: 5px 8px;
+	      text-decoration: none;
+	      white-space: nowrap;
+	    }
+	    .status-badge.good, .delta-badge.good { background: #ecfdf3; border-color: #bbf7d0; color: #14532d; }
+	    .status-badge.bad, .delta-badge.bad { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+	    .status-badge.neutral, .delta-badge.neutral { background: #f8fafc; color: #475569; }
+	    .delta-badge { border-radius: 6px; margin-top: 8px; }
+	    .family-counts {
+	      display: flex;
+	      flex-wrap: wrap;
+	      gap: 6px;
+	      margin: 2px 0 10px;
+	    }
+	    .family-badge, .family-count {
+	      border: 1px solid #cbd5e1;
+	      border-radius: 999px;
+	      display: inline-flex;
+	      font-size: 12px;
+	      font-weight: 900;
+	      line-height: 1.2;
+	      padding: 5px 8px;
+	      white-space: nowrap;
+	    }
+	    .family-count { background: #fff; color: #334155; }
+	    .family-smoke { background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
+	    .family-scope { background: #f0fdf4; border-color: #bbf7d0; color: #14532d; }
+	    .family-probe { background: #fff7ed; border-color: #fed7aa; color: #7c2d12; }
+	    .family-baseline { background: #f8fafc; border-color: #cbd5e1; color: #334155; }
+	    .family-ranking { background: #faf5ff; border-color: #e9d5ff; color: #581c87; }
+	    .family-release { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+	    .family-custom { background: #f8fafc; border-color: #e2e8f0; color: #475569; }
+	    .family-section {
+	      border-top: 1px solid #edf0f4;
+	      margin-top: 14px;
+	      padding-top: 14px;
+	    }
+	    .family-section:first-of-type { border-top: 0; padding-top: 4px; }
+	    .family-section-header {
+	      align-items: flex-start;
+	      display: flex;
+	      gap: 14px;
+	      justify-content: space-between;
+	      margin-bottom: 10px;
+	    }
+	    .family-section-header h3 { font-size: 15px; margin: 0 0 4px; }
+	    .run-set-section {
+	      margin-top: 12px;
+	    }
+	    .run-set-header {
+	      align-items: flex-start;
+	      display: flex;
+	      gap: 12px;
+	      justify-content: space-between;
+	      margin-bottom: 8px;
+	    }
+	    .run-set-header h4 {
+	      font-size: 13px;
+	      margin: 0 0 3px;
+	    }
+	    code {
+	      background: #eef2f7;
+	      border-radius: 4px;
+	      padding: 1px 4px;
+	    }
+	    pre {
+	      background: #111827;
+	      border-radius: 8px;
+	      color: #f8fafc;
+	      margin: 8px 0 12px;
+	      overflow: auto;
+	      padding: 12px;
+	    }
+	    pre code { background: transparent; color: inherit; padding: 0; }
+	    .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+	    .table-wrap.compact table { min-width: 640px; }
+	    .repeat-runs table { min-width: 960px; }
+	    .repeat-runs td:first-child { min-width: 360px; }
+	    .repeat-runs td:nth-child(3) { min-width: 300px; }
+	    .repeat-runs td:nth-child(4) { min-width: 240px; }
+	    .umls-comparison table { min-width: 1040px; }
+	    .umls-comparison td:first-child { min-width: 280px; }
+	    table { border-collapse: collapse; min-width: 960px; width: 100%; background: #fff; }
+	    th, td { border-bottom: 1px solid #edf0f4; padding: 8px 9px; text-align: left; vertical-align: top; }
+	    th { background: #f8fafc; font-weight: 800; position: sticky; left: 0; z-index: 1; }
+    thead th { color: var(--muted); font-size: 12px; top: 0; z-index: 2; }
+    td { min-width: 150px; }
+    td.metric-good, td.query-good { background: #ecfdf3; color: #14532d; }
+    td.metric-warn, td.query-warn { background: #fffbeb; color: #713f12; }
+    td.metric-bad, td.query-bad { background: #fef2f2; color: #7f1d1d; }
+    td.metric-neutral, td.query-neutral, td.query-missing-run { background: #f8fafc; color: #475569; }
+    tr.metric-section th {
+      background: #e8eef6;
+      color: #334155;
+      font-size: 12px;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      position: static;
+    }
+    .metric-delta { display: block; font-size: 12px; font-weight: 800; margin-top: 2px; }
+    .metric-delta.up { color: #047857; }
+    .metric-delta.down { color: #b91c1c; }
+    .metric-delta.flat { color: #64748b; }
+	    th span { display: block; min-width: 130px; }
+	    th small { display: block; font-weight: 600; max-width: 420px; }
+	    details { margin-top: 12px; }
+	    summary { color: var(--blue); cursor: pointer; font-weight: 800; }
+	    .layered-details {
+	      padding: 0;
+	    }
+	    .layered-details > summary {
+	      align-items: center;
+	      color: var(--ink);
+	      display: flex;
+	      gap: 12px;
+	      justify-content: space-between;
+	      list-style: none;
+	      padding: 14px;
+	    }
+	    .layered-details > summary::-webkit-details-marker {
+	      display: none;
+	    }
+	    .layered-details > summary::after {
+	      content: "Open";
+	      border: 1px solid var(--line);
+	      border-radius: 999px;
+	      color: var(--blue);
+	      font-size: 12px;
+	      padding: 4px 8px;
+	    }
+	    .layered-details[open] > summary::after {
+	      content: "Close";
+	    }
+	    .layered-details summary span {
+	      display: block;
+	      font-size: 15px;
+	    }
+	    .layered-details summary small {
+	      display: block;
+	      font-weight: 600;
+	      margin-top: 2px;
+	    }
+	    .layered-details-body {
+	      border-top: 1px solid var(--line);
+	      padding: 14px;
+	    }
+	    .detail-section + .detail-section {
+	      border-top: 1px solid #edf0f4;
+	      margin-top: 18px;
+	      padding-top: 16px;
+	    }
+	    ul { margin: 8px 0 0; padding-left: 20px; }
+	    .score-table th span { min-width: 190px; }
+	    .score-table td code {
+	      display: block;
+	      max-width: 320px;
+	      overflow: hidden;
+	      text-overflow: ellipsis;
+	      white-space: nowrap;
+	    }
+	    .result-mark {
+	      align-items: center;
+	      border: 1px solid var(--line);
+	      border-radius: 6px;
+	      display: inline-flex;
+	      font-size: 12px;
+	      font-weight: 900;
+	      justify-content: center;
+	      min-height: 26px;
+	      min-width: 34px;
+	      padding: 4px 6px;
+	    }
+	    .result-mark.pass { background: #ecfdf3; border-color: #bbf7d0; color: #14532d; }
+	    .result-mark.fail { background: #fef2f2; border-color: #fecaca; color: #7f1d1d; }
+	    .result-mark.missing { background: #f8fafc; color: #64748b; }
+	    .query-table td { min-width: 74px; text-align: center; }
+	    .command-panel { border-top: 1px solid #edf0f4; margin-top: 12px; padding-top: 10px; }
+	    .evidence-text-table { min-width: 1180px; }
+	    .evidence-text-table th span { min-width: 170px; }
+	    .evidence-text-table td { min-width: 170px; }
+	    .evidence-text-table td.evidence-copy {
+	      min-width: 520px;
+	      max-width: 760px;
+	    }
+	    .evidence-full-text {
+	      color: #17202a;
+	      overflow-wrap: anywhere;
+	      white-space: pre-wrap;
+	    }
+	    .evidence-grid {
+	      display: grid;
+	      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+	      gap: 10px;
+	      margin-top: 12px;
+    }
+    .evidence-example {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      min-width: 0;
+    }
+    .evidence-example header {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      color: #334155;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+    .evidence-example p { margin: 8px 0; }
+    .evidence-query {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+    .evidence-hit {
+      font-weight: 800;
+      margin-top: 4px;
+      overflow-wrap: anywhere;
+    }
+    .evidence-sources {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .source-chip, .evidence-tag {
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      color: #334155;
+      display: inline-flex;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.2;
+      max-width: 100%;
+      padding: 4px 7px;
+      text-decoration: none;
+    }
+    .source-chip.missing { background: #fffbeb; border-color: #fde68a; color: #713f12; }
+    .muted-chip { background: #f8fafc; color: var(--muted); }
+	    .evidence-tag.good { background: #ecfdf3; border-color: #bbf7d0; color: #14532d; margin-top: 8px; }
+	    @media (max-width: 760px) {
+	      .assessment { grid-template-columns: 1fr; }
+	      .assessment-score { border-right: 0; border-bottom: 1px solid rgba(23, 32, 42, 0.12); padding: 0 0 10px; }
+	    }
+	  </style>
+		</head>
+		<body>
+		<main>
+		  <h1>Search Quality Repeat Runs</h1>
+		  <p class="muted">Generated 2026-06-09 21:06 UTC. Timestamps are UTC. Showing 8 repeated comparable run types from 41 registered runs.</p>
+		  
+      <section class="panel top-read-panel">
+        <div class="latest-header">
+          <div>
+            <h2>Translation Benchmark</h2>
+            <p class="muted">Locked 2026-06-09. Start here; the details are below only when you need to diagnose a change.</p>
+          </div>
+          <a class="status-badge neutral" href="translation_benchmark_report.html">Full benchmark report</a>
+        </div>
+        <div class="primary-read">
+          <strong>Clinical examples are mostly working, but the locked PubMed set is the limiting check.</strong>
+          <span>Use practice PubMed misses for tuning; keep the locked PubMed, official UMLS, and code checks separate.</span>
+        </div>
+        <div class="summary-grid">
+          
+      <div class="summary-card good">
+        <strong>164/167</strong>
+        <span>Clinical examples fully found</span>
+        <small>99.3% of expected IDs appeared in the first 10 answers</small>
+      </div>
+    
+          
+      <div class="summary-card bad">
+        <strong>2/7 practice; 1/6 locked</strong>
+        <span>PubMed abstracts fully found</span>
+        <small>70.8% of locked expected IDs appeared in the first 10 answers</small>
+      </div>
+    
+          
+      <div class="summary-card warn">
+        <strong>11/15 local</strong>
+        <span>Short phrase lookup</span>
+        <small>official UMLS search found 15/15</small>
+      </div>
+    
+          
+      <div class="summary-card warn">
+        <strong>7/8</strong>
+        <span>Code mappings found</span>
+        <small>12/13 expected links to SNOMED/RxNorm/LOINC/ICD codes found</small>
+      </div>
+    
+        </div>
+        
+        <div class="plain-explanation">
+          <div class="latest-header">
+            <div>
+              <h3>Current Live Gold Comparison</h3>
+              <p class="muted">Generated 2026-06-09T20:21:20Z from the running API. This is the current system scored against the locked expected-CUI files.</p>
+            </div>
+            <a class="status-badge neutral" href="../build/gold_standard_comparison/latest.md">Current details</a>
+          </div>
+          <div class="summary-grid">
+            
+      <div class="summary-card good">
+        <strong>151/167</strong>
+        <span>Clinical now complete</span>
+        <small>97.3% of expected IDs found; 16 rows missing something</small>
+      </div>
+    
+            
+      <div class="summary-card bad">
+        <strong>0/7</strong>
+        <span>PubMed practice now complete</span>
+        <small>63.9% of expected IDs found; 7 rows missing something</small>
+      </div>
+    
+            
+      <div class="summary-card bad">
+        <strong>2/6</strong>
+        <span>PubMed locked now complete</span>
+        <small>75.0% of expected IDs found; 4 rows missing something</small>
+      </div>
+    
+          </div>
+        </div>
+    
+        
+        <div class="plain-explanation">
+          <h3>What These Checks Mean</h3>
+          <p>
+            Each test starts with medical text and a short list of IDs that should be found.
+            A row passes when those expected IDs show up in the first 10 answers.
+          </p>
+          <ul class="plain-steps">
+            <li>
+              <strong>Clinical note check:</strong>
+              164 of 167 clinical examples found every expected ID in the first 10 answers.
+              3 did not. This says the clinical-note examples are mostly working.
+            </li>
+            <li>
+              <strong>PubMed article check:</strong>
+              2 of 7 practice abstracts and 1 of 6 locked abstracts found every expected ID in the first 10 answers.
+              10 did not. This is the clearest sign that long article text still needs work.
+            </li>
+            <li>
+              <strong>Official UMLS comparison:</strong>
+              For short lookup phrases, our search found the expected ID in the first 10 answers 11 of 15 times.
+              The official UMLS search found it 15 of 15 times.
+              That leaves 4 local misses and 0 official-UMLS misses in this set.
+            </li>
+            <li>
+              <strong>Code check:</strong>
+              After finding a medical concept, this checks whether we can also show the expected vocabulary code, such as SNOMED CT, RxNorm, LOINC, or ICD-10-CM.
+              7 of 8 rows had all expected code types, and 12 of 13 expected code links were found.
+              1 row still needs a missing code type fixed.
+            </li>
+          </ul>
+        </div>
+    
+        
+        <div class="plain-explanation">
+          <h3>Next Quality Work</h3>
+          <p>
+            These are the next evaluation lanes to add before treating the current
+            benchmark as a complete medical-text linker benchmark.
+          </p>
+          <ul class="plain-steps">
+            <li>
+              <strong>Better long-document handling:</strong>
+              PubMed abstracts and pasted clinical pages need section-aware chunking,
+              per-section linking, and a merge step that preserves the best supported
+              concepts without letting incidental context dominate. The PubMed abstract
+              scores above make this a current recall and ranking gap, not a theoretical issue.
+            </li>
+            <li>
+              <strong>Entity attributes:</strong>
+              For each extracted concept, score whether the system captures negated,
+              possible, historical, family-history, patient-versus-other-person,
+              active/current, severity, laterality, and body-site status. Drug concepts
+              also need route, dose, and frequency fields; lab concepts need value and unit fields.
+            </li>
+            <li>
+              <strong>Nested and overlapping concepts:</strong>
+              Add span-level rules for cases such as <code>postmenopausal bleeding</code>
+              containing <code>bleeding</code>. Prefer the longest clinically specific concept
+              when it is well supported, retain nested child concepts only when they add a
+              separate useful semantic role, and report both span-level precision and
+              concept-level recall.
+            </li>
+            <li>
+              <strong>Vocabulary-specific outputs:</strong>
+              Same-CUI success is not enough. Keep separate quality checks for SNOMED CT,
+              RxNorm, LOINC, ICD-10-CM, and MeSH so the result can be judged against the
+              vocabulary needed for a clinical, pharmacy, lab, billing, or literature use case.
+            </li>
+            <li>
+              <strong>External benchmark comparison:</strong>
+              A first MedMentions lane is scaffolded in
+              <code>scripts/run_medmentions_benchmark.py</code> and documented in
+              <a href="medmentions_benchmark.md">the MedMentions benchmark note</a>.
+              It starts with the ST21pv information-retrieval subset, now splits
+              pure <code>mention_only</code> linker scoring from context-heavy mention
+              retrieval, and reports clinical-useful hits separately from low-value
+              suppression-audit surfacing guardrails and document-level abstract CUI
+              recall. Use
+              <a href="https://arxiv.org/abs/1902.09476">MedMentions</a>
+              for broad PubMed/UMLS linking stress tests, while keeping UMLS 2017AA
+              version drift separate from current-release failures. Compare behavior with
+              <a href="https://github.com/allenai/scispacy">scispaCy</a>
+              UMLS linking, including candidate scores and abbreviation handling, and use
+              <a href="https://github.com/apache/ctakes">cTAKES</a>
+              and <a href="https://github.com/CogStack/MedCAT">MedCAT</a>
+              as clinical-text references for spans, standard codes, attributes, temporal
+              handling, EHR UMLS/SNOMED linking, and self-supervised context learning.
+            </li>
+          </ul>
+        </div>
+    
+      </section>
+    
+
+		  <details class="panel layered-details">
+		    <summary>
+		      <span>Run History And Diagnostics</span>
+		      <small>Repeated runs, gates, and the short-query UMLS API comparison.</small>
+		    </summary>
+		    <div class="layered-details-body">
+		      <section class="detail-section">
+		        <h2>Repeated Run Types And Outcomes</h2>
+		        
+      <p class="muted">Each row groups runs that used the same setup and the same list of test questions. The result shown is the newest run in that group. The test-set fingerprint is just a short ID for that exact question list.</p>
+      <p><strong>Release checks</strong> are pass/fail safeguards, not another score. A run passes when it does not get meaningfully worse than the comparable older run, does not add known wrong answers, does not lose major source coverage, and does not show restricted or protocol-only evidence. <strong>Not checked</strong> means the run was saved for comparison but those safeguards were not applied.</p>
+      <div class="table-wrap repeat-runs">
+        <table>
+          <thead>
+            <tr>
+              <th>Repeated test</th>
+              <th>Runs found</th>
+              <th>Latest result</th>
+              <th>Change from previous</th>
+              <th>Latest run label</th>
+            </tr>
+          </thead>
+          <tbody><tr><td><strong>Clinical paragraph smoke test</strong><br><small>API: UMLS + evidence; elasticsearch backend; balanced mode; top 60 results; search_quality_paragraph_queries.tsv; 167 queries; lean payload; test-set fingerprint 41f06779</small></td><td><strong>3</strong><br><small>2026-06-09 17:01 UTC -> 2026-06-09 17:16 UTC</small></td><td class="metric-good">164 of 167 rows fully found in the first 10 answers (98.2%); 3 rows missed at least one expected ID; 0 rows included a known wrong ID; overall score 98.6/100<br><span class="status-badge good" title="Current strict success@10 must not fall below the baseline beyond tolerance.; Known false-positive@10 rate must not increase.; No source with enough baseline presence may collapse beyond tolerance.; Evidence mode must not expose protocol-only ClinicalTrials.gov text as evidence.">release checks pass</span></td><td>No change from previous repeat.<br><small>Previous run: ES target smoke after narrowed cough and remaining failure cleanup 2026-06-09</small></td><td><strong>2026-06-09 17:16 UTC</strong><br><small>ES target smoke before opioid migraine ICU cleanup 2026-06-09</small></td></tr><tr><td><strong>Clinical paragraph smoke test</strong><br><small>API: UMLS + evidence; elasticsearch backend; balanced mode; top 60 results; search_quality_paragraph_queries.tsv; 167 queries; lean payload; test-set fingerprint 22890d8f</small></td><td><strong>2</strong><br><small>2026-06-09 16:43 UTC -> 2026-06-09 16:51 UTC</small></td><td class="metric-good">159 of 167 rows fully found in the first 10 answers (95.2%); 5 rows missed at least one expected ID; 0 rows included a known wrong ID; overall score 96.6/100<br><span class="status-badge good" title="Current strict success@10 must not fall below the baseline beyond tolerance.; Known false-positive@10 rate must not increase.; No source with enough baseline presence may collapse beyond tolerance.; Evidence mode must not expose protocol-only ClinicalTrials.gov text as evidence.">release checks pass</span></td><td>No change from previous repeat.<br><small>Previous run: ES target smoke after focused exact-anchor cleanup 2026-06-09</small></td><td><strong>2026-06-09 16:51 UTC</strong><br><small>ES target smoke before remaining failure cleanup 2026-06-09</small></td></tr><tr><td><strong>Clinical paragraph smoke test</strong><br><small>API: UMLS + evidence; elasticsearch backend; balanced mode; top 60 results; search_quality_paragraph_queries.tsv; 167 queries; lean payload; test-set fingerprint af159abe</small></td><td><strong>2</strong><br><small>2026-06-09 16:32 UTC -> 2026-06-09 16:37 UTC</small></td><td class="metric-good">152 of 167 rows fully found in the first 10 answers (91.0%); 9 rows missed at least one expected ID; 0 rows included a known wrong ID; overall score 93.6/100<br><span class="status-badge good" title="Current strict success@10 must not fall below the baseline beyond tolerance.; Known false-positive@10 rate must not increase.; No source with enough baseline presence may collapse beyond tolerance.; Evidence mode must not expose protocol-only ClinicalTrials.gov text as evidence.">release checks pass</span></td><td>No change from previous repeat.<br><small>Previous run: ES target smoke after exact-anchor recall cleanup 2026-06-09</small></td><td><strong>2026-06-09 16:37 UTC</strong><br><small>ES target smoke before next ranking cleanup 2026-06-09</small></td></tr><tr><td><strong>Clinical paragraph smoke test</strong><br><small>API: UMLS + evidence; elasticsearch backend; balanced mode; top 60 results; search_quality_paragraph_queries.tsv; 167 queries; lean payload; test-set fingerprint 2dbf44d5</small></td><td><strong>2</strong><br><small>2026-06-09 16:17 UTC -> 2026-06-09 16:23 UTC</small></td><td class="metric-good">142 of 167 rows fully found in the first 10 answers (85.0%); 13 rows missed at least one expected ID; 0 rows included a known wrong ID; overall score 89.6/100<br><span class="status-badge good" title="Current strict success@10 must not fall below the baseline beyond tolerance.; Known false-positive@10 rate must not increase.; No source with enough baseline presence may collapse beyond tolerance.; Evidence mode must not expose protocol-only ClinicalTrials.gov text as evidence.">release checks pass</span></td><td>No change from previous repeat.<br><small>Previous run: ES target smoke after gastric-ulcer acceptable-CUI cleanup 2026-06-09</small></td><td><strong>2026-06-09 16:23 UTC</strong><br><small>ES target smoke before next recall improvement 2026-06-09</small></td></tr><tr><td><strong>Clinical paragraph smoke test</strong><br><small>API: UMLS + evidence; elasticsearch backend; balanced mode; top 60 results; search_quality_paragraph_queries.tsv; 167 queries; lean payload; test-set fingerprint be1474e7</small></td><td><strong>6</strong><br><small>2026-06-09 14:56 UTC -> 2026-06-09 15:41 UTC</small></td><td class="metric-good">139 of 167 rows fully found in the first 10 answers (83.2%); 16 rows missed at least one expected ID; 0 rows included a known wrong ID; overall score 88.2/100<br><span class="status-badge good" title="Current strict success@10 must not fall below the baseline beyond tolerance.; Known false-positive@10 rate must not increase.; No source with enough baseline presence may collapse beyond tolerance.; Evidence mode must not expose protocol-only ClinicalTrials.gov text as evidence.">release checks pass</span></td><td>Score +4.9; fully found rows +11; rows with missing expected IDs -12; rows with known wrong IDs unchanged<br><small>Previous run: ES target smoke current improvement loop 2026-06-09</small></td><td><strong>2026-06-09 15:41 UTC</strong><br><small>ES target smoke after active-label phrase rescue 2026-06-09</small></td></tr><tr><td><strong>Clinical paragraph smoke test</strong><br><small>API: UMLS + evidence; local backend; balanced mode; top 60 results; search_quality_paragraph_queries.tsv; 167 queries; lean payload; test-set fingerprint ba9337df</small></td><td><strong>3</strong><br><small>2026-06-08 21:37 UTC -> 2026-06-09 14:02 UTC</small></td><td class="metric-good">134 of 167 rows fully found in the first 10 answers (80.2%); 24 rows missed at least one expected ID; 0 rows included a known wrong ID; overall score 86.1/100<br><span class="status-badge good" title="Current strict success@10 must not fall below the baseline beyond tolerance.; Known false-positive@10 rate must not increase.; No source with enough baseline presence may collapse beyond tolerance.; Evidence mode must not expose protocol-only ClinicalTrials.gov text as evidence.">release checks pass</span></td><td>Score +5.1; fully found rows +12; rows with missing expected IDs -10; rows with known wrong IDs unchanged<br><small>Previous run: Patched lean evidence speed probe 2026-06-08</small></td><td><strong>2026-06-09 14:02 UTC</strong><br><small>Primary condition and active-label smoke 2026-06-09</small></td></tr><tr><td><strong>Release-candidate paragraph test</strong><br><small>API: legacy/default scope; elasticsearch backend; balanced mode; top 60 results; search_quality_paragraph_queries.tsv; 167 queries; lean payload; test-set fingerprint ee9ece5c</small></td><td><strong>2</strong><br><small>2026-05-26 19:17 UTC -> 2026-05-26 19:27 UTC</small></td><td class="metric-good">137 of 167 rows fully found in the first 10 answers (82.0%); 23 rows missed at least one expected ID; 0 rows included a known wrong ID; overall score 87.4/100<br><span class="status-badge neutral">not checked</span></td><td>No change from previous repeat.<br><small>Previous run: UMLS-only comparison - Current search</small></td><td><strong>2026-05-26 19:27 UTC</strong><br><small>Release candidate ranking fixes</small></td></tr><tr><td><strong>Ranking experiment</strong><br><small>Current search; elasticsearch backend; balanced mode; top 60 results; search_quality_paragraph_queries.tsv; 167 queries; lean payload; test-set fingerprint ee9ece5c</small></td><td><strong>15</strong><br><small>2026-05-22 15:08 UTC -> 2026-05-26 15:21 UTC</small></td><td class="metric-good">138 of 167 rows fully found in the first 10 answers (82.6%); 22 rows missed at least one expected ID; 0 rows included a known wrong ID; overall score 87.8/100<br><span class="status-badge neutral">not checked</span></td><td>No change from previous repeat.<br><small>Previous run: recall5-local-treatment-drug-context</small></td><td><strong>2026-05-26 15:21 UTC</strong><br><small>recall5-local-treatment-drug-clean</small></td></tr></tbody>
+        </table>
+      </div>
+    
+		      </section>
+		      <section class="detail-section">
+		        <h2>UMLS API Comparison</h2>
+		        
+      <p class="muted">This is the short-query UMLS API diagnostic, not the paragraph smoke benchmark. It compares local `/api/search` output with NLM UMLS UTS `/search/current`. For this snapshot, the local side was refreshed and cached UMLS payloads were reused because no UMLS API key was available. Source: <code>build/umls_api_comparison_runs_20260609/summary.tsv</code>. Full summary: <code>build/umls_api_comparison_runs_20260609/summary.md</code>.</p>
+      <div class="table-wrap umls-comparison">
+        <table>
+          <thead>
+            <tr>
+              <th>Variant</th>
+              <th>Local top = UMLS top</th>
+              <th>Local top in UMLS top 10</th>
+              <th>UMLS top in local top 10</th>
+              <th>Expected in local top 10</th>
+              <th>Expected local rank 1</th>
+              <th>Mean overlap@10</th>
+              <th>Expected rows</th>
+            </tr>
+          </thead>
+          <tbody><tr><td><strong>Default local search, related=0</strong><br><small><code>default_umls_evidence_related0</code></small><br><small>No explicit scope parameter; server default is umls_evidence.</small></td><td>12/18</td><td>12/18</td><td>12/18</td><td>11/15</td><td>10/15</td><td>1.33/10</td><td>15</td></tr><tr><td><strong>Explicit UMLS+evidence, related=1</strong><br><small><code>explicit_umls_evidence_related1</code></small><br><small>Same retrieval scope with related concept attachment enabled.</small></td><td>12/18</td><td>12/18</td><td>12/18</td><td>11/15</td><td>10/15</td><td>1.33/10</td><td>15</td></tr><tr><td><strong>Exact local mode, UMLS+evidence scope, related=0</strong><br><small><code>exact_umls_evidence_related0</code></small><br><small>Exact local search mode against the evidence-backed scope.</small></td><td>11/18</td><td>11/18</td><td>11/18</td><td>10/15</td><td>9/15</td><td>0.83/10</td><td>15</td></tr></tbody>
+        </table>
+      </div>
+    
+		      </section>
+		    </div>
+		  </details>
+
+		  <p class="muted">Archive source: <code>build/search_quality_experiments/runs.json</code>. Per-run details remain in each run directory.</p>
+
+	  <!--
+	    Archived from the page view on 2026-06-09:
+	    current-target narratives, diagnostic evidence tables, source contribution
+	    dumps, commands, metric definitions, and single-run history tables. The
+	    manifest and per-run rows.tsv files remain the archive of record.
+	  -->
+		</main>
+	</body>
+	</html>

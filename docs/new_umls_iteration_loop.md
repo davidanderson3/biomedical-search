@@ -1,6 +1,6 @@
 # New UMLS Iteration Loop
 
-Last updated: 2026-05-06
+Last updated: 2026-06-08
 
 This file defines the operating loop for building a broadly useful biomedical
 search interface and vector store on top of an open UMLS seed plus local
@@ -21,6 +21,83 @@ can use for real biomedical language. The system must be:
 - Documentable: each concept and index change has enough provenance for a person
   to understand why it exists and how it was produced.
 
+## Pipeline Diagram
+
+```mermaid
+flowchart TD
+  subgraph Inputs
+    UMLS["UMLS META<br/>level-0/category-0 SABs"]
+    LOINC["Direct LOINC files"]
+    PublicSources["Public source products<br/>PubMed/PMC, MedlinePlus, DailyMed,<br/>PubTator3, HPO/MONDO, posted trial outcomes"]
+    QueryPressure["Query pressure<br/>paragraph benchmark, reviewed failures,<br/>private log-derived review queues"]
+    PriorExtensions["Prior NEW####### concepts"]
+  end
+
+  Manifest["Run manifest<br/>versions, inputs, boundaries, thresholds"]
+  Coverage["Known coverage layer<br/>UMLS labels, code resolver, LOINC,<br/>prior extensions, semantic guards"]
+  Normalize["Normalize candidate language<br/>queries, evidence snippets, labels, source codes"]
+  ExistingCheck{"Already covered<br/>or duplicate?"}
+  EvidenceGate{"Enough evidence<br/>and useful boundary?"}
+  CandidateReview["Candidate review<br/>label, aliases, semantic type,<br/>definition, anchors, rationale"]
+  Deferred["Deferred or rejected gaps<br/>weak evidence, duplicate, bad boundary"]
+
+  CorpusDocs["Corpus documents<br/>source text with provenance"]
+  LinkedEvidence["Linked evidence records<br/>CUI mentions and source refs"]
+  RelationshipEdges["Relationship edges<br/>PubTator3, curated, OHDSI/public aggregates"]
+  ExtensionRegistry["Promoted extension registry<br/>NEW####### concepts"]
+  ConceptDocs["Concept documents<br/>one CUI/view with labels and evidence"]
+  VectorPlan["Vector reuse plan<br/>text hashes and changed docs"]
+  Vectors["SapBERT CLS vectors<br/>new or reused"]
+  SearchIndexes["Search indexes<br/>vectors, labels, codes, semantic types,<br/>provenance, relations"]
+  SearchUI["Search API and UI<br/>public-output filter applied at response time"]
+  Evaluation["Evaluation runs<br/>strict success, recall, false positives,<br/>good/mixed/poor, source drift"]
+  Dashboard["Source/evidence dashboard<br/>coverage, quality, next steps"]
+  ReleaseDecision{"Release gate<br/>passes?"}
+  ActiveRelease["Active local release<br/>alias or extension shard promoted"]
+  NextGap["Next iteration gap queue"]
+
+  UMLS --> Manifest
+  LOINC --> Manifest
+  PublicSources --> Manifest
+  QueryPressure --> Manifest
+  PriorExtensions --> Manifest
+
+  Manifest --> Coverage
+  Manifest --> CorpusDocs
+  Coverage --> Normalize
+  QueryPressure --> Normalize
+  CorpusDocs --> LinkedEvidence
+  LinkedEvidence --> ConceptDocs
+  PublicSources --> RelationshipEdges
+  Normalize --> ExistingCheck
+  ExistingCheck -- "yes" --> Evaluation
+  ExistingCheck -- "no" --> EvidenceGate
+  EvidenceGate -- "no" --> Deferred
+  EvidenceGate -- "yes" --> CandidateReview
+  CandidateReview --> ExtensionRegistry
+  CandidateReview --> RelationshipEdges
+  ExtensionRegistry --> ConceptDocs
+  ConceptDocs --> VectorPlan
+  VectorPlan --> Vectors
+  Vectors --> SearchIndexes
+  Coverage --> SearchIndexes
+  RelationshipEdges --> SearchIndexes
+  SearchIndexes --> SearchUI
+  SearchUI --> Evaluation
+  Evaluation --> Dashboard
+  Dashboard --> ReleaseDecision
+  ReleaseDecision -- "yes" --> ActiveRelease
+  ReleaseDecision -- "no" --> NextGap
+  Deferred --> NextGap
+  Evaluation --> NextGap
+  NextGap --> Manifest
+```
+
+Read the diagram as a gated loop, not a one-way ETL job. Source products and
+UMLS/LOINC identity data create searchable artifacts, but evaluation determines
+whether those artifacts are promoted, held for review, or routed back into the
+next gap queue.
+
 ## Current Decisions
 
 - Base UMLS subset: use source vocabularies identified in `MRSAB.RRF` as
@@ -40,9 +117,131 @@ can use for real biomedical language. The system must be:
   but not required before creating a local CUI.
 - Threshold policy: start conservative, then lower thresholds only when the last
   iteration shows acceptable precision and good duplicate control.
-- Synthetic query corpus: use several thousand typical clinical and research
-  sentences for repeatable search pressure. Current set:
-  `config/typical_clinical_research_sentences.tsv`.
+- Fast regression smoke test: keep `config/search_quality_paragraph_queries.tsv`
+  as the mandatory judged query pool. It currently contains 167 query rows plus
+  the header. Normal improvement loops should run a rotating 50-query sample
+  from that pool for speed; use the full pool only for deliberate release or
+  exhaustive checks.
+- Synthetic query corpus: use 10,000 typical clinical, research, trial-result,
+  drug-label, lay-language, and diagnostic-report queries for repeatable search
+  pressure. Current set: `config/typical_clinical_research_sentences.tsv`.
+- Page-length stress corpus: use 200 full-page pasted-note/query samples to
+  test long-input ranking, negation, copied-forward context, and incidental
+  background concepts. Current set: `config/full_page_sample_queries.tsv`.
+
+## Fast Regression Smoke Test
+
+Use a rotating 50-query paragraph sample for normal candidate rebuilds:
+
+```bash
+python3 scripts/run_search_quality_experiment.py \
+  --queries config/search_quality_paragraph_queries.tsv \
+  --query-limit 50 \
+  --query-selection rotate \
+  --search-system api \
+  --scope umls_evidence \
+  --fail-gates
+```
+
+Pass `--query-limit 0` only when you intentionally want the full judged pool.
+
+Run `--search-system umls-only` for the in-process UMLS baseline, or
+`--search-system both` to emit adjacent UMLS-only and current-search columns in
+the experiment report. Use `--scope umls` when the live API should be exercised
+without evidence expansion.
+
+The smoke run's primary metric is strict success@10: top result on target, all
+expected or acceptable CUIs present in the first 10 results, and no known
+false-positive CUI in the first 10.
+
+## Source Delta Checks
+
+Every source rebuild must produce a source-delta record before release. At
+minimum, record these fields per source and compare them with the previous
+retained rebuild:
+
+- Source identity: URL, source version, source date or release date, fetch date,
+  and content hash.
+- Records fetched.
+- Records changed, added, and removed.
+- CUIs gained and lost.
+- Relationship edges gained and lost.
+- Top source changes for benchmark queries, especially changes in the first 10
+  results from the rotating smoke sample, the full judged pool when run, and the
+  source-specific benchmark rows.
+
+Unexpected source-count collapses are release blockers unless the rebuild
+manifest explains the intended source removal and the benchmark impact is
+reviewed.
+
+Source presence alone is not a quality metric. Each search-quality run also
+writes `source_quality_at_10.json` and `source_quality_at_10.tsv`, which tie
+sources to judged outcomes:
+
+- Queries where the source appears in the top 10.
+- Strict-success queries where the source appears in the top 10.
+- Queries where the source is attached to an expected or acceptable hit.
+- Strict-success queries where the source is attached to an expected or
+  acceptable hit.
+- Queries where the source is attached to a known false-positive hit.
+- Top-1 expected-hit contribution and mean best expected rank.
+
+Use these as associative contribution metrics, not causal ablations. A source
+earns useful credit when it is attached to the acceptable CUI hit, not merely
+when it appears somewhere in a passing result page.
+
+Use `scripts/check_source_rebuild_delta.py` to validate the required fields and
+compare a current source manifest with the previous retained manifest:
+
+```bash
+python3 scripts/check_source_rebuild_delta.py \
+  --previous build/source_manifests/previous.json \
+  --current build/source_manifests/current.json \
+  --out build/source_manifests/source_delta_report.json
+```
+
+## Source Benchmarks
+
+In addition to the rotating smoke sample, source rebuilds must run the matching
+source-specific benchmark file from `config/source_specific_benchmarks.tsv`:
+
+- PubTator3: relationship correctness,
+  `config/source_benchmarks/pubtator3_relationship_correctness.tsv`.
+- ClinicalTrials.gov: posted outcome-result queries only,
+  `config/source_benchmarks/clinicaltrials_posted_outcomes.tsv`.
+- DailyMed: drug indication, warning, and adverse-reaction queries,
+  `config/source_benchmarks/dailymed_drug_label_queries.tsv`.
+- MedlinePlus: lay-language condition queries,
+  `config/source_benchmarks/medlineplus_lay_condition_queries.tsv`.
+- PubMed/PMC: literature-backed disease, drug, and procedure queries,
+  `config/source_benchmarks/pubmed_pmc_literature_queries.tsv`.
+
+These are source-focused gates, not replacements for the stable smoke set.
+
+### Locked PubMed Abstract Benchmark
+
+The long-abstract PubMed check is separate from the clinical smoke score because
+topic-level expected CUIs can make fetched abstracts look worse or better than
+they really are. Do not score PubMed abstracts with inherited topic-level
+expectations. Every scored PubMed abstract must have an approved per-PMID row in
+`config/pubmed_literature_abstract_curation.tsv`.
+
+Use the strict generator to create scored query files:
+
+```bash
+python3 scripts/fetch_pubmed_paragraph_queries.py \
+  --topics config/pubmed_paragraph_topics.tsv \
+  --curation config/pubmed_literature_abstract_curation.tsv \
+  --strict-curation \
+  --output-dir build/pubmed_literature_benchmark_seed
+```
+
+This writes separate `pubmed_literature_dev_queries.tsv` and
+`pubmed_literature_heldout_queries.tsv` files. Tune against the dev split only;
+run the held-out split as a separate report and keep it out of the clinical
+smoke headline. Use `config/pubmed_literature_candidate_topics.tsv` to fetch a
+larger 50-100 abstract review queue, then promote only reviewed per-abstract
+rows into the curation file. See `docs/pubmed_literature_benchmark.md`.
 
 ## Progress Metrics
 
@@ -155,10 +354,24 @@ The default cadence is:
 
 An iteration can be released to the active search interface only when:
 
+- The rotating 50-query smoke run completes and strict success@10 does not drop
+  beyond the configured small tolerance. For release promotion, also run the
+  full judged pool with `--query-limit 0`.
+- Known false positives do not increase.
+- Evidence mode contains no protocol-only ClinicalTrials.gov text; only posted
+  outcome-result text can contribute trial evidence.
+- Public display payloads expose no restricted, private, licensed-only, or
+  non-level-0 UMLS/source content.
+- No unexpected source-count collapse is present in the source-delta record or
+  the top-10 source mix from the benchmark payloads.
 - Existing high-value queries do not regress.
 - New or changed concepts have concept documents and vectors.
 - The search alias or extension shard can be rolled back.
 - The manifest says exactly which artifacts were loaded.
+- The manifest records source URL/version/date/hash, records fetched, records
+  changed, CUIs gained/lost, relationship edges gained/lost, and benchmark query
+  source changes for each rebuilt source.
+- Matching source-specific benchmark suites pass for rebuilt evidence sources.
 - Candidate and relation review artifacts exist.
 - Tests covering changed code pass.
 

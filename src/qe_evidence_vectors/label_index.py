@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .generic_filters import is_blocked_generic_concept
+from .lexical_normalization import lexical_variant_keys
 from .semantic_profiles import resolve_profiles
 from .text import normalized_key
 
@@ -166,6 +167,13 @@ def _valid_label(label: str, *, min_chars: int, min_tokens: int, max_tokens: int
     return True
 
 
+def label_index_norms(label: str, *, include_lexical_variants: bool = True) -> list[str]:
+    if not include_lexical_variants:
+        norm = normalized_key(label)
+        return [norm] if norm else []
+    return lexical_variant_keys(label)
+
+
 def build_label_index(
     *,
     mrconso_path: str | Path,
@@ -179,6 +187,7 @@ def build_label_index(
     min_chars: int = 3,
     min_tokens: int = 1,
     max_tokens: int = 8,
+    include_lexical_variants: bool = True,
     replace: bool = False,
 ) -> int:
     profile_types = resolve_profiles(list(semantic_profiles or []))
@@ -222,26 +231,27 @@ def build_label_index(
                 max_tokens=max_tokens,
             ):
                 continue
-            batch.append(
-                (
-                    normalized_key(label),
-                    cui,
-                    label,
-                    fields[11],
-                    fields[12],
-                    fields[6],
-                    fields[16],
+            norms = label_index_norms(label, include_lexical_variants=include_lexical_variants)
+            for norm in norms:
+                batch.append(
+                    (
+                        norm,
+                        cui,
+                        label,
+                        fields[11],
+                        fields[12],
+                        fields[6],
+                        fields[16],
+                    )
                 )
-            )
+            count += 1
             if len(batch) >= 50_000:
                 conn.executemany(sql, batch)
                 conn.commit()
-                count += len(batch)
                 batch.clear()
     if batch:
         conn.executemany(sql, batch)
         conn.commit()
-        count += len(batch)
     create_indexes(conn)
     conn.close()
     return count

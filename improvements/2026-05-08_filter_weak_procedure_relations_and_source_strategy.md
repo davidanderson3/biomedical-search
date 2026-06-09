@@ -23,7 +23,7 @@ Kept items included `heart transplantation`, `CARDIAC REHABILITATION`, `Heart fa
 
 More PubMed content will help, but only if it is targeted. Broadly adding more abstracts will mostly increase vector volume and ambiguous co-occurrence. The next PubMed work should focus on high-citation, recent, review/guideline, and topic-gap queries where current buckets miss clinically obvious relations.
 
-Other sources are likely higher yield than indiscriminate PubMed expansion: DailyMed/openFDA labels for drug indications, contraindications, adverse reactions, and monitoring; LOINC and clinical measurement catalogs for observations; HPO/Orphanet-style phenotype links for gene/disease/finding coverage; Wikipedia/OpenAlex as readable open evidence and citation-prioritized literature triage. The useful pattern is source-specific relation extraction plus provenance, not just more text.
+Other sources are likely higher yield than indiscriminate PubMed expansion: DailyMed/openFDA labels for drug indications, contraindications, adverse reactions, and monitoring; LOINC and clinical measurement catalogs for observations; HPO phenotype links plus UMLS-carried Orphanet source-code crosswalks for gene/disease/finding coverage; Wikipedia/OpenAlex as readable open evidence and citation-prioritized literature triage. The useful pattern is source-specific relation extraction plus provenance, not just more text.
 
 ## Verification
 

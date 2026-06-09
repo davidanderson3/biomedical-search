@@ -21,7 +21,8 @@ files into the research-relation index when they are available.
   `disease_has_associated_gene` rows.
 - Updated `run_public_rebuild.py` so clean rebuilds can include staged HPO
   annotation-derived research relations with `--include-hpo-research-relations`
-  after reviewing HPO/OMIM/Orphanet reuse terms.
+  after reviewing HPO/OMIM/Orphanet reuse terms. Orphanet should be handled
+  through UMLS/source-code crosswalks rather than fetched as a duplicate source.
 
 ## Remaining Gap
 

@@ -11,20 +11,28 @@ from threading import Lock
 
 from qe_evidence_vectors.code_index import CodeIndex
 from qe_evidence_vectors.definition_index import DefinitionIndex
+from qe_evidence_vectors.display_names import load_display_name_overrides
 from qe_evidence_vectors.elastic_client import search_knn
 from qe_evidence_vectors.embeddings import make_embedder
 from qe_evidence_vectors.external_cui_vectors import ExternalCuiVectorIndex
 from qe_evidence_vectors.provenance_index import ProvenanceIndex
+from qe_evidence_vectors.public_output import (
+    DEFAULT_PUBLIC_OUTPUT_SOURCES,
+    load_public_output_sources,
+    normalize_public_output_sources,
+    PublicOutputMixin,
+)
 from qe_evidence_vectors.relation_index import RelationIndex
 from qe_evidence_vectors.relationship_edge_index import RelationshipEdgeIndex
 from qe_evidence_vectors.research_relations import ResearchRelationIndex
 from qe_evidence_vectors.schema import iter_jsonl
 from qe_evidence_vectors.search import iter_vectors, l2_normalize
 from qe_evidence_vectors.search_execution import SearchExecutionMixin
-from qe_evidence_vectors.search_hydration import SearchHydrationMixin
+from qe_evidence_vectors.search_hydration import SearchHydrationMixin, rank_evidence_items_for_query
 from qe_evidence_vectors.search_label_fallback import LabelFallback
 from qe_evidence_vectors.search_semantics import local_extension_semantic_type_rows
 from qe_evidence_vectors.semantic_type_index import SemanticTypeIndex
+from qe_evidence_vectors.lexical_normalization import lexical_variant_keys
 from qe_evidence_vectors.text import normalized_key
 from qe_evidence_vectors.search_related import SearchRelatedMixin
 from qe_evidence_vectors.search_rerank import SearchRerankMixin
@@ -32,6 +40,7 @@ from qe_evidence_vectors.search_utils import (
     concept_display_name,
     load_evidence_provenance,
     parse_document_evidence,
+    sentence_bounded_evidence_text,
 )
 
 
@@ -53,7 +62,13 @@ class SearchRecord:
     source_bundle: str
 
 
-class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin, SearchRelatedMixin):
+class SearchIndex(
+    SearchExecutionMixin,
+    SearchRerankMixin,
+    SearchHydrationMixin,
+    SearchRelatedMixin,
+    PublicOutputMixin,
+):
     def __init__(
         self,
         *,
@@ -72,7 +87,7 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
         elastic_index: str | None = None,
         elastic_num_candidates: int = 100,
         require_elasticsearch: bool = False,
-        elastic_exclude_source_prefixes: list[str] | tuple[str, ...] | None = ("mimic",),
+        elastic_exclude_source_prefixes: list[str] | tuple[str, ...] | None = (),
         search_knn_func: Callable[..., list[dict]] | None = None,
         label_index_paths: list[Path] | None = None,
         label_max_tokens: int = 8,
@@ -87,12 +102,16 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
         definition_index_path: Path | None = None,
         active_label_supplement_path: Path | None = None,
         related_limit: int = 8,
-        related_source_limit: int = 16,
+        related_source_limit: int = 8,
         expensive_related_source_limit: int = 0,
         query_cache_size: int = 0,
         candidate_pool_multiplier: int = 1,
         candidate_pool_min: int = 40,
         relationship_edges_rank: bool = False,
+        display_name_overrides_path: Path | None = None,
+        public_output_only: bool = False,
+        public_output_sources: list[str] | tuple[str, ...] | None = None,
+        public_output_source_allowlist_path: Path | None = None,
     ) -> None:
         self.vector_paths = vector_paths
         self.doc_paths = doc_paths
@@ -163,6 +182,17 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
         self.candidate_pool_multiplier = max(1, int(candidate_pool_multiplier or 1))
         self.candidate_pool_min = max(1, int(candidate_pool_min or 1))
         self.relationship_edges_rank = bool(relationship_edges_rank)
+        self.display_name_overrides_path = display_name_overrides_path
+        self.display_name_overrides = load_display_name_overrides(display_name_overrides_path)
+        self.public_output_only = bool(public_output_only)
+        if public_output_source_allowlist_path:
+            self.public_output_sources = load_public_output_sources(public_output_source_allowlist_path)
+        elif public_output_sources is not None:
+            self.public_output_sources = normalize_public_output_sources(public_output_sources)
+        else:
+            self.public_output_sources = DEFAULT_PUBLIC_OUTPUT_SOURCES
+        self.public_output_source_allowlist_path = public_output_source_allowlist_path
+        self.public_label_cache: dict[tuple[str, int], list[str]] = {}
         self.evidence_related_cache: dict[tuple[str, int], list[dict]] = {}
         self.external_related_cache: dict[tuple[str, int], list[dict]] = {}
         self.mrrel_related_cache: dict[tuple[str, int], list[dict]] = {}
@@ -179,6 +209,7 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
         self.records_by_cui: dict[str, list[SearchRecord]] = {}
         self.best_record_by_cui: dict[str, SearchRecord] = {}
         self.preferred_label_cache: dict[str, str] = {}
+        self.return_code_mappings_cache: dict[tuple, list[dict]] = {}
         self.semantic_types_cache: dict[str, list[dict]] = {}
         self.definitions_cache: dict[tuple[str, int], list[dict]] = {}
         self.extension_label_rows_by_norm: dict[str, list[dict]] = {}
@@ -396,23 +427,24 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
             for row in reader:
                 cui = str(row.get("cui") or "").strip().upper()
                 label = str(row.get("label") or "").strip()
-                normalized = normalized_key(label)
-                if not cui or not normalized:
+                normalized_keys = lexical_variant_keys(label)
+                if not cui or not normalized_keys:
                     continue
-                rows_by_norm.setdefault(normalized, []).append(
-                    {
-                        "cui": cui,
-                        "label": label,
-                        "ispref": str(row.get("ispref") or "N").strip() or "N",
-                        "sab": str(row.get("sab") or "MTH").strip() or "MTH",
-                        "tty": str(row.get("tty") or "PT").strip() or "PT",
-                        "specialty": str(row.get("specialty") or "").strip(),
-                        "context_any": str(row.get("context_any") or "").strip(),
-                        "block_any": str(row.get("block_any") or "").strip(),
-                        "source": "active_label_supplement",
-                        "doc_id": f"{cui}:active_label_supplement",
-                    }
-                )
+                for normalized in normalized_keys:
+                    rows_by_norm.setdefault(normalized, []).append(
+                        {
+                            "cui": cui,
+                            "label": label,
+                            "ispref": str(row.get("ispref") or "N").strip() or "N",
+                            "sab": str(row.get("sab") or "MTH").strip() or "MTH",
+                            "tty": str(row.get("tty") or "PT").strip() or "PT",
+                            "specialty": str(row.get("specialty") or "").strip(),
+                            "context_any": str(row.get("context_any") or "").strip(),
+                            "block_any": str(row.get("block_any") or "").strip(),
+                            "source": "active_label_supplement",
+                            "doc_id": f"{cui}:active_label_supplement",
+                        }
+                    )
                 semantic_type = str(row.get("semantic_type") or "").strip()
                 if semantic_type and cui not in semantic_types_by_cui:
                     semantic_rows = local_extension_semantic_type_rows(
@@ -437,18 +469,18 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
             seen_labels = set()
             for record in records:
                 for index, label in enumerate(record.labels):
-                    normalized = normalized_key(str(label))
-                    if not normalized or normalized in seen_labels:
-                        continue
-                    seen_labels.add(normalized)
-                    rows_by_norm.setdefault(normalized, []).append(
-                        {
-                            "cui": cui,
-                            "label": str(label),
-                            "ispref": "Y" if index == 0 else "N",
-                            "doc_id": record.doc_id,
-                        }
-                    )
+                    for normalized in lexical_variant_keys(str(label)):
+                        if not normalized or normalized in seen_labels:
+                            continue
+                        seen_labels.add(normalized)
+                        rows_by_norm.setdefault(normalized, []).append(
+                            {
+                                "cui": cui,
+                                "label": str(label),
+                                "ispref": "Y" if index == 0 else "N",
+                                "doc_id": record.doc_id,
+                            }
+                        )
         return rows_by_norm
 
     def _extension_semantic_types_by_cui(
@@ -530,6 +562,13 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
             "candidate_pool_multiplier": self.candidate_pool_multiplier,
             "candidate_pool_min": self.candidate_pool_min,
             "relationship_edges_rank": self.relationship_edges_rank,
+            "display_name_overrides": str(self.display_name_overrides_path or ""),
+            "display_name_override_count": len(self.display_name_overrides),
+            "public_output_only": self.public_output_only,
+            "public_output_sources": list(self.public_output_sources)
+            if self.public_output_only
+            else [],
+            "public_output_source_allowlist": str(self.public_output_source_allowlist_path or ""),
             "related_concept_sources": self.relation_index.source_count() if self.relation_index else 0,
             "related_concept_links": self.relation_index.relation_count() if self.relation_index else 0,
             "research_relation_index": str(self.research_relation_index_path or ""),
@@ -623,9 +662,9 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
             break
         return citations
 
-    def evidence_items_for_record(self, record: SearchRecord) -> list[dict]:
+    def evidence_items_for_record(self, record: SearchRecord, *, query: str = "") -> list[dict]:
         items: list[dict] = []
-        for item in record.evidence_items:
+        for item in rank_evidence_items_for_query(list(record.evidence_items), query):
             hydrated = dict(item)
             text = str(item.get("text") or "")
             hydrated["sources"] = self.sources_for_evidence_text(record.doc_id, text)
@@ -635,5 +674,6 @@ class SearchIndex(SearchExecutionMixin, SearchRerankMixin, SearchHydrationMixin,
                 citation = self.document_source_citation_for_record(record)
                 if citation:
                     hydrated["sources"] = [citation]
+            hydrated["text"] = sentence_bounded_evidence_text(text)
             items.append(hydrated)
         return items

@@ -3,6 +3,7 @@
     "key": "DISO_DISEASE",
     "label": "Diseases & Syndromes",
     "code": "DISO",
+    "minRelevance": 0.65,
     "semanticTypes": [
       "acquired abnormality",
       "anatomical abnormality",
@@ -20,6 +21,7 @@
     "key": "DISO_FINDING",
     "label": "Findings & Symptoms",
     "code": "FIND",
+    "minRelevance": 0.60,
     "semanticTypes": [
       "finding",
       "sign or symptom"
@@ -29,19 +31,22 @@
     "key": "CHEM",
     "label": "Drugs",
     "code": "CHEM",
-    "codes": ["CHEM"]
+    "codes": ["CHEM"],
+    "minRelevance": 0.75
   },
   {
     "key": "PROC",
     "label": "Procedures",
     "code": "PROC",
-    "codes": ["PROC"]
+    "codes": ["PROC"],
+    "minRelevance": 0.70
   },
   {
     "key": "CLIN_ATTR",
     "label": "Observations & Lab Results",
     "code": "OBS",
     "codes": ["OBS"],
+    "minRelevance": 0.60,
     "semanticTypes": [
       "clinical attribute",
       "laboratory procedure",
@@ -53,6 +58,7 @@
     "label": "Genes, Amino Acids, Peptides, Proteins",
     "code": "GENE",
     "codes": ["GENE"],
+    "minRelevance": 0.85,
     "semanticTypes": [
       "amino acid sequence",
       "amino acid, peptide, or protein",
@@ -65,12 +71,14 @@
     "key": "DEVI",
     "label": "Devices",
     "code": "DEVI",
-    "codes": ["DEVI"]
+    "codes": ["DEVI"],
+    "minRelevance": 0.70
   },
   {
     "key": "ORGANISM",
     "label": "Organisms",
     "code": "LIVB",
+    "minRelevance": 0.75,
     "semanticTypes": [
       "alga",
       "archaeon",
@@ -84,6 +92,7 @@
     "key": "PEOPLE",
     "label": "People & Populations",
     "code": "LIVB",
+    "minRelevance": 0.70,
     "semanticTypes": [
       "age group",
       "family group",
@@ -98,6 +107,7 @@
     "key": "ANAT",
     "label": "Anatomy",
     "code": "ANAT",
-    "codes": ["ANAT"]
+    "codes": ["ANAT"],
+    "minRelevance": 0.70
   }
 ]

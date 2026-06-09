@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import re
 import time
 
-from qe_evidence_vectors.code_index import is_cui, looks_like_code, parse_system_code
+from qe_evidence_vectors.code_index import (
+    CODE_IDENTIFIER_SYSTEMS,
+    UMLS_IDENTIFIER_SYSTEMS,
+    infer_umls_identifier_type,
+    is_cui,
+    looks_like_code,
+    normalize_sab,
+    parse_system_code,
+)
 from qe_evidence_vectors.search_semantic_buckets import normalize_semantic_bucket_filter
 from qe_evidence_vectors.search_semantics import semantic_group_metadata
 from qe_evidence_vectors.search_tokens import content_tokens
@@ -10,9 +19,154 @@ from qe_evidence_vectors.search_utils import (
     concept_display_name,
     merge_definition_lists,
     merge_labels,
+    sentence_bounded_evidence_text,
     source_mix_from_evidence_items,
 )
 from qe_evidence_vectors.text import normalized_key
+
+
+DEFAULT_RETURN_CODE_SABS = ("SNOMEDCT_US", "RXNORM", "ICD10CM", "LNC")
+ALL_RETURN_CODE_SABS = ("*",)
+NO_RETURN_CODE_SABS: tuple[str, ...] = ()
+RETURN_CODE_DEFAULT_TOKENS = {"", "default", "defaults", "standard", "source", "source_asserted"}
+RETURN_CODE_NONE_TOKENS = {"0", "false", "none", "no", "off", "hide"}
+RETURN_CODE_ALL_TOKENS = {"*", "all", "any"}
+EMBEDDED_CODE_SYSTEMS = {
+    "ICD10CM",
+    "ICD10PCS",
+    "ICD9CM",
+    "LNC",
+    "RXNORM",
+    "SNOMEDCT_US",
+}
+EMBEDDED_SYSTEM_CODE_RE = re.compile(
+    r"(?<!\S)([A-Za-z][A-Za-z0-9_]{1,31}):([A-Za-z0-9][A-Za-z0-9_.\-/]{0,31})(?!\S)"
+)
+EMBEDDED_CODE_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.\-/]*")
+EMBEDDED_BARE_CODE_RE = re.compile(
+    r"^(?:[A-Za-z]\d[A-Za-z0-9](?:\.[A-Za-z0-9]{1,5})?|\d{1,5}-\d)$",
+    re.IGNORECASE,
+)
+EMBEDDED_CODE_CONTEXT_TOKENS = {"code", "codes", "sourcecode", "source_code"}
+EMBEDDED_CODE_LOOKUP_CONTEXT_TOKENS = EMBEDDED_CODE_CONTEXT_TOKENS | {
+    "billing",
+    "cm",
+    "concept",
+    "diagnosis",
+    "diagnostic",
+    "dx",
+    "icd",
+    "icd9",
+    "icd10",
+    "lnc",
+    "loinc",
+    "medical",
+    "pcs",
+    "rxnorm",
+    "snomed",
+    "source",
+    "system",
+}
+SOURCE_CODE_SYSTEM_NAMES = {
+    "ICD10CM": "ICD-10-CM",
+    "ICD10PCS": "ICD-10-PCS",
+    "LNC": "LOINC",
+    "RXNORM": "RxNorm",
+    "SNOMEDCT_US": "SNOMED CT US",
+}
+EVIDENCE_QUERY_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "by",
+    "for",
+    "from",
+    "had",
+    "has",
+    "have",
+    "in",
+    "is",
+    "of",
+    "on",
+    "or",
+    "patient",
+    "patients",
+    "reported",
+    "showed",
+    "the",
+    "to",
+    "was",
+    "were",
+    "with",
+}
+
+
+def evidence_query_terms(query: str) -> set[str]:
+    return {
+        token
+        for token in content_tokens(query)
+        if token not in EVIDENCE_QUERY_STOPWORDS and len(token) >= 3
+    }
+
+
+def evidence_item_query_score(item: dict, query_terms: set[str]) -> tuple[int, float, float]:
+    if not query_terms:
+        return (0, 0.0, float(item.get("weight") or 0.0))
+    item_terms = set(content_tokens(str(item.get("text") or "")))
+    overlap = query_terms & item_terms
+    return (
+        len(overlap),
+        len(overlap) / max(len(query_terms), 1),
+        float(item.get("weight") or 0.0),
+    )
+
+
+def rank_evidence_items_for_query(items: list[dict], query: str) -> list[dict]:
+    query_terms = evidence_query_terms(query)
+    if not query_terms:
+        return list(items)
+    return [
+        item
+        for _score, _index, item in sorted(
+            (
+                (evidence_item_query_score(item, query_terms), index, item)
+                for index, item in enumerate(items)
+            ),
+            key=lambda row: (-row[0][0], -row[0][1], -row[0][2], row[1]),
+        )
+    ]
+
+
+def normalize_return_code_sabs(value: object = None) -> tuple[str, ...]:
+    if value is None:
+        return DEFAULT_RETURN_CODE_SABS
+    if value == NO_RETURN_CODE_SABS:
+        return NO_RETURN_CODE_SABS
+    if isinstance(value, str):
+        raw_values = re.split(r"[,|]", value)
+    else:
+        try:
+            raw_values = list(value)
+        except TypeError:
+            raw_values = [value]
+    tokens = [str(item or "").strip() for item in raw_values]
+    if not tokens:
+        return DEFAULT_RETURN_CODE_SABS
+    normalized: list[str] = []
+    for token in tokens:
+        token_key = token.strip().lower()
+        if token_key in RETURN_CODE_DEFAULT_TOKENS:
+            return DEFAULT_RETURN_CODE_SABS
+        if token_key in RETURN_CODE_NONE_TOKENS:
+            return NO_RETURN_CODE_SABS
+        if token_key in RETURN_CODE_ALL_TOKENS:
+            return ALL_RETURN_CODE_SABS
+        sab = normalize_sab(token)
+        if sab and sab not in normalized:
+            normalized.append(sab)
+    return tuple(normalized) if normalized else DEFAULT_RETURN_CODE_SABS
 
 
 class SearchHydrationMixin:
@@ -34,6 +188,9 @@ class SearchHydrationMixin:
         cui = str(cui or "").strip().upper()
         if not self.concept_has_active_atoms(cui):
             return ""
+        override = str(getattr(self, "display_name_overrides", {}).get(cui, "") or "").strip()
+        if override:
+            return override
         preferred = self.preferred_label_for_cui(cui)
         if preferred:
             return preferred
@@ -56,17 +213,26 @@ class SearchHydrationMixin:
         *,
         score: float,
         hydrate_details: bool = True,
+        include_codes: bool = True,
+        evidence_query: str = "",
     ) -> dict:
         labels = self.labels_for_cui(record.cui, record.labels)
         name = self.display_label_for_cui(record.cui, labels)
         evidence_items = (
-            self.evidence_items_for_record(record)
+            self.evidence_items_for_record(record, query=evidence_query)
             if hydrate_details
-            else [dict(item) for item in record.evidence_items]
+            else [
+                {
+                    **dict(item),
+                    "text": sentence_bounded_evidence_text(str(item.get("text") or "")),
+                }
+                for item in record.evidence_items
+            ]
         )
         semantic_types = self.semantic_types_for_cui(record.cui)
         definitions = self.definitions_for_cui(record.cui) if hydrate_details else []
         images = self.images_for_cui(record.cui) if hydrate_details else []
+        code_fields = self.source_code_fields_for_cui(record.cui) if include_codes else {}
         return {
             "doc_id": record.doc_id,
             "cui": record.cui,
@@ -96,6 +262,7 @@ class SearchHydrationMixin:
             **semantic_group_metadata(semantic_types),
             "definitions": definitions,
             "images": images,
+            **code_fields,
             "text": record.text,
             "evidence_items": evidence_items,
             "related_concepts": [],
@@ -114,6 +281,93 @@ class SearchHydrationMixin:
         if not self.code_index or not cui:
             return []
         return self.code_index.lookup_cui(cui, sabs=sabs, limit=limit)
+
+    def return_code_mappings_for_cui(
+        self,
+        cui: str,
+        *,
+        sabs: object = None,
+        limit_per_sab: int = 2,
+    ) -> list[dict]:
+        cui = str(cui or "").strip().upper()
+        if not cui or not self.code_index:
+            return []
+        normalized_sabs = normalize_return_code_sabs(sabs)
+        if not normalized_sabs:
+            return []
+        key = (cui, normalized_sabs, int(limit_per_sab))
+        if not hasattr(self, "return_code_mappings_cache"):
+            self.return_code_mappings_cache = {}
+        cached = self.return_code_mappings_cache.get(key)
+        if cached is not None:
+            return [dict(row) for row in cached]
+        rows = []
+        seen = set()
+        if normalized_sabs == ALL_RETURN_CODE_SABS:
+            source_rows = self.mappings_for_cui(cui, sabs=None, limit=max(limit_per_sab * 12, 50))
+            for row in source_rows:
+                system = str(row.get("sab") or "").strip()
+                code = str(row.get("code") or "").strip()
+                if not system or not code or code.upper() == "NOCODE":
+                    continue
+                row_key = (system, code.upper())
+                if row_key in seen:
+                    continue
+                seen.add(row_key)
+                rows.append(dict(row))
+        else:
+            for sab in normalized_sabs:
+                for row in self.mappings_for_cui(cui, sabs=[sab], limit=limit_per_sab):
+                    system = str(row.get("sab") or "").strip()
+                    code = str(row.get("code") or "").strip()
+                    if not system or not code or code.upper() == "NOCODE":
+                        continue
+                    row_key = (system, code.upper())
+                    if row_key in seen:
+                        continue
+                    seen.add(row_key)
+                    rows.append(dict(row))
+        self.return_code_mappings_cache[key] = [dict(row) for row in rows]
+        return [dict(row) for row in rows]
+
+    def source_code_fields_for_cui(self, cui: str, *, sabs: object = None) -> dict:
+        codes = self.return_codes_for_cui(cui, sabs=sabs)
+        return {
+            "codes": codes,
+            "source_asserted_codes": [dict(row) for row in codes],
+        }
+
+    def return_codes_for_cui(self, cui: str, *, sabs: object = None) -> list[dict]:
+        rows = []
+        for row in self.return_code_mappings_for_cui(cui, sabs=sabs):
+            system = row.get("sab") or ""
+            code = row.get("code") or ""
+            rows.append(
+                {
+                    "system": system,
+                    "system_name": SOURCE_CODE_SYSTEM_NAMES.get(system, system),
+                    "sab": system,
+                    "code": code,
+                    "source_asserted_code": code,
+                    "source_cui": row.get("scui") or "",
+                    "source_dui": row.get("sdui") or "",
+                    "scui": row.get("scui") or "",
+                    "sdui": row.get("sdui") or "",
+                    "tty": row.get("tty") or "",
+                    "label": row.get("label") or "",
+                    "ispref": row.get("ispref") or "",
+                }
+            )
+        return rows
+
+    def apply_source_code_selection(self, hits: list[dict], *, sabs: object = None) -> list[dict]:
+        selected_sabs = normalize_return_code_sabs(sabs)
+        for hit in hits:
+            cui = str(hit.get("cui") or "")
+            if not cui:
+                continue
+            hit.update(self.source_code_fields_for_cui(cui, sabs=selected_sabs))
+        return hits
 
     def preferred_label_for_cui(self, cui: str) -> str:
         if not self.code_index or not cui:
@@ -249,14 +503,20 @@ class SearchHydrationMixin:
         doc_id: str = "",
         cui: str = "",
         include_related: bool = True,
+        query: str = "",
+        return_code_sabs: object = None,
+        search_scope: str = "umls_evidence",
     ) -> dict:
         doc_id = str(doc_id or "").strip()
         cui = str(cui or "").strip().upper()
+        search_scope = str(search_scope or "umls_evidence").strip().lower()
+        if search_scope == "umls":
+            include_related = False
         record = self.records_by_doc_id.get(doc_id) if doc_id else None
         if not record and cui:
             record = self.best_record_for_cui(cui)
         if record:
-            hit = self.hit_from_record(record, score=0.0)
+            hit = self.hit_from_record(record, score=0.0, evidence_query=query)
         elif cui:
             labels = self.labels_for_cui(cui, [])
             name = self.display_label_for_cui(cui, labels)
@@ -277,6 +537,7 @@ class SearchHydrationMixin:
                 **semantic_group_metadata(semantic_types),
                 "definitions": self.definitions_for_cui(cui),
                 "images": self.images_for_cui(cui),
+                **self.source_code_fields_for_cui(cui, sabs=return_code_sabs),
                 "text": "",
                 "evidence_items": [],
                 "related_concepts": [],
@@ -284,8 +545,11 @@ class SearchHydrationMixin:
         else:
             return {"error": "missing doc_id or cui"}
         hit["mappings"] = self.mappings_for_cui(str(hit.get("cui") or ""), limit=50)
+        self.apply_source_code_selection([hit], sabs=return_code_sabs)
         if include_related:
             self.attach_related_concepts([hit])
+        if search_scope == "umls":
+            self.strip_evidence_from_umls_hits([hit])
         return {"doc_id": doc_id, "cui": hit.get("cui") or cui, "hit": hit}
 
     def candidate_from_cui(
@@ -297,6 +561,7 @@ class SearchHydrationMixin:
         matched: str = "",
         mappings: list[dict] | None = None,
         label: str = "",
+        definitions: list[dict] | None = None,
     ) -> dict:
         record = self.best_record_for_cui(cui)
         resolved_mappings = mappings if mappings is not None else self.mappings_for_cui(cui, limit=25)
@@ -331,9 +596,13 @@ class SearchHydrationMixin:
             "best_doc_id": record.doc_id if record else "",
             "best_view": record.view if record else "",
             "semantic_types": self.semantic_types_for_cui(cui),
-            "definitions": self.definitions_for_cui(cui),
+            "definitions": merge_definition_lists(
+                list(definitions or []),
+                self.definitions_for_cui(cui),
+            ),
             "images": self.images_for_cui(cui),
             "mappings": resolved_mappings[:25],
+            **self.source_code_fields_for_cui(cui),
         }
 
     def candidates_from_mappings(
@@ -387,6 +656,252 @@ class SearchHydrationMixin:
                 ),
             )
         return sorted_candidates[:limit]
+
+    def candidates_from_semantic_identifier_rows(
+        self,
+        rows: list[dict],
+        *,
+        source: str,
+        matched: str,
+        limit: int,
+    ) -> list[dict]:
+        candidates = []
+        seen_cuis = set()
+        for row in rows:
+            cui = str(row.get("cui") or "").strip().upper()
+            if not cui or cui in seen_cuis:
+                continue
+            seen_cuis.add(cui)
+            label = str(row.get("name") or "").strip()
+            candidate = self.candidate_from_cui(
+                cui,
+                score=1.15,
+                source=source,
+                matched=matched,
+                label=label,
+            )
+            if not candidate:
+                continue
+            candidate["matched_identifier_type"] = str(row.get("matched_identifier_type") or source).upper()
+            candidate["matched_identifier"] = str(row.get("matched_identifier") or matched).strip()
+            candidates.append(candidate)
+            if len(candidates) >= limit:
+                break
+        return sorted(
+            candidates,
+            key=lambda item: (
+                0 if item.get("has_evidence") else 1,
+                -int(item.get("evidence_count") or 0),
+                item.get("label") or "",
+            ),
+        )[:limit]
+
+    def candidates_from_relation_identifier_rows(
+        self,
+        rows: list[dict],
+        *,
+        matched: str,
+        limit: int,
+    ) -> list[dict]:
+        candidates = []
+        seen_cuis = set()
+        for row in rows:
+            for role, cui_key in (("relation_source", "source_cui"), ("relation_target", "target_cui")):
+                cui = str(row.get(cui_key) or "").strip().upper()
+                if not cui or cui in seen_cuis:
+                    continue
+                seen_cuis.add(cui)
+                candidate = self.candidate_from_cui(
+                    cui,
+                    score=1.1,
+                    source="rui",
+                    matched=matched,
+                    label=str(row.get("label") or ""),
+                )
+                if not candidate:
+                    continue
+                candidate["matched_identifier_type"] = "RUI"
+                candidate["matched_identifier"] = matched
+                candidate["relation_identifier_role"] = role
+                candidates.append(candidate)
+                if len(candidates) >= limit:
+                    return candidates
+        return candidates
+
+    def candidates_from_definition_identifier_rows(
+        self,
+        rows: list[dict],
+        *,
+        source: str,
+        matched: str,
+        limit: int,
+    ) -> list[dict]:
+        candidates = []
+        seen_cuis = set()
+        for row in rows:
+            cui = str(row.get("cui") or "").strip().upper()
+            if not cui or cui in seen_cuis:
+                continue
+            seen_cuis.add(cui)
+            candidate = self.candidate_from_cui(
+                cui,
+                score=1.1,
+                source=source,
+                matched=matched,
+                definitions=[row],
+            )
+            if not candidate:
+                continue
+            candidate["matched_identifier_type"] = str(row.get("matched_identifier_type") or source).upper()
+            candidate["matched_identifier"] = str(row.get("matched_identifier") or matched).strip()
+            candidates.append(candidate)
+            if len(candidates) >= limit:
+                break
+        return candidates
+
+    def embedded_code_queries(self, query: str) -> list[tuple[str, str | None, str]]:
+        text = str(query or "").strip()
+        if not text:
+            return []
+        seen: set[tuple[str, str | None, str]] = set()
+        matches: list[tuple[str, str | None, str]] = []
+
+        def add(code: str, *, sab: str | None = None, matched: str = "") -> None:
+            normalized_code = str(code or "").strip().strip(".,;()[]{}")
+            if not normalized_code or not looks_like_code(normalized_code):
+                return
+            normalized_sab = normalize_sab(sab or "") if sab else None
+            if normalized_sab and normalized_sab not in EMBEDDED_CODE_SYSTEMS:
+                return
+            key = (normalized_code.lower(), normalized_sab, matched or normalized_code)
+            if key in seen:
+                return
+            seen.add(key)
+            matches.append((normalized_code, normalized_sab, matched or normalized_code))
+
+        for match in EMBEDDED_SYSTEM_CODE_RE.finditer(text):
+            sab = normalize_sab(match.group(1))
+            if sab in EMBEDDED_CODE_SYSTEMS:
+                add(match.group(2), sab=sab, matched=f"{sab}:{match.group(2).strip()}")
+
+        tokens = [match.group(0) for match in EMBEDDED_CODE_TOKEN_RE.finditer(text)]
+        for index, token in enumerate(tokens):
+            matched_system = False
+            max_width = min(4, len(tokens) - index - 1)
+            for width in range(max_width, 0, -1):
+                system_text = " ".join(tokens[index : index + width])
+                sab = normalize_sab(system_text)
+                next_token = tokens[index + width] if index + width < len(tokens) else ""
+                if sab in EMBEDDED_CODE_SYSTEMS and next_token:
+                    add(next_token, sab=sab, matched=f"{sab}:{next_token}")
+                    matched_system = True
+                    break
+            if matched_system:
+                continue
+            previous = normalize_sab(tokens[index - 1]) if index > 0 else ""
+            previous_raw = tokens[index - 1].lower() if index > 0 else ""
+            if EMBEDDED_BARE_CODE_RE.match(token):
+                add(token, matched=token)
+                continue
+            if previous in EMBEDDED_CODE_SYSTEMS or previous_raw in EMBEDDED_CODE_CONTEXT_TOKENS:
+                add(token, matched=token)
+        return matches
+
+    def code_fallback_hits_for_query(self, query: str, *, limit: int = 10) -> list[dict]:
+        if not self.code_index:
+            return []
+        hits: list[dict] = []
+        seen_cuis: set[str] = set()
+        for code, sab, matched in self.embedded_code_queries(query):
+            rows = self.code_index.lookup_code(
+                code,
+                sab=sab,
+                limit=max(limit * 5, 25),
+            )
+            if not rows:
+                continue
+            source = "system_code" if sab else "code"
+            candidates = self.candidates_from_mappings(
+                rows,
+                source=source,
+                matched=matched,
+                limit=limit,
+            )
+            for candidate in candidates:
+                cui = str(candidate.get("cui") or "")
+                if not cui or cui in seen_cuis:
+                    continue
+                hit = self.hit_from_candidate(candidate)
+                if not hit:
+                    continue
+                hit["matched_code_input"] = matched
+                hit["code_match_type"] = source
+                seen_cuis.add(cui)
+                hits.append(hit)
+                if len(hits) >= limit:
+                    return hits
+        return hits
+
+    def resolve_embedded_code_lookup(self, query: str, *, limit: int = 10) -> dict | None:
+        if not self.code_index:
+            return None
+        embedded_queries = self.embedded_code_queries(query)
+        if not embedded_queries or not self.query_is_embedded_code_lookup_context(query):
+            return None
+        candidates: list[dict] = []
+        seen_cuis: set[str] = set()
+        input_type = "system_code" if any(sab for _, sab, _ in embedded_queries) else "code"
+        for code, sab, matched in embedded_queries:
+            rows = self.code_index.lookup_code(
+                code,
+                sab=sab,
+                limit=max(limit * 5, 25),
+            )
+            if not rows:
+                continue
+            source = "system_code" if sab else "code"
+            for candidate in self.candidates_from_mappings(
+                rows,
+                source=source,
+                matched=matched,
+                limit=limit,
+            ):
+                cui = str(candidate.get("cui") or "")
+                if not cui or cui in seen_cuis:
+                    continue
+                seen_cuis.add(cui)
+                candidates.append(candidate)
+                if len(candidates) >= limit:
+                    return {
+                        "query": query,
+                        "input_type": f"embedded_{input_type}",
+                        "candidates": candidates,
+                    }
+        if not candidates:
+            return None
+        return {
+            "query": query,
+            "input_type": f"embedded_{input_type}",
+            "candidates": candidates,
+        }
+
+    def query_is_embedded_code_lookup_context(self, query: str) -> bool:
+        tokens = [match.group(0) for match in EMBEDDED_CODE_TOKEN_RE.finditer(str(query or ""))]
+        if not tokens:
+            return False
+        saw_code = False
+        for token in tokens:
+            token_text = str(token or "").strip()
+            token_lower = token_text.lower()
+            if looks_like_code(token_text):
+                saw_code = True
+                continue
+            if normalize_sab(token_text) in EMBEDDED_CODE_SYSTEMS:
+                continue
+            if token_lower in EMBEDDED_CODE_LOOKUP_CONTEXT_TOKENS:
+                continue
+            return False
+        return saw_code
 
     def broaden_code_candidates_from_labels(
         self,
@@ -456,6 +971,95 @@ class SearchHydrationMixin:
                     "input_type": "cui",
                     "candidates": [candidate] if candidate else [],
                 }
+            if sab in CODE_IDENTIFIER_SYSTEMS:
+                rows = (
+                    self.code_index.lookup_identifier(
+                        code,
+                        identifier_type=sab,
+                        limit=max(limit * 5, 25),
+                    )
+                    if self.code_index
+                    else []
+                )
+                return {
+                    "query": query,
+                    "input_type": "umls_identifier",
+                    "identifier_type": sab,
+                    "identifier": code,
+                    "candidates": self.candidates_from_mappings(
+                        rows,
+                        source="umls_identifier",
+                        matched=f"{sab}:{code}",
+                        limit=limit,
+                    ),
+                }
+            if sab in {"TUI", "ATUI"}:
+                rows = (
+                    self.semantic_type_index.lookup_identifier(
+                        code,
+                        identifier_type=sab,
+                        limit=max(limit * 5, 25),
+                    )
+                    if self.semantic_type_index
+                    else []
+                )
+                definition_rows = []
+                if not rows and sab == "ATUI" and self.definition_index:
+                    definition_rows = self.definition_index.lookup_identifier(
+                        code,
+                        identifier_type=sab,
+                        limit=max(limit * 5, 25),
+                    )
+                return {
+                    "query": query,
+                    "input_type": "semantic_type_identifier",
+                    "identifier_type": sab,
+                    "identifier": code,
+                    "candidates": (
+                        self.candidates_from_semantic_identifier_rows(
+                            rows,
+                            source=sab.lower(),
+                            matched=f"{sab}:{code}",
+                            limit=limit,
+                        )
+                        if rows
+                        else self.candidates_from_definition_identifier_rows(
+                            definition_rows,
+                            source=sab.lower(),
+                            matched=f"{sab}:{code}",
+                            limit=limit,
+                        )
+                    ),
+                }
+            if sab == "RUI":
+                rows = (
+                    self.relation_index.lookup_identifier(
+                        code,
+                        identifier_type=sab,
+                        limit=max(limit * 2, 10),
+                    )
+                    if self.relation_index
+                    else []
+                )
+                return {
+                    "query": query,
+                    "input_type": "relation_identifier",
+                    "identifier_type": sab,
+                    "identifier": code,
+                    "candidates": self.candidates_from_relation_identifier_rows(
+                        rows,
+                        matched=f"{sab}:{code}",
+                        limit=limit,
+                    ),
+                }
+            if sab in UMLS_IDENTIFIER_SYSTEMS:
+                return {
+                    "query": query,
+                    "input_type": "unsupported_identifier",
+                    "identifier_type": sab,
+                    "identifier": code,
+                    "candidates": [],
+                }
             rows = self.code_index.lookup_code(code, sab=sab, limit=max(limit * 5, 25)) if self.code_index else []
             return {
                 "query": query,
@@ -468,6 +1072,96 @@ class SearchHydrationMixin:
                     matched=f"{sab}:{code}",
                     limit=limit,
                 ),
+            }
+        identifier_type = infer_umls_identifier_type(raw_query)
+        if identifier_type in CODE_IDENTIFIER_SYSTEMS:
+            rows = (
+                self.code_index.lookup_identifier(
+                    raw_query,
+                    identifier_type=identifier_type,
+                    limit=max(limit * 5, 25),
+                )
+                if self.code_index
+                else []
+            )
+            return {
+                "query": query,
+                "input_type": "umls_identifier",
+                "identifier_type": identifier_type,
+                "identifier": raw_query,
+                "candidates": self.candidates_from_mappings(
+                    rows,
+                    source="umls_identifier",
+                    matched=raw_query,
+                    limit=limit,
+                ),
+            }
+        if identifier_type in {"TUI", "ATUI"}:
+            rows = (
+                self.semantic_type_index.lookup_identifier(
+                    raw_query,
+                    identifier_type=identifier_type,
+                    limit=max(limit * 5, 25),
+                )
+                if self.semantic_type_index
+                else []
+            )
+            definition_rows = []
+            if not rows and identifier_type == "ATUI" and self.definition_index:
+                definition_rows = self.definition_index.lookup_identifier(
+                    raw_query,
+                    identifier_type=identifier_type,
+                    limit=max(limit * 5, 25),
+                )
+            return {
+                "query": query,
+                "input_type": "semantic_type_identifier",
+                "identifier_type": identifier_type,
+                "identifier": raw_query,
+                "candidates": (
+                    self.candidates_from_semantic_identifier_rows(
+                        rows,
+                        source=identifier_type.lower(),
+                        matched=raw_query,
+                        limit=limit,
+                    )
+                    if rows
+                    else self.candidates_from_definition_identifier_rows(
+                        definition_rows,
+                        source=identifier_type.lower(),
+                        matched=raw_query,
+                        limit=limit,
+                    )
+                ),
+            }
+        if identifier_type == "RUI":
+            rows = (
+                self.relation_index.lookup_identifier(
+                    raw_query,
+                    identifier_type=identifier_type,
+                    limit=max(limit * 2, 10),
+                )
+                if self.relation_index
+                else []
+            )
+            return {
+                "query": query,
+                "input_type": "relation_identifier",
+                "identifier_type": identifier_type,
+                "identifier": raw_query,
+                "candidates": self.candidates_from_relation_identifier_rows(
+                    rows,
+                    matched=raw_query,
+                    limit=limit,
+                ),
+            }
+        if identifier_type in UMLS_IDENTIFIER_SYSTEMS:
+            return {
+                "query": query,
+                "input_type": "unsupported_identifier",
+                "identifier_type": identifier_type,
+                "identifier": raw_query,
+                "candidates": [],
             }
         if self.code_index and looks_like_code(raw_query):
             rows = self.code_index.lookup_code(raw_query, limit=max(limit * 5, 25))
@@ -545,11 +1239,24 @@ class SearchHydrationMixin:
                 ),
                 "evidence_items": [],
                 "definitions": definitions,
+                **self.source_code_fields_for_cui(cui),
                 "related_concepts": [],
             }
         hit["match_type"] = candidate.get("source") or "resolver"
         hit["matched_input"] = candidate.get("matched") or ""
+        if candidate.get("matched_identifier_type"):
+            hit["matched_identifier_type"] = candidate.get("matched_identifier_type") or ""
+            hit["matched_identifier"] = candidate.get("matched_identifier") or hit["matched_input"]
+        if hit["match_type"] in {"code", "system_code", "umls_identifier"}:
+            hit["matched_code_input"] = hit["matched_input"]
+            hit["code_match_type"] = hit["match_type"]
         hit["mappings"] = candidate.get("mappings") or []
+        hit["codes"] = candidate.get("codes") or hit.get("codes") or self.return_codes_for_cui(cui)
+        hit["source_asserted_codes"] = (
+            candidate.get("source_asserted_codes")
+            or hit.get("source_asserted_codes")
+            or hit["codes"]
+        )
         if candidate.get("broadened_from_cui"):
             hit["broadened_from_cui"] = candidate.get("broadened_from_cui") or ""
             hit["broadened_from_label"] = candidate.get("broadened_from_label") or ""
@@ -579,9 +1286,17 @@ class SearchHydrationMixin:
             )
         return hit
 
-    def scoring_summary(self, backend: str, *, search_mode: str = "balanced") -> dict:
+    def scoring_summary(
+        self,
+        backend: str,
+        *,
+        search_mode: str = "balanced",
+        search_scope: str = "umls_evidence",
+    ) -> dict:
         if backend == "resolver":
             retrieval = "direct CUI/code resolver"
+        elif backend == "umls":
+            retrieval = "UMLS CUI/code/label lookup with evidence vector retrieval disabled"
         elif backend == "elasticsearch":
             retrieval = "Elasticsearch kNN over concept-document embeddings"
         elif backend == "generic_query_filter":
@@ -593,17 +1308,35 @@ class SearchHydrationMixin:
             "exact": "exact literal label/span search; semantic-only vector hits are filtered out",
             "comprehensive": "comprehensive search with a larger reranking candidate pool",
         }
+        scope = str(search_scope or "umls_evidence").strip().lower()
+        scope_descriptions = {
+            "umls": "UMLS only: CUI/code/label lookup without evidence vectors or evidence snippets",
+            "umls_evidence": "UMLS plus evidence: UMLS identifiers with evidence-backed semantic retrieval",
+        }
+        ranker = (
+            "UMLS span rerank: CUI/code/label lookup plus official UMLS label fallback, MRDEF definitions, MRSTY semantic types, and source code mappings"
+            if scope == "umls"
+            else "hybrid rerank: lexical label match + bounded MRDEF definition match + MRREL cross-type relation support + query-anchor recall/specificity + vector similarity + evidence presence + semantic, composite-intent, and fragment controls"
+        )
+        source_role = (
+            "UMLS label, identifier, source-code, semantic-type, and definition indexes provide "
+            "lookup fields; evidence vectors and evidence snippets are not used."
+            if scope == "umls"
+            else (
+                "PubMed, PMC OA, and other permitted corpora contribute evidence text to CUI/view "
+                "documents. Source names do not receive independent score weights in the current ranker."
+            )
+        )
         return {
             "retrieval": retrieval,
             "search_mode": search_mode,
             "search_mode_description": mode_descriptions.get(search_mode, mode_descriptions["balanced"]),
+            "search_scope": scope,
+            "search_scope_description": scope_descriptions.get(scope, scope_descriptions["umls_evidence"]),
             "embedding_provider": self.embedder.provider_name,
             "embedding_model": self.embedder.model_name,
-            "ranker": "hybrid rerank: lexical label match + bounded MRDEF definition match + MRREL cross-type relation support + query-anchor recall/specificity + vector similarity + evidence presence + semantic, composite-intent, and fragment controls",
-            "source_role": (
-                "PubMed, PMC OA, and other permitted corpora contribute evidence text to CUI/view "
-                "documents. Source names do not receive independent score weights in the current ranker."
-            ),
+            "ranker": ranker,
+            "source_role": source_role,
         }
 
     def direct_search(
@@ -613,20 +1346,43 @@ class SearchHydrationMixin:
         top_k: int,
         started: float,
         include_related: bool = True,
+        include_evidence_items: bool = True,
         semantic_bucket_keys: object = None,
         search_mode: str = "balanced",
+        search_scope: str = "umls_evidence",
+        return_code_sabs: object = None,
         debug: bool = False,
     ) -> dict:
         semantic_bucket_keys = normalize_semantic_bucket_filter(semantic_bucket_keys)
+        search_scope = str(search_scope or "umls_evidence").strip().lower()
+        if search_scope == "umls":
+            include_related = False
+        response_resolution = (
+            self.strip_evidence_from_umls_resolution(resolution)
+            if search_scope == "umls"
+            else resolution
+        )
         candidates = list(resolution.get("candidates") or [])
         candidate_limit = len(candidates) if semantic_bucket_keys else top_k
         hits = [self.hit_from_candidate(candidate) for candidate in candidates[:candidate_limit]]
-        hits = self.filter_hits_by_semantic_buckets(hits, semantic_bucket_keys)[:top_k]
+        hits = self.filter_hits_by_semantic_buckets(
+            hits,
+            semantic_bucket_keys,
+            search_mode=search_mode,
+        )[:top_k]
         if include_related:
             self.attach_related_concepts(hits)
+        if search_scope == "umls":
+            hits = self.strip_evidence_from_umls_hits(hits)
+        hits = self.apply_source_code_selection(hits, sabs=return_code_sabs)
         for hit in hits:
             hit["score"] = round(float(hit["score"]), 6)
             hit["rank_score"] = hit["score"]
+            exact_code_component = (
+                hit["score"]
+                if str(hit.get("match_type") or "") in {"code", "system_code", "umls_identifier"}
+                else 0.0
+            )
             hit["score_breakdown"] = {
                 "rank_score": hit["score"],
                 "retrieval_score": hit["score"],
@@ -635,6 +1391,7 @@ class SearchHydrationMixin:
                 "label_fallback_component": 0.0,
                 "exact_label_component": 0.0,
                 "exact_primary_name_component": 0.0,
+                "exact_code_component": exact_code_component,
                 "evidence_component": 0.04 if int(hit.get("evidence_count") or 0) > 0 else -0.10,
                 "primary_name_component": 0.0,
                 "negated_finding_component": 0.0,
@@ -672,12 +1429,23 @@ class SearchHydrationMixin:
             "query": resolution.get("query") or "",
             "top_k": top_k,
             "search_mode": search_mode,
+            "search_scope": search_scope,
             "backend": "resolver",
-            "scoring": self.scoring_summary("resolver", search_mode=search_mode),
+            "scoring": self.scoring_summary(
+                "resolver",
+                search_mode=search_mode,
+                search_scope=search_scope,
+            ),
             "semantic_bucket_filter": list(semantic_bucket_keys),
             "input_type": resolution.get("input_type") or "",
-            "resolution": resolution,
+            "resolution": response_resolution,
             "hits": hits,
+            **self.result_score_filter_metadata(
+                search_mode=search_mode,
+                semantic_bucket_keys=semantic_bucket_keys,
+                before_count=len(hits),
+                after_count=len(hits),
+            ),
             **self.source_contribution_metadata(hits, include_debug=debug),
             **self.semantic_response_metadata(
                 hits,
@@ -685,4 +1453,4 @@ class SearchHydrationMixin:
                 semantic_bucket_keys=semantic_bucket_keys,
             ),
             "elapsed_ms": round((time.time() - started) * 1000, 1),
-        }, include_debug=debug)
+        }, include_debug=debug, include_evidence_items=include_evidence_items)

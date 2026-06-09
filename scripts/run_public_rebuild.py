@@ -117,7 +117,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Run the public-first reproducible rebuild using public corpora and "
-            "locally licensed UMLS files. Does not use MIMIC or other EHR data."
+            "locally licensed UMLS files. Does not use EHR data."
         )
     )
     parser.add_argument(
@@ -137,9 +137,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--clinicaltrials-query", default="cancer OR diabetes OR migraine OR sepsis OR pneumonia")
     parser.add_argument("--clinicaltrials-max-records", type=int, default=100)
     parser.add_argument("--clinicaltrials-page-size", type=int, default=25)
-    parser.add_argument("--medlineplus-max-records", type=int, default=500, help="0 means no limit")
+    parser.add_argument(
+        "--clinicaltrials-registry-context",
+        action="store_true",
+        help="Include protocol/eligibility registry text. Default is posted outcome results only.",
+    )
+    parser.add_argument("--medlineplus-max-records", type=int, default=0, help="0 means no limit; default is the full MedlinePlus feed")
     parser.add_argument("--medlineplus-source-url", help="Optional pinned MedlinePlus health topic XML or ZIP URL.")
-    parser.add_argument("--include-medlineplus-spanish", action="store_true")
+    medlineplus_language_group = parser.add_mutually_exclusive_group()
+    medlineplus_language_group.add_argument(
+        "--include-medlineplus-spanish",
+        dest="include_medlineplus_spanish",
+        action="store_true",
+        default=True,
+        help="Include Spanish MedlinePlus health topics. This is the default for full MedlinePlus snapshots.",
+    )
+    medlineplus_language_group.add_argument(
+        "--english-medlineplus-only",
+        dest="include_medlineplus_spanish",
+        action="store_false",
+        help="Exclude Spanish MedlinePlus health topics.",
+    )
     parser.add_argument("--medlineplus-genetics-max-records", type=int, default=500, help="0 means no limit")
     parser.add_argument("--medlineplus-genetics-source-url", default="https://medlineplus.gov/download/ghr-summaries.xml")
     parser.add_argument("--dailymed-drug", action="append", dest="dailymed_drug_names", help="DailyMed drug-name subset seed. Repeat as needed.")
@@ -210,8 +228,9 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "Augment the research relation index with staged HPO disease/gene/phenotype "
-            "annotation files. Review HPO/OMIM/Orphanet annotation reuse terms before "
-            "redistributing derived artifacts."
+            "annotation files. Treat Orphanet as UMLS/source-code crosswalk coverage, "
+            "not a separate fetch target; review HPO/OMIM/Orphanet annotation reuse "
+            "terms before redistributing derived artifacts."
         ),
     )
     parser.add_argument("--skip-reference-pages", action="store_true")
@@ -318,21 +337,22 @@ def public_rebuild_commands(args: argparse.Namespace) -> tuple[list[list[str]], 
             pmc.extend(["--max-chars", str(args.pmc_max_chars)])
         commands.extend([pubmed, europepmc, pmc])
         if not args.skip_clinicaltrials:
-            commands.append(
-                [
-                    args.python,
-                    "scripts/evidence_vectors.py",
-                    "fetch-clinicaltrials",
-                    "--query",
-                    args.clinicaltrials_query,
-                    "--max-records",
-                    str(args.clinicaltrials_max_records),
-                    "--page-size",
-                    str(args.clinicaltrials_page_size),
-                    "--out",
-                    rel(paths["clinicaltrials_corpus"]),
-                ]
-            )
+            clinicaltrials = [
+                args.python,
+                "scripts/evidence_vectors.py",
+                "fetch-clinicaltrials",
+                "--query",
+                args.clinicaltrials_query,
+                "--max-records",
+                str(args.clinicaltrials_max_records),
+                "--page-size",
+                str(args.clinicaltrials_page_size),
+                "--out",
+                rel(paths["clinicaltrials_corpus"]),
+            ]
+            if not args.clinicaltrials_registry_context:
+                clinicaltrials.append("--outcomes-only")
+            commands.append(clinicaltrials)
         if not args.skip_medlineplus:
             medlineplus = [
                 args.python,

@@ -2,14 +2,19 @@
       status: null,
       lastQuery: "",
       lastResults: [],
+      lastMentions: [],
+      lastMentionCount: 0,
+      lastLinkedConcepts: [],
       lastSemanticViews: [],
       lastSemanticViewSources: [],
       lastSemanticGroupViews: [],
       lastSemanticResultBuckets: [],
       lastRelatedResultBuckets: [],
       lastScoring: null,
-      includeRelated: false,
+      includeRelated: true,
       searchMode: "balanced",
+      searchScope: "umls_evidence",
+      sourceCodeSabs: "default",
       selectedSemanticBucketKeys: [],
       searchRequestSeq: 0,
       searchAbortController: null,
@@ -28,12 +33,18 @@
     })();
 
     const SEMANTIC_BUCKET_FETCH_MIN = 60;
-    const SEMANTIC_BUCKET_MIN_RELEVANCE = 0.25;
     const RELATED_BUCKET_MIN_STRENGTH = 0.58;
     const RELATED_BUCKET_MIN_CONFIDENCE = 0.50;
+    const SELECTED_SEMANTIC_FILTER_MIN_RELEVANCE = 0.20;
     const BRAND_STATUS = "UMLS 2.0";
     const SNOMED_LICENSE_ACK_KEY = "qe_snomed_license_ack_v2";
     let snomedLicenseAcknowledgedForSession = false;
+    const LINKABLE_SHORT_EXACT_MATCH_GROUPS = new Set([
+      "DISO", "FIND", "PHEN", "PHYS", "PROC", "CHEM", "LIVB"
+    ]);
+    const TEMPORAL_WORD_CHEMICAL_SPANS = new Set([
+      "today", "tomorrow", "tonight", "yesterday"
+    ]);
     const CONTRAINDICATION_RELATION_MARKERS = [
       "contraindicat"
     ];
@@ -153,6 +164,7 @@
       "inverse_clinically_associated_with"
     ]);
     const NOISY_BROAD_RELATION_BUCKET_KEYS = new Set(["CHEM", "CLIN_ATTR", "GENE", "PROC"]);
+    const NOISY_ORGANISM_SOURCE_SEMANTIC_TYPES = new Set(["finding", "sign or symptom"]);
     const RELATION_OVERLAP_STOPWORDS = new Set([
       "and",
       "for",
@@ -174,6 +186,7 @@
         key: "DISO_DISEASE",
         label: "Diseases & Syndromes",
         code: "DISO",
+        minRelevance: 0.65,
         semanticTypes: [
           "acquired abnormality",
           "anatomical abnormality",
@@ -191,18 +204,20 @@
         key: "DISO_FINDING",
         label: "Findings & Symptoms",
         code: "FIND",
+        minRelevance: 0.60,
         semanticTypes: [
           "finding",
           "sign or symptom"
         ]
       },
-      { key: "CHEM", label: "Drugs", code: "CHEM", codes: ["CHEM"] },
-      { key: "PROC", label: "Procedures", code: "PROC", codes: ["PROC"] },
+      { key: "CHEM", label: "Drugs", code: "CHEM", codes: ["CHEM"], minRelevance: 0.75 },
+      { key: "PROC", label: "Procedures", code: "PROC", codes: ["PROC"], minRelevance: 0.70 },
       {
         key: "CLIN_ATTR",
         label: "Observations & Lab Results",
         code: "OBS",
         codes: ["OBS"],
+        minRelevance: 0.60,
         semanticTypes: [
           "clinical attribute",
           "laboratory procedure",
@@ -214,6 +229,7 @@
         label: "Genes, Amino Acids, Peptides, Proteins",
         code: "GENE",
         codes: ["GENE"],
+        minRelevance: 0.85,
         semanticTypes: [
           "amino acid sequence",
           "amino acid, peptide, or protein",
@@ -222,11 +238,12 @@
           "nucleotide sequence"
         ]
       },
-      { key: "DEVI", label: "Devices", code: "DEVI", codes: ["DEVI"] },
+      { key: "DEVI", label: "Devices", code: "DEVI", codes: ["DEVI"], minRelevance: 0.70 },
       {
         key: "ORGANISM",
         label: "Organisms",
         code: "LIVB",
+        minRelevance: 0.75,
         semanticTypes: [
           "alga",
           "archaeon",
@@ -240,6 +257,7 @@
         key: "PEOPLE",
         label: "People & Populations",
         code: "LIVB",
+        minRelevance: 0.70,
         semanticTypes: [
           "age group",
           "family group",
@@ -250,8 +268,14 @@
           "professional or occupational group"
         ]
       },
-      { key: "ANAT", label: "Anatomy", code: "ANAT", codes: ["ANAT"] }
+      { key: "ANAT", label: "Anatomy", code: "ANAT", codes: ["ANAT"], minRelevance: 0.70 }
     ];
+    const FALLBACK_SEMANTIC_RESULT_BUCKET = {
+      key: "OTHER",
+      label: "Other Concepts",
+      code: "OTHER",
+      codes: ["OTHER"]
+    };
     const DEFAULT_PARAGRAPH_TESTS = [
       "Patient with heart failure with reduced ejection fraction reported worsening orthopnea and leg edema after missing several doses of furosemide. Exam showed bibasilar crackles, and echocardiogram demonstrated reduced ejection fraction.",
       "Computed tomography angiography showed acute pulmonary embolism with right heart strain. The patient was started on apixaban after venous duplex ultrasound confirmed acute deep vein thrombosis.",
@@ -288,6 +312,7 @@
     ];
     let clinicalNoteSuggestions = [];
     let paragraphTests = [];
+    let longQueries = [];
     let semanticResultBucketDefs = DEFAULT_SEMANTIC_RESULT_BUCKETS;
     let semanticResultBucketsReady = Promise.resolve();
     let semanticExpansionProfiles = [];
@@ -318,6 +343,8 @@
         paragraphTests = DEFAULT_PARAGRAPH_TESTS;
       }
       if (!paragraphTests.length) paragraphTests = DEFAULT_PARAGRAPH_TESTS;
+      longQueries = paragraphTests.filter(isLongSampleQuery);
+      updateSampleStatus();
     }
 
     async function loadSemanticResultBuckets() {
@@ -345,9 +372,17 @@
         const codes = Array.isArray(bucket?.codes)
           ? bucket.codes.map((value) => String(value || "").trim()).filter(Boolean)
           : [];
+        const minRelevance = Number(bucket?.minRelevance ?? bucket?.min_relevance);
         if (!key || !label || seen.has(key)) return null;
         seen.add(key);
-        return { key, label, code, semanticTypes, codes };
+        return {
+          key,
+          label,
+          code,
+          semanticTypes,
+          codes,
+          ...(Number.isFinite(minRelevance) ? { minRelevance } : {})
+        };
       }).filter(Boolean);
     }
 
@@ -378,10 +413,56 @@
       return keys.length ? `&semantic_buckets=${encodeURIComponent(keys.join(","))}` : "";
     }
 
+    function selectedSourceCodeSabs() {
+      if (publicOutputOnly()) return "none";
+      const value = String(els.sourceCodes?.value || "default").trim();
+      return value || "default";
+    }
+
+    function sourceCodeQueryParam(value = selectedSourceCodeSabs()) {
+      return `&codes=${encodeURIComponent(value || "default")}`;
+    }
+
+    function publicOutputOnly() {
+      return Boolean(state.status?.public_output_only);
+    }
+
+    function updateSourceCodeControl() {
+      if (!els.sourceCodes) return;
+      const hiddenByPublicMode = publicOutputOnly();
+      els.sourceCodes.disabled = hiddenByPublicMode;
+      if (hiddenByPublicMode) {
+        els.sourceCodes.value = "none";
+        state.sourceCodeSabs = "none";
+      }
+      if (els.sourceCodesHint) {
+        els.sourceCodesHint.hidden = hiddenByPublicMode;
+        els.sourceCodesHint.classList.toggle("is-warning", hiddenByPublicMode);
+        els.sourceCodesHint.textContent = hiddenByPublicMode ? "" : "Choose which source-asserted code mappings to show.";
+      }
+    }
+
     function selectedSearchMode() {
       const mode = String(els.searchMode?.value || "balanced").trim().toLowerCase();
       if (mode === "exact") return mode;
       return "balanced";
+    }
+
+    function selectedSearchScope() {
+      const scope = String(els.searchScope?.value || "umls_evidence").trim().toLowerCase();
+      return scope === "umls" ? "umls" : "umls_evidence";
+    }
+
+    function searchScopeQueryParam(value = selectedSearchScope()) {
+      return `&scope=${encodeURIComponent(value || "umls_evidence")}`;
+    }
+
+    function includeRelatedForSearch(searchMode, searchScope) {
+      return searchMode === "exact" || searchScope === "umls" ? "0" : "1";
+    }
+
+    function searchScopeLabel(value) {
+      return value === "umls" ? "UMLS only" : "UMLS + evidence";
     }
 
     function activeSemanticResultBucketDefs() {
@@ -441,8 +522,8 @@
 
     const els = {};
     for (const id of [
-      "status", "query", "topK", "searchMode", "semanticGroupFilter", "searchBtn", "randomQueryBtn", "querySet", "runSetBtn",
-      "includeRelated", "saveJudgmentsBtn", "clearJudgmentsBtn", "exportBtn", "metrics", "results", "setResults",
+      "status", "query", "topK", "searchMode", "searchScope", "semanticGroupFilter", "sourceCodes", "searchBtn", "randomQueryBtn", "longQueryBtn", "sampleStatus", "querySet", "runSetBtn",
+      "sourceCodesHint", "saveJudgmentsBtn", "clearJudgmentsBtn", "exportBtn", "metrics", "results", "setResults",
       "searchProgress", "searchFeedback", "querySetFeedback",
       "snomedLicenseDialog", "snomedLicenseCheckbox", "snomedLicenseAcceptBtn"
     ]) {
@@ -495,6 +576,11 @@
       return String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     }
 
+    function isLongSampleQuery(query) {
+      const text = String(query || "").trim();
+      return text.length >= 1200 || text.startsWith("Full-page sample query ");
+    }
+
     function combinedSuggestionQueries() {
       const seen = new Set();
       return [...clinicalNoteSuggestions, ...paragraphTests]
@@ -507,13 +593,28 @@
         });
     }
 
+    function longSuggestionQueries() {
+      if (longQueries.length) return longQueries;
+      return combinedSuggestionQueries().filter(isLongSampleQuery);
+    }
+
+    function updateSampleStatus() {
+      if (!els.sampleStatus) return;
+      const total = combinedSuggestionQueries().length;
+      const longCount = longSuggestionQueries().length;
+      els.sampleStatus.textContent = total
+        ? `${fmtNum(total)} samples loaded · ${fmtNum(longCount)} long`
+        : "No samples loaded";
+    }
+
     function updateRandomQueryButton() {
       if (!els.randomQueryBtn) return;
       els.randomQueryBtn.disabled = !combinedSuggestionQueries().length;
+      if (els.longQueryBtn) els.longQueryBtn.disabled = !longSuggestionQueries().length;
+      updateSampleStatus();
     }
 
-    function selectRandomQuery() {
-      const queries = combinedSuggestionQueries();
+    function selectQueryFromPool(queries) {
       if (!queries.length) return;
       const current = String(els.query?.value || "").trim();
       let selected = queries[Math.floor(Math.random() * queries.length)];
@@ -527,6 +628,14 @@
       els.query.value = selected;
       els.query.focus();
       runSearch();
+    }
+
+    function selectRandomQuery() {
+      selectQueryFromPool(combinedSuggestionQueries());
+    }
+
+    function selectLongQuery() {
+      selectQueryFromPool(longSuggestionQueries());
     }
 
     function loadJudgments() {
@@ -631,6 +740,7 @@
         state.status = null;
       }
       setBrandStatus();
+      updateSourceCodeControl();
       renderMetrics();
     }
 
@@ -660,12 +770,12 @@
       if (!requireSnomedLicenseAcknowledgement()) return;
       const query = els.query.value.trim();
       const topK = Math.max(18, Math.min(100, Number(els.topK.value) || SEMANTIC_BUCKET_FETCH_MIN));
-      const includeRelated = els.includeRelated && els.includeRelated.checked ? "1" : "0";
       const searchMode = selectedSearchMode();
+      const searchScope = selectedSearchScope();
+      const includeRelated = includeRelatedForSearch(searchMode, searchScope);
       const semanticBucketKeys = selectedSemanticBucketKeys();
-      const searchK = searchMode === "comprehensive"
-        ? Math.max(topK, 100)
-        : (includeRelated === "1" ? topK : Math.max(topK, SEMANTIC_BUCKET_FETCH_MIN));
+      const sourceCodes = selectedSourceCodeSabs();
+      const searchK = topK;
       if (!query) {
         setSearchFeedback("Enter text, a CUI, or a source code before searching.", "error");
         return;
@@ -681,7 +791,7 @@
       setBrandStatus();
       try {
         const payload = await api(
-          `/api/search?q=${encodeURIComponent(query)}&k=${searchK}&related=${includeRelated}&mode=${encodeURIComponent(searchMode)}${semanticBucketFilterQueryParam(semanticBucketKeys)}`,
+          `/api/search?q=${encodeURIComponent(query)}&k=${searchK}&related=${includeRelated}&linked=${includeRelated}&evidence_items=0&mode=${encodeURIComponent(searchMode)}${searchScopeQueryParam(searchScope)}${semanticBucketFilterQueryParam(semanticBucketKeys)}${sourceCodeQueryParam(sourceCodes)}`,
           { signal: controller?.signal }
         );
         if (searchId !== state.searchRequestSeq) return;
@@ -689,6 +799,9 @@
         if (searchId !== state.searchRequestSeq) return;
         state.lastQuery = query;
         state.lastResults = payload.hits || [];
+        state.lastMentions = payload.mentions || [];
+        state.lastMentionCount = Number(payload.mention_count || state.lastMentions.length || 0);
+        state.lastLinkedConcepts = payload.linked_concepts || [];
         state.lastSemanticViews = payload.semantic_views || [];
         state.lastSemanticViewSources = payload.semantic_view_sources || [];
         state.lastSemanticGroupViews = payload.semantic_group_views || [];
@@ -697,6 +810,8 @@
         state.lastScoring = payload.scoring || null;
         state.includeRelated = includeRelated === "1";
         state.searchMode = payload.search_mode || searchMode;
+        state.searchScope = payload.search_scope || searchScope;
+        state.sourceCodeSabs = sourceCodes;
         state.selectedSemanticBucketKeys = semanticBucketKeys;
         setBrandStatus();
         setSearchFeedback();
@@ -737,6 +852,34 @@
       persistJudgmentsToServer().catch((err) => {
         setBrandStatus();
       });
+    }
+
+    function judgmentGradeForHit(hit) {
+      if (!hit?.doc_id) return "";
+      return state.judgments[judgmentKey(state.lastQuery, hit.doc_id)]?.grade || "";
+    }
+
+    function visibleHitByDocId(docId) {
+      const id = String(docId || "");
+      if (!id) return null;
+      return state.lastResults.find((item) => item.doc_id === id)
+        || displayedRelatedHits().find((item) => item.doc_id === id)
+        || null;
+    }
+
+    function badResultButton(hit, grade) {
+      const active = grade === "wrong";
+      const label = active ? "Marked bad. Click to clear." : "Mark result bad";
+      return `
+        <button
+          class="result-bad-button${active ? " active" : ""}"
+          type="button"
+          data-doc="${esc(hit.doc_id || "")}"
+          data-grade="wrong"
+          aria-pressed="${active ? "true" : "false"}"
+          aria-label="${esc(label)}"
+          title="${esc(label)}"
+        >X</button>`;
     }
 
     function semanticGroupForHit(hit) {
@@ -808,6 +951,7 @@
       if (isContraindicationRelation(relation)) return false;
       if (bucket.key === "GENE" && isDrugLikeGeneBucketRelation(relation)) return false;
       if (isNoisyBroadRelation(relation, bucket)) return false;
+      if (isNoisySymptomToOrganismRelation(relation, bucket)) return false;
       return true;
     }
 
@@ -972,6 +1116,20 @@
       return !relationHasSourceLabelOverlap(relation);
     }
 
+    function isNoisySymptomToOrganismRelation(relation, bucket) {
+      if (bucket.key !== "ORGANISM") return false;
+      const source = String(relation.source || "").trim().toLowerCase();
+      if (!NOISY_BROAD_RELATION_SOURCES.has(source)) return false;
+      const relationValues = [
+        String(relation.rela || "").trim().toLowerCase(),
+        String(relation.relation || "").trim().toLowerCase()
+      ];
+      if (!relationValues.some((value) => NOISY_BROAD_RELATION_RELAS.has(value))) return false;
+      const sourceType = String(relation.source_semantic_type || "").trim().toLowerCase();
+      if (!NOISY_ORGANISM_SOURCE_SEMANTIC_TYPES.has(sourceType)) return false;
+      return !relationHasSourceLabelOverlap(relation);
+    }
+
     function relationIsRepresentedInResultBuckets(relation, groupCode) {
       return semanticResultBucketDefs.some((bucket) =>
         relationVisibleInSemanticBucket(relation, bucket, groupCode)
@@ -1067,9 +1225,252 @@
       return normalized ? normalized.split(" ").length : 0;
     }
 
+    function phraseTokens(value) {
+      const normalized = normalizedPhrase(value);
+      return normalized ? normalized.split(" ") : [];
+    }
+
+    const LINKABLE_TOKEN_GROUPS = new Set([
+      "ANAT", "CHEM", "DEVI", "DISO", "FIND", "GENE", "LIVB", "OBS", "PHEN", "PHYS", "PROC"
+    ]);
+    const LINKABLE_TOKEN_EXCLUDED_TYPES = new Set([
+      "health care activity"
+    ]);
+    const LINKABLE_TOKEN_STOPWORDS = new Set([
+      "a", "an", "and", "are", "as", "by", "for", "from", "has", "have", "in", "is",
+      "no", "nos", "not", "of", "or", "the", "to", "was", "were", "with",
+      "activity", "care", "clinical", "entity", "finding", "finding", "history",
+      "improved", "intake", "management", "note", "patient", "procedure", "result",
+      "showed", "study", "therapy", "treatment"
+    ]);
+    const LINKABLE_FALLBACK_HEADWORDS = new Set([
+      "calculus",
+      "stone"
+    ]);
+    const LINKABLE_FALLBACK_MODIFIERS = new Set([
+      "bilateral",
+      "distal",
+      "infected",
+      "kidney",
+      "left",
+      "obstructed",
+      "obstructing",
+      "obstructive",
+      "proximal",
+      "renal",
+      "right",
+      "ureteral",
+      "ureteric",
+      "urinary"
+    ]);
+    const LINKABLE_FALLBACK_GROUPS = new Set(["DISO", "FIND", "PHEN"]);
+
+    function normalizedFallbackHeadword(value) {
+      const token = String(value || "").toLowerCase();
+      if (token === "calculi") return "calculus";
+      if (token === "stones") return "stone";
+      return token;
+    }
+
+    function normalizedLinkToken(value) {
+      let token = normalizedFallbackHeadword(value);
+      if (token.endsWith("ies") && token.length > 4) {
+        token = `${token.slice(0, -3)}y`;
+      } else if (token.endsWith("es") && token.length > 4 && /(ches|shes|xes|zes|ses)$/.test(token)) {
+        token = token.slice(0, -2);
+      } else if (
+        token.endsWith("s") &&
+        token.length > 4 &&
+        !/(ss|us|is|sis)$/.test(token)
+      ) {
+        token = token.slice(0, -1);
+      }
+      return token;
+    }
+
+    function isSignificantLinkToken(token) {
+      const value = normalizedLinkToken(token);
+      if (!value || LINKABLE_TOKEN_STOPWORDS.has(value)) return false;
+      return value.length >= 3 || /^\d+$/.test(value);
+    }
+
+    function queryTokenSpans(query) {
+      const spans = [];
+      const regex = /[A-Za-z0-9]+/g;
+      let match;
+      while ((match = regex.exec(query)) !== null) {
+        spans.push({
+          text: match[0],
+          normalized: normalizedLinkToken(match[0]),
+          start: match.index,
+          end: match.index + match[0].length
+        });
+      }
+      return spans;
+    }
+
+    function canUseHeadwordFallback(hit) {
+      return LINKABLE_FALLBACK_GROUPS.has(semanticGroupForHit(hit).code);
+    }
+
+    function canUseTokenFallback(hit) {
+      if (!LINKABLE_TOKEN_GROUPS.has(semanticGroupForHit(hit).code)) return false;
+      const typeNames = semanticTypeNamesForHit(hit);
+      return ![...typeNames].some((typeName) => LINKABLE_TOKEN_EXCLUDED_TYPES.has(typeName));
+    }
+
+    function expandableModifierJoin(query, previous, current) {
+      if (!previous || !current) return false;
+      const bridge = query.slice(previous.end, current.start);
+      return /^[\s-]+$/.test(bridge);
+    }
+
+    function expandFallbackHeadwordSpan(query, tokenSpans, index) {
+      let startIndex = index;
+      while (startIndex > 0 && index - startIndex < 2) {
+        const previous = tokenSpans[startIndex - 1];
+        const current = tokenSpans[startIndex];
+        if (!LINKABLE_FALLBACK_MODIFIERS.has(previous.normalized)) break;
+        if (!expandableModifierJoin(query, previous, current)) break;
+        startIndex -= 1;
+      }
+      return {
+        start: tokenSpans[startIndex].start,
+        end: tokenSpans[index].end,
+        text: query.slice(tokenSpans[startIndex].start, tokenSpans[index].end)
+      };
+    }
+
+    function fallbackHeadwordSpans(query, label, hit) {
+      if (!canUseHeadwordFallback(hit)) return [];
+      const labelHeadwords = new Set(
+        phraseTokens(label)
+          .map(normalizedFallbackHeadword)
+          .filter((token) => LINKABLE_FALLBACK_HEADWORDS.has(token))
+      );
+      if (!labelHeadwords.size) return [];
+      const tokenSpans = queryTokenSpans(query);
+      return tokenSpans
+        .map((token, index) => labelHeadwords.has(token.normalized)
+          ? expandFallbackHeadwordSpan(query, tokenSpans, index)
+          : null
+        )
+        .filter(Boolean);
+    }
+
+    function tokenJoinCanLink(query, previous, current) {
+      if (!previous || !current) return false;
+      const bridge = query.slice(previous.end, current.start);
+      return !/[.,;:!?]/.test(bridge);
+    }
+
+    function tokenSequenceQuerySpans(query, phrase) {
+      const phraseTokenValues = phraseTokens(phrase).map(normalizedLinkToken).filter(Boolean);
+      if (phraseTokenValues.length < 2) return [];
+      const tokenSpans = queryTokenSpans(query);
+      const spans = [];
+      for (let index = 0; index <= tokenSpans.length - phraseTokenValues.length; index += 1) {
+        let matched = true;
+        for (let offset = 0; offset < phraseTokenValues.length; offset += 1) {
+          if (tokenSpans[index + offset].normalized !== phraseTokenValues[offset]) {
+            matched = false;
+            break;
+          }
+          if (
+            offset > 0 &&
+            !tokenJoinCanLink(query, tokenSpans[index + offset - 1], tokenSpans[index + offset])
+          ) {
+            matched = false;
+            break;
+          }
+        }
+        if (!matched) continue;
+        const start = tokenSpans[index].start;
+        const end = tokenSpans[index + phraseTokenValues.length - 1].end;
+        spans.push({ start, end, text: query.slice(start, end) });
+      }
+      return spans;
+    }
+
+    function labelLinkTokenSet(label) {
+      return new Set(
+        phraseTokens(label)
+          .map(normalizedLinkToken)
+          .filter(isSignificantLinkToken)
+      );
+    }
+
+    function tokenRunCanLink(run, hit) {
+      const tokenValues = run.map((token) => token.normalized);
+      const informative = tokenValues.filter((token) => !LINKABLE_TOKEN_STOPWORDS.has(token));
+      if (!informative.length) return false;
+      if (run.length >= 2) return true;
+      const token = informative[0] || "";
+      if (token.length >= 6) return true;
+      if (semanticGroupForHit(hit).code === "GENE" && /^[A-Z][A-Z0-9-]{2,11}$/.test(run[0].text)) return true;
+      return false;
+    }
+
+    function fallbackTokenRunSpans(query, label, hit) {
+      if (!canUseTokenFallback(hit)) return [];
+      const labelTokens = labelLinkTokenSet(label);
+      if (!labelTokens.size) return [];
+      const tokenSpans = queryTokenSpans(query);
+      const spans = [];
+      let index = 0;
+      while (index < tokenSpans.length) {
+        const token = tokenSpans[index];
+        if (!labelTokens.has(token.normalized) || !isSignificantLinkToken(token.normalized)) {
+          index += 1;
+          continue;
+        }
+        let endIndex = index;
+        while (
+          endIndex + 1 < tokenSpans.length &&
+          labelTokens.has(tokenSpans[endIndex + 1].normalized) &&
+          isSignificantLinkToken(tokenSpans[endIndex + 1].normalized) &&
+          tokenJoinCanLink(query, tokenSpans[endIndex], tokenSpans[endIndex + 1])
+        ) {
+          endIndex += 1;
+        }
+        const run = tokenSpans.slice(index, endIndex + 1);
+        if (tokenRunCanLink(run, hit)) {
+          spans.push({
+            start: run[0].start,
+            end: run[run.length - 1].end,
+            text: query.slice(run[0].start, run[run.length - 1].end)
+          });
+        }
+        index = Math.max(endIndex + 1, index + 1);
+      }
+      return spans;
+    }
+
     function isShortGeneSymbolLabel(label, hit) {
       if (semanticGroupForHit(hit).code !== "GENE") return false;
       return /^[A-Z][A-Z0-9-]{2,11}$/.test(String(label || "").trim());
+    }
+
+    function isExactMatchedConceptLabel(label, hit) {
+      const normalized = normalizedPhrase(label);
+      if (!normalized || !hit) return false;
+      return [hit.matched_query_span, hit.matched_input, hit.matched_label]
+        .some((value) => normalizedPhrase(value) === normalized);
+    }
+
+    function isShortExactClinicalConceptLabel(label, hit) {
+      const normalized = normalizedPhrase(label);
+      if (normalized.length < 4 || phraseTokenCount(label) !== 1) return false;
+      if (!LINKABLE_SHORT_EXACT_MATCH_GROUPS.has(semanticGroupForHit(hit).code)) return false;
+      return isExactMatchedConceptLabel(label, hit);
+    }
+
+    function isTemporalWordChemicalConcept(hit, matchedText) {
+      const normalized = normalizedPhrase(matchedText || hit?.matched_query_span || hit?.matched_label || hit?.name || "");
+      if (!TEMPORAL_WORD_CHEMICAL_SPANS.has(normalized)) return false;
+      if (semanticGroupForHit(hit).code !== "CHEM") return false;
+      const semanticText = normalizedPhrase(semanticDisplayTypeForHit(hit));
+      return semanticText === "organic chemical" || semanticText === "inorganic chemical";
     }
 
     function isUsefulConceptLabel(label, hit = null) {
@@ -1086,6 +1487,7 @@
       if (generic.has(normalized)) return false;
       if (isShortGeneSymbolLabel(value, hit)) return true;
       if (normalized.length < 4) return false;
+      if (isShortExactClinicalConceptLabel(value, hit)) return true;
       return phraseTokenCount(value) >= 2 || normalized.length >= 6;
     }
 
@@ -1123,6 +1525,11 @@
       } catch (err) {
         return spans;
       }
+      for (const tokenSpan of tokenSequenceQuerySpans(query, phrase)) {
+        if (!spans.some((span) => span.start === tokenSpan.start && span.end === tokenSpan.end)) {
+          spans.push(tokenSpan);
+        }
+      }
       return spans.sort((a, b) => a.start - b.start || b.end - a.end);
     }
 
@@ -1134,6 +1541,7 @@
       const values = [
         hit.matched_query_span,
         hit.matched_input,
+        hit.matched_label,
         displayNameForHit(hit),
         hit.name,
         ...(hit.labels || [])
@@ -1154,26 +1562,38 @@
       const candidates = [];
       (hits || []).forEach((hit, hitIndex) => {
         for (const label of conceptLabelCandidates(hit)) {
-          for (const span of findQuerySpans(query, label)) {
-            candidates.push({
-              hit,
-              hitIndex,
-              cui: hit.cui,
-              name: displayNameForHit(hit),
-              labels: hit.labels || [],
-              semanticType: semanticDisplayTypeForHit(hit),
-              semanticGroup: semanticGroupForHit(hit).code,
-              matchedText: span.text,
-              start: span.start,
-              end: span.end,
-              tokenCount: phraseTokenCount(span.text),
-              label
-            });
+          const spanGroups = [
+            { quality: 3, spans: findQuerySpans(query, label) },
+            { quality: 2, spans: fallbackTokenRunSpans(query, label, hit) },
+            { quality: 1, spans: fallbackHeadwordSpans(query, label, hit) }
+          ];
+          for (const group of spanGroups) {
+            for (const span of group.spans) {
+              if (isTemporalWordChemicalConcept(hit, span.text)) continue;
+              candidates.push({
+                hit,
+                hitIndex,
+                matchQuality: group.quality,
+                cui: hit.cui,
+                name: displayNameForHit(hit),
+                labels: hit.labels || [],
+                semanticType: semanticDisplayTypeForHit(hit),
+                semanticGroup: semanticGroupForHit(hit).code,
+                matchedText: span.text,
+                start: span.start,
+                end: span.end,
+                tokenCount: phraseTokenCount(span.text),
+                label,
+                linkedOnly: Boolean(hit.linked_only)
+              });
+            }
           }
         }
       });
       candidates.sort((a, b) =>
         a.start - b.start
+        || Number(a.linkedOnly) - Number(b.linkedOnly)
+        || b.matchQuality - a.matchQuality
         || (b.end - b.start) - (a.end - a.start)
         || a.hitIndex - b.hitIndex
       );
@@ -1214,6 +1634,12 @@
       "chronic", "left", "right", "lower", "upper", "reduced", "preserved",
       "elevated", "low", "high", "positive", "negative", "severe", "moderate",
       "mild", "resistant", "sensitive", "suspected", "confirmed"
+    ]);
+    const CONCATENATION_LIST_BRIDGE_TOKENS = new Set([
+      "and", "or", "nor", "plus", "versus", "vs"
+    ]);
+    const CONCATENATION_RELATION_BRIDGE_TOKENS = new Set([
+      "with", "without", "associated", "related"
     ]);
     const CONCATENATION_GROUPS = new Set([
       "ANAT", "DISO", "FIND", "GENE", "LIVB", "PHEN", "PHYS", "PROC"
@@ -1563,10 +1989,38 @@
       return CONCATENATION_GROUPS.has(previousGroup) && CONCATENATION_GROUPS.has(currentGroup);
     }
 
-    function bridgeCanConcatenate(bridge) {
-      if (/[.;:!?]/.test(bridge || "")) return false;
-      const tokens = normalizedPhrase(bridge).split(" ").filter(Boolean);
-      if (!tokens.length) return true;
+    function conceptGroupCode(concept) {
+      return String(concept?.semanticGroup || "");
+    }
+
+    function conceptsAreClinicalAnchors(previous, current) {
+      return CLINICAL_ANCHOR_GROUPS.has(conceptGroupCode(previous))
+        && CLINICAL_ANCHOR_GROUPS.has(conceptGroupCode(current));
+    }
+
+    function whitespaceBridgeCanConcatenate(previous, current) {
+      const previousGroup = conceptGroupCode(previous);
+      const currentGroup = conceptGroupCode(current);
+      if (previousGroup === currentGroup) return false;
+      if (conceptsAreClinicalAnchors(previous, current)) return false;
+      return previousGroup === "ANAT" || currentGroup === "ANAT"
+        || previousGroup === "LIVB" || currentGroup === "LIVB";
+    }
+
+    function bridgeCanConcatenate(bridge, previous, current) {
+      const rawBridge = String(bridge || "");
+      if (/[.,;:!?]/.test(rawBridge)) return false;
+      const tokens = normalizedPhrase(rawBridge).split(" ").filter(Boolean);
+      if (!tokens.length) {
+        return /^\s*$/.test(rawBridge) && whitespaceBridgeCanConcatenate(previous, current);
+      }
+      if (tokens.some((token) => CONCATENATION_LIST_BRIDGE_TOKENS.has(token))) return false;
+      if (
+        conceptsAreClinicalAnchors(previous, current)
+        && tokens.some((token) => CONCATENATION_RELATION_BRIDGE_TOKENS.has(token))
+      ) {
+        return false;
+      }
       if (tokens.length > 5) return false;
       return tokens.every((token) =>
         CONCATENATION_BRIDGE_TOKENS.has(token) || /^\d+$/.test(token)
@@ -1579,7 +2033,7 @@
       if (current.start - previous.end > 48) return false;
       if (!conceptGroupsCanConcatenate(previous, current)) return false;
       const bridge = query.slice(previous.end, current.start);
-      return bridgeCanConcatenate(bridge);
+      return bridgeCanConcatenate(bridge, previous, current);
     }
 
     function renderConcatenationBridge(bridge) {
@@ -1631,8 +2085,9 @@
     function renderStructuredStatementPanel(statement) {
       const hasStructuredStatement = Boolean(statement?.hasStructuredStatement);
       const hasConcatenation = linkedConceptsHaveConcatenation(statement);
-      if (!hasStructuredStatement && !hasConcatenation) return "";
       const conceptCount = statement.linkedConcepts?.length || 0;
+      if (!hasStructuredStatement && !hasConcatenation && !conceptCount) return "";
+      const offsetDetails = renderStatementOffsetDetails();
       return `
         <div class="statement-panel result-statement-panel">
           <div class="statement-panel-head">
@@ -1640,21 +2095,23 @@
             <div class="muted small">${fmtNum(conceptCount)} linked ${conceptCount === 1 ? "concept" : "concepts"}</div>
           </div>
           <div class="statement-linked-sentence">${renderLinkedSentence(statement)}</div>
+          ${offsetDetails}
         </div>`;
     }
 
     function semanticResultBuckets(hits) {
-      if ((state.lastSemanticResultBuckets || []).length) {
-        return semanticResultBucketsFromPrecomputed(state.lastSemanticResultBuckets, hits);
-      }
       const assignedCuis = new Set();
-      return activeSemanticResultBucketDefs().map((bucket) => {
+      const thresholdExcludedCuis = new Set();
+      const groups = activeSemanticResultBucketDefs().map((bucket) => {
         const matches = [];
         hits.forEach((hit, index) => {
-          if (!hitClearsSemanticBucketRelevance(hit)) return;
           const hitKey = String(hit.cui || hit.doc_id || index);
-          if (assignedCuis.has(hitKey)) return;
+          if (assignedCuis.has(hitKey) || thresholdExcludedCuis.has(hitKey)) return;
           if (hitMatchesSemanticBucket(hit, bucket)) {
+            if (!hitClearsSemanticBucketRelevance(hit, bucket)) {
+              thresholdExcludedCuis.add(hitKey);
+              return;
+            }
             matches.push({ kind: "hit", hit, rank: index + 1 });
             assignedCuis.add(hitKey);
           }
@@ -1665,10 +2122,31 @@
           total: matches.length,
           relatedTotal: 0,
           bestRelevance,
+          minRelevance: semanticBucketMinRelevance(bucket),
           items: matches
         };
       }).filter((group) => group.items.length)
         .sort(compareResultGroupsByRelevance);
+      if ((state.selectedSemanticBucketKeys || []).length) return groups;
+
+      const unmatched = [];
+      hits.forEach((hit, index) => {
+        const hitKey = String(hit.cui || hit.doc_id || index);
+        if (assignedCuis.has(hitKey) || thresholdExcludedCuis.has(hitKey)) return;
+        if (!hitClearsSemanticBucketRelevance(hit, FALLBACK_SEMANTIC_RESULT_BUCKET)) return;
+        unmatched.push({ kind: "hit", hit, rank: index + 1 });
+        assignedCuis.add(hitKey);
+      });
+      if (unmatched.length) {
+        groups.push({
+          ...FALLBACK_SEMANTIC_RESULT_BUCKET,
+          total: unmatched.length,
+          relatedTotal: 0,
+          bestRelevance: unmatched.reduce((best, item) => Math.max(best, hitRelevanceScore(item.hit)), 0),
+          items: unmatched
+        });
+      }
+      return groups;
     }
 
     function semanticResultBucketsFromPrecomputed(precomputedGroups, hits) {
@@ -1687,9 +2165,9 @@
           if (item.kind !== "hit") continue;
           const hit = precomputedBucketHit(item, hitLookup);
           if (!hit) continue;
-          if (!hitClearsSemanticBucketRelevance(hit)) continue;
           const hitKey = String(hit.cui || hit.doc_id || "");
           if (!hitKey || assignedCuis.has(hitKey)) continue;
+          if (!hitClearsSemanticBucketRelevance(hit, bucket)) continue;
           hitItems.push({
             kind: "hit",
             hit,
@@ -1777,60 +2255,6 @@
           items
         };
       }).filter((group) => group.items.length)
-        .sort(compareResultGroupsByRelevance);
-    }
-
-    function resultItemKey(item) {
-      if (item?.kind === "relation") {
-        const relation = item.relation || {};
-        return String(relation.cui || relation.label || "").trim();
-      }
-      const hit = item?.hit || {};
-      return String(hit.cui || hit.doc_id || "").trim();
-    }
-
-    function mergeRelatedIntoResultBuckets(hitGroups, relatedGroups) {
-      const groups = (hitGroups || []).map((group) => ({
-        ...group,
-        items: [...(group.items || [])],
-        total: Number(group.total || 0),
-        relatedTotal: Number(group.relatedTotal || 0),
-        bestRelevance: Number(group.bestRelevance || 0)
-      }));
-      const byKey = new Map(groups.map((group) => [String(group.key || ""), group]));
-      const assigned = new Set(
-        groups.flatMap((group) => (group.items || []).map(resultItemKey).filter(Boolean))
-      );
-      for (const relatedGroup of relatedGroups || []) {
-        const key = String(relatedGroup.key || "").trim();
-        if (!key) continue;
-        let group = byKey.get(key);
-        if (!group) {
-          group = {
-            ...relatedGroup,
-            items: [],
-            total: 0,
-            relatedTotal: 0,
-            bestRelevance: Number(relatedGroup.bestRelevance || 0)
-          };
-          byKey.set(key, group);
-          groups.push(group);
-        }
-        let added = 0;
-        for (const item of relatedGroup.items || []) {
-          const itemKey = resultItemKey(item);
-          if (!itemKey || assigned.has(itemKey)) continue;
-          assigned.add(itemKey);
-          group.items.push(item);
-          added += 1;
-        }
-        group.relatedTotal = Number(group.relatedTotal || 0) + added;
-        group.bestRelevance = Math.max(
-          Number(group.bestRelevance || 0),
-          Number(relatedGroup.bestRelevance || 0)
-        );
-      }
-      return groups.filter((group) => (group.items || []).length)
         .sort(compareResultGroupsByRelevance);
     }
 
@@ -1950,8 +2374,92 @@
       return Number.isFinite(score) ? score : 0;
     }
 
-    function hitClearsSemanticBucketRelevance(hit) {
-      return hitRelevanceScore(hit) >= SEMANTIC_BUCKET_MIN_RELEVANCE;
+    function semanticBucketMinRelevance(bucket) {
+      const value = Number(bucket?.minRelevance);
+      const configured = Number.isFinite(value) ? value : 0.25;
+      if ((state.selectedSemanticBucketKeys || []).length) {
+        return Math.min(configured, SELECTED_SEMANTIC_FILTER_MIN_RELEVANCE);
+      }
+      return configured;
+    }
+
+    function hitClearsSemanticBucketRelevance(hit, bucket) {
+      return hitRelevanceScore(hit) >= semanticBucketMinRelevance(bucket);
+    }
+
+    function isRelatedHit(hit) {
+      return String(hit?.view || "") === "related" ||
+        String(hit?.view || "") === "graph" ||
+        String(hit?.match_type || "") === "related" ||
+        String(hit?.match_type || "") === "graph_support" ||
+        Boolean(hit?.related_seed_cui || hit?.related_seed_label);
+    }
+
+    function directTopRelevanceScore() {
+      return Math.max(
+        0,
+        ...state.lastResults
+          .filter((hit) => !isRelatedHit(hit))
+          .map((hit) => hitRelevanceScore(hit))
+      );
+    }
+
+    function directDisplayRelevance(hit) {
+      const topScore = directTopRelevanceScore();
+      const score = hitRelevanceScore(hit);
+      if (!topScore || !score) return 0;
+      return Math.max(1, Math.min(100, Math.round(100 * score / topScore)));
+    }
+
+    function relatedSeedHit(hit) {
+      const seedCui = String(hit?.related_seed_cui || "").trim();
+      if (seedCui) {
+        const byCui = state.lastResults.find((item) => String(item.cui || "") === seedCui);
+        if (byCui) return byCui;
+      }
+      const seedLabel = normalizedPhrase(hit?.related_seed_label || "");
+      if (seedLabel) {
+        return state.lastResults.find((item) => normalizedPhrase(displayNameForHit(item)) === seedLabel) || null;
+      }
+      return null;
+    }
+
+    function relatedDisplayRelevance(hit) {
+      const strength = Number(hit?.related_relation_strength ?? hit?.rank_score ?? hit?.score ?? 0);
+      const confidence = Number(hit?.related_relation_confidence ?? 0);
+      const cleanStrength = Number.isFinite(strength) ? strength : 0;
+      const cleanConfidence = Number.isFinite(confidence) ? confidence : 0;
+      const relationQuality = cleanStrength * (cleanConfidence > 0 ? cleanConfidence : 1);
+      const seed = relatedSeedHit(hit);
+      const seedRelevance = seed ? directDisplayRelevance(seed) : 60;
+      const seedRank = Math.max(1, Number(hit?.related_seed_rank || 1) || 1);
+      const seedRankFactor = Math.max(0.55, 1 / Math.sqrt(seedRank));
+      const relevance = seedRelevance * relationQuality * seedRankFactor * 0.75;
+      return Math.max(1, Math.min(100, Math.round(relevance)));
+    }
+
+    function displayRelevanceValue(hit) {
+      return isRelatedHit(hit) ? relatedDisplayRelevance(hit) : directDisplayRelevance(hit);
+    }
+
+    function compactRelevanceScore(hit) {
+      return displayRelevanceValue(hit).toString();
+    }
+
+    function resultItemRelevanceScore(item) {
+      if (item?.hit) return displayRelevanceValue(item.hit);
+      const [strength, confidence] = relationStrengthConfidence(item?.relation || item || {});
+      return Math.round(Math.max(strength * (confidence || 1) * 75, 1));
+    }
+
+    function compareResultItemsByRelevance(a, b) {
+      const scoreDelta = resultItemRelevanceScore(b) - resultItemRelevanceScore(a);
+      if (Math.abs(scoreDelta) > 0.000001) return scoreDelta;
+      return (Number(a?.rank || 0) || 0) - (Number(b?.rank || 0) || 0);
+    }
+
+    function sortedResultItems(items) {
+      return [...(items || [])].sort(compareResultItemsByRelevance);
     }
 
     function relationStrengthConfidence(relation) {
@@ -1974,44 +2482,25 @@
     }
 
     function resultShownLabel(group) {
-      if (!group.total && !group.relatedTotal) return "0 returned";
-      if (!group.relatedTotal) return `${fmtNum(group.items.length)} of ${fmtNum(group.total)} returned`;
-      return `${fmtNum(group.total)} returned · ${fmtNum(group.relatedTotal)} possibly related`;
+      if (!group.total) return "0 returned";
+      return `${fmtNum(group.items.length)} of ${fmtNum(group.total)} returned`;
     }
 
     function renderResultBucket(group) {
-      const hasOverflow = group.items.length > 4;
+      const items = sortedResultItems(group.items);
+      const hasOverflow = items.length > 4;
       return `
         <section class="result-group${hasOverflow ? " result-group-scrollable" : ""}" aria-label="${esc(group.label)} results">
           <div class="result-group-head">
             <div>
               <span class="result-group-title">${esc(group.label)}</span>
               <span class="result-group-code">${esc(group.code)}</span>
+              ${Number.isFinite(Number(group.minRelevance)) ? `<span class="result-group-code">min ${fmtScore(group.minRelevance)}</span>` : ""}
             </div>
             <div class="result-group-count">${esc(resultShownLabel(group))}</div>
           </div>
           <div class="result-group-items"${hasOverflow ? ' tabindex="0"' : ""}>
-            ${group.items.map((item) => item.kind === "relation"
-              ? renderCompactRelatedSuggestionCard(item.relation)
-              : renderCompactResultCard(item.hit, item.rank)
-            ).join("")}
-          </div>
-        </section>`;
-    }
-
-    function renderRelatedResultBucket(group) {
-      const hasOverflow = group.items.length > 4;
-      return `
-        <section class="result-group result-group-related${hasOverflow ? " result-group-scrollable" : ""}" aria-label="${esc(group.label)} possibly related results">
-          <div class="result-group-head">
-            <div>
-              <span class="result-group-title">${esc(group.label)}</span>
-              <span class="result-group-code">possibly related</span>
-            </div>
-            <div class="result-group-count">${fmtNum(group.items.length)} possibly related</div>
-          </div>
-          <div class="result-group-items"${hasOverflow ? ' tabindex="0"' : ""}>
-            ${group.items.map((item) => renderCompactRelatedSuggestionCard(item.relation)).join("")}
+            ${items.map((item) => renderCompactResultCard(item.hit, item.rank)).join("")}
           </div>
         </section>`;
     }
@@ -2046,61 +2535,44 @@
       );
     }
 
-    function renderCompactRelatedSuggestionCard(item) {
-      const label = item.label || "Possibly related concept";
-      const sourceText = item.source_name
-        ? (item.source_rank ? `from #${fmtNum(item.source_rank)} ${item.source_name}` : `from ${item.source_name}`)
-        : "possibly related";
-      return `
-        <div class="result result-compact result-related-suggestion">
-          <details class="result-details compact-card-details">
-            <summary class="compact-result-summary">
-              <button type="button" class="related-concept compact-result-title related-suggestion-title" data-query="${esc(label)}" title="${esc(label)}">
-                ${esc(label)}
-              </button>
-              <span class="result-semantic-type related-result-type">
-                <span class="related-marker">Possibly related</span>
-                <span>${esc(item.semantic_type || item.semantic_group_label || "possibly related")}</span>
-              </span>
-              <span class="compact-details-label">Details</span>
-            </summary>
-            <div class="compact-details-body">
-              <div class="detail-section">
-                <div class="detail-title">Possibly Related Concept Metadata</div>
-                <div class="chips">
-                  <span class="chip">rank ${fmtNum(item.source_rank || 0)}</span>
-                  <span class="chip mono">${esc(item.cui || "")}</span>
-                  <span class="chip">possibly related</span>
-                  <span class="chip">${esc(item.relation_group ? item.relation_group.replaceAll("_", " ") : "MRREL")}</span>
-                  <span class="chip">${esc(sourceText)}</span>
-                  ${item.source ? `<span class="chip">${esc(item.source)}</span>` : ""}
-                  ${renderUniversalEdgeChips(item)}
-                </div>
-              </div>
-            </div>
-          </details>
-        </div>`;
-    }
-
-    function fmtEdgeScore(value) {
-      const number = Number(value);
-      if (!Number.isFinite(number)) return "";
-      return number.toFixed(2);
-    }
-
-    function renderUniversalEdgeChips(item) {
-      const edge = item.edge || {};
-      if (!edge.type) return "";
-      const evidence = edge.evidence || {};
-      const chips = [
-        `type ${edge.type}`,
-        edge.directionality ? `direction ${edge.directionality}` : "",
-        fmtEdgeScore(edge.strength) ? `strength ${fmtEdgeScore(edge.strength)}` : "",
-        fmtEdgeScore(edge.confidence) ? `confidence ${fmtEdgeScore(edge.confidence)}` : "",
-        evidence.method ? `method ${evidence.method}` : "",
-        evidence.provenance ? `provenance ${evidence.provenance}` : ""
+    function relatedResultHit(item, rankNumber) {
+      const relation = item?.relation || item || {};
+      const label = relation.label || relation.target_label || relation.name || relation.cui || "Concept";
+      const cui = String(relation.cui || relation.target_cui || "").trim();
+      const syntheticId = cui || label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const [strength, confidence] = relationStrengthConfidence(relation);
+      const score = Math.max(strength, confidence);
+      const semanticType = relation.semantic_type || "";
+      const sources = [
+        relation.source_name,
+        relation.source,
+        relation.relation_group ? String(relation.relation_group).replaceAll("_", " ") : ""
       ].filter(Boolean);
-      return chips.map((chip) => `<span class="chip">${esc(chip.replaceAll("_", " "))}</span>`).join("");
+      return {
+        doc_id: relation.doc_id || `${syntheticId || `graph-${rankNumber}`}:graph`,
+        cui,
+        name: label,
+        labels: [label],
+        semantic_group: relation.semantic_group || item?.group?.code || "",
+        semantic_group_label: relation.semantic_group_label || item?.group?.label || "",
+        semantic_types: semanticType ? [{ name: semanticType }] : [],
+        sources: [...new Set(sources)],
+        score,
+        rank_score: score,
+        evidence_count: Number(relation.evidence_count || 0),
+        match_type: relation.rela || relation.relation || "graph_support",
+        view: "graph",
+        related_seed_cui: relation.source_cui || "",
+        related_seed_label: relation.source_name || "",
+        related_seed_rank: Number(relation.source_rank || 0),
+        related_relation_strength: strength,
+        related_relation_confidence: confidence
+      };
+    }
+
+    function displayedRelatedHits() {
+      return rawRelatedResultItems(relatedResultBuckets(), state.lastResults)
+        .map((item, index) => relatedResultHit(item, state.lastResults.length + index + 1));
     }
 
     function compactSignalSummary(hit) {
@@ -2119,24 +2591,42 @@
         ...labels.slice(0, 12).map((label) => `<span class="chip">${esc(label)}</span>`),
         ...sources.map((source) => `<span class="chip">${esc(source)}</span>`)
       ];
+      const codeChips = renderCodeChips(hit.source_asserted_codes || hit.codes || []);
+      const confidence = hit.confidence || {};
+      const confidenceLabel = confidence.level
+        ? `${String(confidence.level).replaceAll("_", " ")} confidence`
+        : "";
       return `
         <div class="detail-section result-metadata-section">
           <div class="detail-title">Result Metadata</div>
           <div class="chips">
             <span class="chip">rank ${fmtNum(rankNumber)}</span>
             <span class="chip mono">${esc(hit.cui)}</span>
-            <span class="chip">score ${esc(scoreValue)}</span>
+            <span class="chip">relevance ${esc(scoreValue)}</span>
+            ${confidenceLabel ? `<span class="chip">${esc(confidenceLabel)}</span>` : ""}
             <span class="chip">${fmtNum(hit.evidence_count || 0)} evidence</span>
             <span class="chip">${esc(matchTypeLabel(hit.match_type || hit.view || ""))}</span>
             ${sourceMixText ? `<span class="chip" title="${esc(sourceMixText)}">${esc(sourceMixText)}</span>` : ""}
           </div>
+          ${codeChips ? `<div class="chips detail-chip-row">${codeChips}</div>` : ""}
           ${labelAndSourceChips.length ? `<div class="chips detail-chip-row">${labelAndSourceChips.join("")}</div>` : ""}
         </div>`;
+    }
+
+    function confidenceBadge(hit) {
+      const confidence = hit?.confidence || {};
+      const level = String(confidence.level || "").trim().toLowerCase();
+      if (!level) return "";
+      const reasons = Array.isArray(confidence.reasons) ? confidence.reasons.join("; ") : "";
+      const label = confidence.abstain ? "low confidence" : `${level} confidence`;
+      return `<span class="confidence-badge confidence-${esc(level)}" title="${esc(reasons || label)}">${esc(label)}</span>`;
     }
 
     function renderCompactResultCard(hit, rankNumber) {
       const name = displayNameForHit(hit);
       const semanticTypeLabel = semanticDisplayTypeForHit(hit);
+      const scoreValue = compactRelevanceScore(hit);
+      const grade = judgmentGradeForHit(hit);
       return `
         <div class="result result-compact">
           <details class="result-details compact-card-details" data-lazy-detail="result" data-doc-id="${esc(hit.doc_id || "")}" data-cui="${esc(hit.cui || "")}" data-rank="${esc(rankNumber || "")}">
@@ -2145,6 +2635,9 @@
                 ${esc(name)}
               </a>
               <span class="result-semantic-type">${esc(semanticTypeLabel)}</span>
+              ${confidenceBadge(hit)}
+              <span class="compact-result-score" title="0-100 query relevance">${esc(scoreValue)}</span>
+              ${badResultButton(hit, grade)}
               <span class="compact-details-label">Details</span>
             </summary>
             <div class="compact-details-body" data-detail-body>
@@ -2179,8 +2672,8 @@
           ${renderDefinitions(hit.definitions || [])}
         </div>
         <div class="detail-section">
-          <div class="detail-title">Code Mappings</div>
-          ${renderMappings(hit.mappings || [])}
+          <div class="detail-title">Source-Asserted Codes</div>
+          ${renderMappings((hit.mappings && hit.mappings.length) ? hit.mappings : (hit.source_asserted_codes || hit.codes || []))}
         </div>
         ${renderRelatedEvidenceSections(hit)}
         <div class="detail-section">
@@ -2199,13 +2692,14 @@
     }
 
     function detailCacheKey(docId, cui) {
-      return `${docId || ""}|${cui || ""}|related:${state.includeRelated ? "1" : "0"}`;
+      return `${docId || ""}|${cui || ""}|related:${state.includeRelated ? "1" : "0"}|scope:${state.searchScope || "umls_evidence"}|codes:${state.sourceCodeSabs || "default"}`;
     }
 
     function mergeDetailHit(baseHit, detailHit) {
       const merged = { ...(detailHit || {}), ...(baseHit || {}) };
       for (const field of [
         "definitions",
+        "codes",
         "evidence_items",
         "evidence_related_concepts",
         "external_embedding_neighbors",
@@ -2213,7 +2707,8 @@
         "mappings",
         "mrrel_related_concepts",
         "related_concepts",
-        "research_relations"
+        "research_relations",
+        "source_asserted_codes"
       ]) {
         if (Array.isArray(detailHit?.[field])) merged[field] = detailHit[field];
       }
@@ -2228,8 +2723,11 @@
       const cui = details.getAttribute("data-cui") || "";
       const rankNumber = Number(details.getAttribute("data-rank") || 0) || 0;
       const body = details.querySelector("[data-detail-body]");
+      const relatedHits = displayedRelatedHits();
       const baseHit = state.lastResults.find((item) => item.doc_id === docId)
-        || state.lastResults.find((item) => item.cui === cui);
+        || state.lastResults.find((item) => item.cui === cui)
+        || relatedHits.find((item) => item.doc_id === docId)
+        || relatedHits.find((item) => item.cui === cui);
       if (!body || !baseHit) return;
       details.dataset.detailLoading = "1";
       body.innerHTML = '<span class="muted">Loading details...</span>';
@@ -2240,7 +2738,10 @@
           const params = new URLSearchParams();
           if (docId) params.set("doc_id", docId);
           if (cui) params.set("cui", cui);
+          if (state.lastQuery) params.set("q", state.lastQuery);
           params.set("related", state.includeRelated ? "1" : "0");
+          params.set("scope", state.searchScope || "umls_evidence");
+          params.set("codes", state.sourceCodeSabs || "default");
           const payload = await api(`/api/detail?${params.toString()}`);
           detailHit = payload.hit || {};
           state.detailCache.set(cacheKey, detailHit);
@@ -2274,6 +2775,7 @@
               ${esc(name)}
             </a>
             <div class="result-semantic-type">${esc(semanticTypeLabel)}</div>
+            ${badResultButton(hit, grade)}
           </div>
           <details class="result-details">
             <summary>Details</summary>
@@ -2296,8 +2798,8 @@
               ${renderDefinitions(hit.definitions || [])}
             </div>
             <div class="detail-section">
-              <div class="detail-title">Code Mappings</div>
-              ${renderMappings(hit.mappings || [])}
+              <div class="detail-title">Source-Asserted Codes</div>
+              ${renderMappings((hit.mappings && hit.mappings.length) ? hit.mappings : (hit.source_asserted_codes || hit.codes || []))}
             </div>
             ${renderRelatedEvidenceSections(hit)}
             <div class="detail-section">
@@ -2307,7 +2809,7 @@
             <div class="detail-section">
               <div class="detail-title">Technical</div>
               <div class="chips">
-                <span class="chip">score ${Number(hit.score).toFixed(4)}</span>
+                <span class="chip">raw ${Number(hit.score).toFixed(4)}</span>
                 <span class="chip">${fmtNum(hit.evidence_count)} evidence</span>
                 <span class="chip">${esc(matchTypeLabel(hit.match_type || hit.view || ""))}</span>
                 ${hit.matched_input ? `<span class="chip">matched ${esc(hit.matched_input)}</span>` : ""}
@@ -2336,63 +2838,232 @@
         </div>`;
     }
 
-    function renderRawRelatedResultCard(item) {
-      const relation = {
-        ...(item.relation || {}),
-        semantic_group_label: item.relation?.semantic_group_label || item.group?.label || ""
-      };
+    function sortedMentions(mentions) {
+      return [...(mentions || [])].sort((a, b) =>
+        Number(a.start || 0) - Number(b.start || 0) ||
+        Number(b.score || 0) - Number(a.score || 0) ||
+        String(a.name || a.matched_label || a.text || "").localeCompare(
+          String(b.name || b.matched_label || b.text || "")
+        )
+      );
+    }
+
+    const GENERIC_MENTION_TERMS = new Set([
+      "assessment",
+      "data",
+      "education",
+      "follow up",
+      "followup",
+      "history",
+      "note",
+      "notes",
+      "page",
+      "pages",
+      "patient",
+      "patients",
+      "plan",
+      "report",
+      "reported",
+      "reporting",
+      "reports",
+      "result",
+      "results",
+      "review",
+      "row",
+      "rows",
+      "section",
+      "sections",
+      "summary",
+      "table",
+      "tables",
+      "today",
+      "tomorrow",
+      "tonight",
+      "yesterday"
+    ]);
+
+    function isUsefulMention(mention) {
+      const text = normalizedPhrase(mention?.text || mention?.matched_label || mention?.name || "");
+      if (!text || GENERIC_MENTION_TERMS.has(text)) return false;
+      return true;
+    }
+
+    function mentionDisplayPriority(mention) {
+      const text = normalizedPhrase(mention?.text || "");
+      const name = normalizedPhrase(mention?.name || mention?.matched_label || "");
+      const matched = normalizedPhrase(mention?.matched_label || "");
+      const exact = text && (text === name || text === matched) ? 2 : 0;
+      const codeCount = mentionCodeRows(mention).length;
+      return [
+        exact,
+        codeCount,
+        Number(mention?.score || 0),
+        phraseTokenCount(mention?.text || "")
+      ];
+    }
+
+    function compareMentionPriority(a, b) {
+      const left = mentionDisplayPriority(a);
+      const right = mentionDisplayPriority(b);
+      for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+        const delta = Number(right[index] || 0) - Number(left[index] || 0);
+        if (Math.abs(delta) > 0.000001) return delta;
+      }
+      return String(a?.name || a?.matched_label || a?.cui || "").localeCompare(
+        String(b?.name || b?.matched_label || b?.cui || "")
+      );
+    }
+
+    function groupedDisplayMentions(mentions) {
+      const groups = new Map();
+      for (const mention of sortedMentions(mentions).filter(isUsefulMention)) {
+        const surface = normalizedPhrase(mention.text || mention.matched_label || mention.name || "");
+        const status = mentionAssertionStatus(mention) || "current";
+        const key = `${surface}|${status}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(mention);
+      }
+      return [...groups.values()].map((items) => {
+        const sorted = [...items].sort(compareMentionPriority);
+        return {
+          primary: sorted[0],
+          alternates: sorted.slice(1),
+          count: sorted.length
+        };
+      }).sort((a, b) =>
+        Number(a.primary?.start || 0) - Number(b.primary?.start || 0) ||
+        compareMentionPriority(a.primary, b.primary)
+      );
+    }
+
+    function mentionAssertionStatus(mention) {
+      return String(mention?.assertion?.status || "").trim().toLowerCase();
+    }
+
+    function mentionCodeRows(mention) {
+      return Array.isArray(mention?.source_asserted_codes)
+        ? mention.source_asserted_codes
+        : (Array.isArray(mention?.codes) ? mention.codes : []);
+    }
+
+    function renderStatementOffsetDetails() {
+      const mentionGroups = groupedDisplayMentions(state.lastMentions);
+      if (!mentionGroups.length) return "";
+      const rows = mentionGroups.slice(0, 40).map((group) => {
+        const mention = group.primary || {};
+        const alternates = group.alternates || [];
+        const cui = String(mention.cui || "").trim();
+        const surface = String(mention.text || mention.matched_label || mention.name || cui || "Mention").trim();
+        const conceptName = String(mention.name || mention.matched_label || cui || "").trim();
+        const status = mentionAssertionStatus(mention) || "current";
+        const alternateText = alternates.length
+          ? alternates.slice(0, 4).map((alternate) => {
+              const alternateCui = String(alternate.cui || "").trim();
+              const alternateName = String(alternate.name || alternate.matched_label || alternateCui || "").trim();
+              return `${alternateName}${alternateCui ? ` (${alternateCui})` : ""}`;
+            }).join("; ")
+          : "";
+        return `
+          <tr>
+            <td>${esc(surface)}</td>
+            <td>${esc(conceptName)}${cui ? ` <span class="mono">${esc(cui)}</span>` : ""}</td>
+            <td class="mono">${fmtNum(mention.start)}</td>
+            <td class="mono">${fmtNum(mention.end)}</td>
+            <td>${esc(status.replaceAll("_", " "))}</td>
+            <td>${alternateText ? esc(alternateText) : ""}</td>
+          </tr>`;
+      }).join("");
       return `
-        <div class="raw-result-row raw-related-result-row">
-          <div class="raw-result-rank raw-related-rank" title="Possibly related result">+</div>
-          ${renderCompactRelatedSuggestionCard(relation)}
-        </div>`;
+        <details class="statement-offset-details">
+          <summary>Start/stop details</summary>
+          <div class="statement-offset-table-wrap">
+            <table class="statement-offset-table">
+              <thead>
+                <tr>
+                  <th>Text</th>
+                  <th>Concept</th>
+                  <th>Start</th>
+                  <th>Stop</th>
+                  <th>Status</th>
+                  <th>Other possible IDs</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </details>`;
     }
 
     function renderResults() {
-      if (!state.lastResults.length) {
+      if (!state.lastResults.length && !state.lastLinkedConcepts.length && !state.lastMentions.length) {
         els.results.innerHTML = '<span class="muted">No results yet.</span>';
         return;
       }
       const relatedGroups = relatedResultBuckets();
-      const resultGroups = mergeRelatedIntoResultBuckets(
-        semanticResultBuckets(state.lastResults),
-        relatedGroups
-      );
       const rawRelatedItems = rawRelatedResultItems(relatedGroups, state.lastResults);
-      const rawRelatedHtml = rawRelatedItems
-        .map((item) => renderRawRelatedResultCard(item))
-        .join("");
+      const relatedHits = rawRelatedItems.map((item, index) =>
+        relatedResultHit(
+          {
+            ...item,
+            relation: {
+              ...(item.relation || {}),
+              semantic_group_label: item.relation?.semantic_group_label || item.group?.label || ""
+            }
+          },
+          state.lastResults.length + index + 1
+        )
+      );
+      const resultGroups = semanticResultBuckets([...state.lastResults, ...relatedHits]);
       const hitHtml = resultGroups
         .map((group) => renderResultBucket(group))
         .join("");
-      const rawHitHtml = state.lastResults
+      const rawDisplayHits = [...state.lastResults, ...relatedHits].sort((a, b) => {
+        const scoreDelta = displayRelevanceValue(b) - displayRelevanceValue(a);
+        if (Math.abs(scoreDelta) > 0.000001) return scoreDelta;
+        return String(displayNameForHit(a)).localeCompare(String(displayNameForHit(b)));
+      });
+      const rawHitHtml = rawDisplayHits
         .map((hit, index) => renderRawResultCard(hit, index + 1))
         .join("");
       const rawRelatedCount = rawRelatedItems.length;
+      const totalRawCount = state.lastResults.length + rawRelatedCount;
       const filterText = (state.selectedSemanticBucketKeys || []).length
         ? "No results matched the selected semantic group filter."
         : "No semantic result groups matched these results.";
       const semanticHtml = hitHtml || `<div class="results-empty muted">${esc(filterText)}</div>`;
-      const statement = buildStructuredStatement(state.lastQuery || "", state.lastResults);
+      const statement = buildStructuredStatement(
+        state.lastQuery || "",
+        [...state.lastResults, ...relatedHits, ...state.lastLinkedConcepts]
+      );
       const statementHtml = renderStructuredStatementPanel(statement);
       els.results.innerHTML = `
-        ${statementHtml}
-        <div class="results-split">
-          <section class="results-column raw-results-column" aria-label="All ranked results">
-            <div class="results-column-head">
-              <h3>All Results</h3>
-              <div class="results-column-count">${resultCountLabel(state.lastResults.length)}${rawRelatedCount ? ` · ${fmtNum(rawRelatedCount)} possibly related` : ""}</div>
-            </div>
-            <div class="raw-results-list">${rawHitHtml}${rawRelatedHtml}</div>
-          </section>
-          <section class="results-column semantic-results-column" aria-label="Semantic grouped results">
-            <div class="results-column-head">
-              <h3>Semantic Groups</h3>
-              <div class="results-column-count">${fmtNum(resultGroups.length)} ${resultGroups.length === 1 ? "group" : "groups"}</div>
-            </div>
-            <div class="semantic-results-list">${semanticHtml}</div>
-          </section>
-        </div>`;
+        ${statementHtml ? `
+          <section class="result-layer linked-sentence-layer" aria-label="Linked statement">
+            ${statementHtml}
+          </section>` : ""}
+        <section class="result-layer ranking-layer" aria-label="Semantic groups and full ranking">
+          <div class="result-layer-head">
+            <h3>Semantic Groups and Full Ranking</h3>
+            <div class="result-layer-count">${resultCountLabel(totalRawCount)} · ${fmtNum(resultGroups.length)} ${resultGroups.length === 1 ? "group" : "groups"}</div>
+          </div>
+          <div class="results-split">
+            <section class="results-column raw-results-column" aria-label="All ranked results">
+              <div class="results-column-head">
+                <h3>All Results</h3>
+                <div class="results-column-count">${resultCountLabel(totalRawCount)}</div>
+              </div>
+              <div class="raw-results-list">${rawHitHtml}</div>
+            </section>
+            <section class="results-column semantic-results-column" aria-label="Semantic grouped results">
+              <div class="results-column-head">
+                <h3>Semantic Groups</h3>
+                <div class="results-column-count">${fmtNum(resultGroups.length)} ${resultGroups.length === 1 ? "group" : "groups"}</div>
+              </div>
+              <div class="semantic-results-list">${semanticHtml}</div>
+            </section>
+          </div>
+        </section>
+      `;
 
       bindResultInteractions(els.results);
     }
@@ -2406,8 +3077,19 @@
       root.querySelectorAll(".judgments button").forEach((button) => {
         button.addEventListener("click", () => {
           const docId = button.getAttribute("data-doc");
-          const hit = state.lastResults.find((item) => item.doc_id === docId);
+          const hit = visibleHitByDocId(docId);
           if (hit) setJudgment(hit, button.getAttribute("data-grade"));
+        });
+      });
+      root.querySelectorAll(".result-bad-button").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const docId = button.getAttribute("data-doc");
+          const hit = visibleHitByDocId(docId);
+          if (!hit) return;
+          const grade = judgmentGradeForHit(hit);
+          setJudgment(hit, grade === "wrong" ? "" : "wrong");
         });
       });
       root.querySelectorAll(".related-concept").forEach((button) => {
@@ -2468,7 +3150,7 @@
                 <div class="semantic-view-head">
                   <div>
                     <div class="semantic-view-title">
-                      <span>${esc(view.semantic_group_label || view.title || view.category || "Related Concepts")}</span>
+                      <span>${esc(view.semantic_group_label || view.title || view.category || "Concept Links")}</span>
                       ${view.semantic_group ? `<span class="semantic-group-code">${esc(view.semantic_group)}</span>` : ""}
                     </div>
                     ${sourceLine ? `<div class="semantic-view-source">${esc(sourceLine)}</div>` : ""}
@@ -2523,6 +3205,8 @@
         system_code: "source code",
         umls_label: "label match",
         umls_definition: "definition match",
+        related: "graph match",
+        graph_support: "graph match",
         resolver: "resolver"
       };
       return map[value] || value || "search";
@@ -2532,8 +3216,8 @@
       const related = hit.related_concepts || [];
       if (!related.length) return "";
       const title = hit.related_source === "evidence_vectors"
-        ? "Possibly Related Evidence Concepts"
-        : (hit.related_source === "external_embeddings" ? "Possibly Related Embedding Neighbors" : "Possibly Related MRREL Concepts");
+        ? "Evidence Concept Links"
+        : (hit.related_source === "external_embeddings" ? "Embedding Neighbors" : "MRREL Concepts");
       return `
         <div class="related-list" style="border-top: 0; padding-top: 0; margin-top: 0;">
           <div class="detail-title">${esc(title)}</div>
@@ -2570,7 +3254,7 @@
       }
       return `
         <div class="related-list" style="border-top: 0; padding-top: 0; margin-top: 0;">
-          <div class="detail-title">Possibly Related Embedding Neighbors</div>
+          <div class="detail-title">Embedding Neighbors</div>
           ${Array.from(grouped.entries()).map(([source, items]) => `
             <div class="small muted" style="margin-top: 6px;">${esc(source)}</div>
             <div class="related-items">
@@ -2595,7 +3279,7 @@
       }
       return `
         <div class="related-list" style="border-top: 0; padding-top: 0; margin-top: 0;">
-          <div class="detail-title">Possibly Related Research Relations</div>
+          <div class="detail-title">Research Relations</div>
           ${Array.from(grouped.entries()).map(([category, items]) => `
             <div class="small muted" style="margin-top: 6px;">${esc(category)}</div>
             <div class="related-items">
@@ -2614,7 +3298,7 @@
       if (!related.length || hit.related_source === "mrrel") return "";
       return `
         <details class="result-details" style="border-top: 0; margin-top: 8px; padding-top: 0;">
-          <summary>Possibly related MRREL graph support</summary>
+          <summary>MRREL graph support</summary>
           <div class="related-items" style="margin-top: 8px;">
             ${related.slice(0, 8).map((item) => `
               <button class="related-concept" data-query="${esc(item.label || item.cui)}" title="${esc(item.cui)}">
@@ -2644,7 +3328,7 @@
             <tbody>
               ${visibleMappings.slice(0, 12).map((row) => `
                 <tr>
-                  <td>${esc(row.sab || "")}</td>
+                  <td>${esc(mappingSystem(row))}</td>
                   <td class="mono">${esc(row.code || "")}</td>
                   <td>${esc(row.tty || "")}</td>
                   <td>${esc(row.label || "")}</td>
@@ -2652,6 +3336,16 @@
             </tbody>
           </table>
         </div>`;
+    }
+
+    function renderCodeChips(codes) {
+      const visibleCodes = dedupeMappings(codes)
+        .filter((row) => String(row.code || "").trim() && String(row.code || "").toUpperCase() !== "NOCODE")
+        .slice(0, 8);
+      return visibleCodes.map((row) => `
+        <span class="chip" title="${esc(row.label || "")}">
+          ${esc(mappingSystem(row))} <span class="mono">${esc(row.code || "")}</span>
+        </span>`).join("");
     }
 
     function renderDefinitions(definitions) {
@@ -2672,7 +3366,7 @@
       const ttyPriority = { PT: 0, MH: 1, PN: 2, IN: 3, ET: 4, FN: 5, SY: 6, LLT: 7 };
       const best = new Map();
       for (const row of mappings || []) {
-        const key = `${String(row.sab || "").toUpperCase()}|${String(row.code || "").toUpperCase()}`;
+        const key = `${mappingSystem(row).toUpperCase()}|${String(row.code || "").toUpperCase()}`;
         if (!key.trim()) continue;
         const current = best.get(key);
         if (!current || mappingRank(row, ttyPriority) < mappingRank(current, ttyPriority)) {
@@ -2688,6 +3382,10 @@
       return (ttyRank * 10) + prefRank;
     }
 
+    function mappingSystem(row) {
+      return String(row.system_name || row.system || row.sab || "").trim();
+    }
+
     function relationLabel(item) {
       if (item.relation === "evidence_vector" || item.source === "real-world evidence") {
         const score = Number.isFinite(Number(item.score)) ? ` ${Number(item.score).toFixed(3)}` : "";
@@ -2696,12 +3394,12 @@
       }
       if (item.relation_group) {
         const group = item.relation_group.replaceAll("_", " ");
-        const relation = item.rela || item.relation || "possibly related";
+        const relation = item.rela || item.relation || "graph support";
         const source = item.source ? ` · ${item.source}` : "";
         const semanticType = item.semantic_type ? ` · ${item.semantic_type}` : "";
         return `${group}: ${relation}${source}${semanticType}`;
       }
-      const relation = item.rela || item.relation || "possibly related";
+      const relation = item.rela || item.relation || "graph support";
       const source = item.source ? ` · ${item.source}` : "";
       return `${relation}${source}`;
     }
@@ -2734,7 +3432,7 @@
         <div class="evidence-list">
           ${items.slice(0, 6).map((item) => `
             <div class="evidence-item">
-              <div class="evidence-text">${esc(item.text)}</div>
+              <div class="evidence-text">${esc(sentenceBoundedEvidence(item.text || ""))}</div>
               <div class="evidence-source">
                 ${renderSources(item.sources || [])}
                 ${item.weight ? `<span class="source-pill">weight ${esc(item.weight)}</span>` : ""}
@@ -2780,6 +3478,18 @@
         description: "The normalized query exactly matches one of this concept's UMLS labels."
       },
       {
+        key: "mention_frequency_component",
+        label: "Mention frequency",
+        color: "#15803d",
+        description: "The concept is mentioned repeatedly in the entered text."
+      },
+      {
+        key: "treatment_pharmacologic_component",
+        label: "Treatment drug",
+        color: "#a21caf",
+        description: "An exact concrete drug mention appears in treatment, dosing, or administration context."
+      },
+      {
         key: "exact_primary_name_component",
         label: "Exact primary name",
         color: "#0369a1",
@@ -2811,6 +3521,12 @@
         description: "The concept's semantic type fits the intent implied by the query."
       },
       {
+        key: "semantic_context_component",
+        label: "Context type",
+        color: "#0f766e",
+        description: "Nearby words in the sentence support this concept type, such as procedure, drug, lab, or condition."
+      },
+      {
         key: "evidence_context_component",
         label: "Evidence context",
         color: "#ca8a04",
@@ -2833,6 +3549,12 @@
         label: "Composite intent",
         color: "#be123c",
         description: "Multiple query anchors are satisfied together by this concept."
+      },
+      {
+        key: "lab_result_abnormal_component",
+        label: "Abnormal lab",
+        color: "#b45309",
+        description: "The concept exactly matches an abnormal lab-result phrase, such as low glucose or elevated creatinine."
       },
       {
         key: "first_statement_component",
@@ -2874,6 +3596,11 @@
         key: "clinical_context_sense_penalty",
         label: "Context sense",
         description: "The concept uses a query word in the wrong clinical sense for this note context."
+      },
+      {
+        key: "semantic_context_penalty",
+        label: "Context type mismatch",
+        description: "Nearby words point to a different concept type, such as procedure versus condition."
       },
       {
         key: "role_mismatch_penalty",
@@ -3088,6 +3815,7 @@
         `evidence ${fmtScore(breakdown.evidence_component)}`,
         Number(breakdown.exact_label_component || 0) ? `exact label ${fmtScore(breakdown.exact_label_component)}` : "",
         Number(breakdown.exact_primary_name_component || 0) ? `exact primary ${fmtScore(breakdown.exact_primary_name_component)}` : "",
+        Number(breakdown.treatment_pharmacologic_component || 0) ? `treatment drug ${fmtScore(breakdown.treatment_pharmacologic_component)}` : "",
         Number(breakdown.definition_component || 0) ? `definition ${fmtScore(breakdown.definition_component)}` : "",
         Number(breakdown.primary_name_component || 0) ? `primary name ${fmtScore(breakdown.primary_name_component)}` : "",
         Number(breakdown.negated_finding_component || 0) ? `negated finding ${fmtScore(breakdown.negated_finding_component)}` : "",
@@ -3158,6 +3886,25 @@
       return String(text).slice(0, 1400);
     }
 
+    function sentenceBoundedEvidence(text) {
+      const cleaned = String(text || "").replace(/\s+/g, " ").trim();
+      if (!cleaned) return "";
+      const abbreviationEnds = [
+        "dr.", "mr.", "mrs.", "ms.", "prof.", "fig.", "ref.", "refs.",
+        "vs.", "etc.", "e.g.", "i.e.", "et al.", "u.s.", "u.k.",
+      ];
+      const boundary = /[.!?]["')\]]*(?=\s+|$)/g;
+      let match;
+      while ((match = boundary.exec(cleaned)) !== null) {
+        const candidate = cleaned.slice(0, match.index + match[0].length).trim();
+        const lower = candidate.toLowerCase();
+        if (abbreviationEnds.some((abbr) => lower.endsWith(abbr))) continue;
+        if (/(?:\b[a-z]\.){2,}$/.test(lower)) continue;
+        return candidate;
+      }
+      return /[.!?]$/.test(cleaned) ? cleaned : `${cleaned.replace(/[ ,;:]+$/g, "")}.`;
+    }
+
     function gradeWeight(grade) {
       if (grade === "relevant") return 1;
       if (grade === "partial") return 0.5;
@@ -3200,10 +3947,11 @@
         metric("Vectors", fmtNum(state.status?.records || 0), `${fmtNum(state.status?.docs || 0)} docs, ${fmtNum(state.status?.evidence_sources || 0)} source refs${provenanceMode}`),
         metric("Backend", state.status?.search_backend || "n/a", state.status?.elastic_index || "local vector scan"),
         metric("Search mode", scoring.search_mode || state.searchMode || "balanced", scoring.search_mode_description || "Expanded hybrid search"),
+        metric("Source scope", searchScopeLabel(scoring.search_scope || state.searchScope), scoring.search_scope_description || "UMLS identifiers with evidence-backed retrieval"),
         metric("Model", state.status?.embedding_provider || "n/a", state.status?.embedding_model || "n/a"),
         metric("Resolver", fmtNum(codeMappings), codeMappings ? "CUI/code mappings loaded" : "No code index loaded"),
         metric("Definitions", fmtNum(definitionRows), definitionRows ? `${fmtNum(state.status?.definition_cuis || 0)} CUIs with MRDEF text` : "No MRDEF index loaded"),
-        metric("Evidence related", fmtNum(state.status?.records || 0), "Nearest CUI/view vectors on result concepts"),
+        metric("Evidence links", fmtNum(state.status?.records || 0), "Nearest CUI/view vectors on result concepts"),
         metric("MRREL support", fmtNum(relatedLinks), relatedLinks ? `${fmtNum(state.status?.related_concept_sources || 0)} CUIs with links` : "No relation index loaded"),
         metric("Research links", fmtNum(researchLinks), researchLinks ? `${fmtNum(state.status?.research_relation_sources || 0)} CUIs with cross-type links` : "No research relation index loaded"),
         metric("Judged results", fmtNum(judged.length), `${relevant} relevant, ${partial} partial, ${wrong} wrong`),
@@ -3271,6 +4019,8 @@
       const rows = parseQuerySet();
       const topK = Math.max(1, Math.min(100, Number(els.topK.value) || 10));
       const searchMode = selectedSearchMode();
+      const searchScope = selectedSearchScope();
+      const sourceCodes = selectedSourceCodeSabs();
       if (!rows.length) {
         setQuerySetFeedback("Add one query per line before running the query set.", "error");
         return;
@@ -3285,9 +4035,10 @@
           const row = rows[i];
           setBrandStatus();
           setQuerySetFeedback(`Running ${fmtNum(i + 1)} of ${fmtNum(rows.length)} queries.`);
-          const payload = await api(
-            `/api/search?q=${encodeURIComponent(row.query)}&k=${topK}&related=0&mode=${encodeURIComponent(searchMode)}${semanticBucketFilterQueryParam()}`
-          );
+          const includeRelated = includeRelatedForSearch(searchMode, searchScope);
+            const payload = await api(
+              `/api/search?q=${encodeURIComponent(row.query)}&k=${topK}&related=${includeRelated}&linked=${includeRelated}&evidence_items=0&mode=${encodeURIComponent(searchMode)}${searchScopeQueryParam(searchScope)}${semanticBucketFilterQueryParam()}${sourceCodeQueryParam(sourceCodes)}`
+            );
           const hits = payload.hits || [];
           let expectedRank = "";
           let expectedFound = "";
@@ -3349,7 +4100,7 @@
               <th>Expected rank</th>
               <th>Missing expected</th>
               <th>Top result</th>
-              <th>Score</th>
+              <th>Relevance</th>
             </tr>
           </thead>
           <tbody>
@@ -3414,9 +4165,22 @@
     }
     if (!hasSnomedLicenseAcknowledgement()) showSnomedLicenseDialog();
     if (els.randomQueryBtn) els.randomQueryBtn.addEventListener("click", selectRandomQuery);
+    if (els.longQueryBtn) els.longQueryBtn.addEventListener("click", selectLongQuery);
     if (els.semanticGroupFilter) {
       els.semanticGroupFilter.addEventListener("change", () => {
         state.selectedSemanticBucketKeys = selectedSemanticBucketKeys();
+        if (state.lastQuery) runSearch();
+      });
+    }
+    if (els.searchScope) {
+      els.searchScope.addEventListener("change", () => {
+        state.searchScope = selectedSearchScope();
+        if (state.lastQuery) runSearch();
+      });
+    }
+    if (els.sourceCodes) {
+      els.sourceCodes.addEventListener("change", () => {
+        state.sourceCodeSabs = selectedSourceCodeSabs();
         if (state.lastQuery) runSearch();
       });
     }

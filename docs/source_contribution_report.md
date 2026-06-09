@@ -445,7 +445,9 @@ some kind or another: identifying the right identifier, string, or concept.
 
 1. Add explicit HPO/MONDO xref and hierarchy indexes so native xrefs such as
    SNOMEDCT_US, NCIT, MEDDRA, OMIM, Orphanet, and MONDO are first-class
-   relationship/code-crosswalk edges rather than only corpus metadata/text.
+   relationship/code-crosswalk edges rather than only corpus metadata/text; do
+   not add a duplicate Orphanet fetch while UMLS carries the source-code
+   coverage.
 2. Expand Bookshelf OA with explicit accession IDs for high-value clinical
    guideline/report titles after checking each package license.
 3. Rebuild the newer HPO/NCI/CDC/FDA/NIDDK/Bookshelf source subsets through

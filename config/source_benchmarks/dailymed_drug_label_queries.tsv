@@ -1,0 +1,4 @@
+id	query	expected_cuis	why	disallowed_cuis
+dailymed_label_01	metformin indication for type 2 diabetes	C0025598|C0011860	DailyMed indication queries should retrieve both the drug and indicated condition.
+dailymed_label_02	warfarin warning about serious bleeding	C0043031|C1550014|C0019080	DailyMed warning queries should keep the drug, warning context, and bleeding concept visible.
+dailymed_label_03	aspirin adverse reaction nausea and vomiting	C0004057|C0041755|C0027497|C0042963	DailyMed adverse-reaction queries should retrieve drug plus adverse event concepts.

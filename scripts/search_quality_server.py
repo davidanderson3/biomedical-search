@@ -122,6 +122,7 @@ DEFAULT_PERMITTED_SOURCE_VECTORS = (
 )
 DEFAULT_HTML = ROOT / "docs" / "search_quality_server.html"
 DEFAULT_PROGRESS_HTML = ROOT / "docs" / "scaling_progress.html"
+DEFAULT_SOURCE_DASHBOARD_HTML = ROOT / "docs" / "source_evidence_dashboard.html"
 DEFAULT_PROGRESS_PLAN = ROOT / "config" / "scaling_chunk_001_gap_topics.plan.json"
 DEFAULT_FULL_PROGRESS_PLAN = ROOT / "config" / "full_pipeline.plan.json"
 DEFAULT_RELATION_INDEX = ROOT / "build" / "umls_related_concepts.sqlite"
@@ -133,6 +134,7 @@ DEFAULT_CODE_INDEX = ROOT / "build" / "cui_code_index.sqlite"
 DEFAULT_SEMANTIC_TYPE_INDEX = ROOT / "build" / "umls_semantic_types.sqlite"
 DEFAULT_LABEL_INDEX = ROOT / "build" / "umls_biomedicine_search_label_index.sqlite"
 DEFAULT_ACTIVE_LABEL_SUPPLEMENT = ROOT / "config" / "active_label_supplement.tsv"
+DEFAULT_DISPLAY_NAME_OVERRIDES = ROOT / "config" / "display_name_overrides.tsv"
 DEFAULT_ELASTIC_URL = "http://localhost:9200"
 DEFAULT_ELASTIC_INDEX = "qe-umls-biomedicine-hashing-current"
 DEFAULT_EVIDENCE_DIRS = (
@@ -179,6 +181,13 @@ def default_evidence_paths() -> list[Path]:
     return paths
 
 
+def resolve_evidence_paths(evidence_arg: list[Path] | None) -> list[Path]:
+    """Resolve CLI evidence paths, treating a bare --evidence as the documented default."""
+    if not evidence_arg:
+        return default_evidence_paths()
+    return list(evidence_arg)
+
+
 def quality_judgment_path(progress_plan_path: Path) -> Path:
     plan = json.loads(resolve_path(str(progress_plan_path)).read_text(encoding="utf-8"))
     for step in plan.get("steps", []):
@@ -217,6 +226,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--html", type=Path, default=DEFAULT_HTML)
     parser.add_argument("--progress-html", type=Path, default=DEFAULT_PROGRESS_HTML)
+    parser.add_argument("--source-dashboard-html", type=Path, default=DEFAULT_SOURCE_DASHBOARD_HTML)
     parser.add_argument("--progress-plan", type=Path, default=DEFAULT_PROGRESS_PLAN)
     parser.add_argument("--full-progress-plan", type=Path, default=DEFAULT_FULL_PROGRESS_PLAN)
     parser.add_argument(
@@ -269,7 +279,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Exclude Elasticsearch hits whose sources start with this prefix before "
-            "kNN candidate selection. Repeatable. Defaults to mimic for the public app."
+            "kNN candidate selection. Repeatable. Defaults to no source-prefix exclusions."
         ),
     )
     parser.add_argument(
@@ -304,6 +314,15 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Optional TSV of curated existing-CUI labels that should be active even when "
             "the default semantic-profile label index excludes them."
+        ),
+    )
+    parser.add_argument(
+        "--display-name-overrides",
+        type=Path,
+        default=DEFAULT_DISPLAY_NAME_OVERRIDES if DEFAULT_DISPLAY_NAME_OVERRIDES.exists() else None,
+        help=(
+            "Optional TSV/CSV of CUI to display label overrides. This is a lightweight way "
+            "to fix poor CUI preferred names without rebuilding UMLS indexes."
         ),
     )
     parser.add_argument(
@@ -379,7 +398,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--related-source-limit",
         type=int,
-        default=16,
+        default=8,
         help=(
             "Maximum number of returned hits used as sources for related semantic views. "
             "Keeps related=1 from doing relation lookups for every returned result."
@@ -424,6 +443,34 @@ def parse_args() -> argparse.Namespace:
             "for related/semantic views but not used to rerank concept hits."
         ),
     )
+    parser.add_argument(
+        "--public-output-only",
+        action="store_true",
+        help=(
+            "Filter public API responses so source-vocabulary content is returned only from "
+            "the configured public display source allowlist. Restricted content can still be "
+            "used internally for retrieval and ranking."
+        ),
+    )
+    parser.add_argument(
+        "--public-output-source",
+        action="append",
+        default=None,
+        help=(
+            "Source abbreviation allowed in public display output. Repeatable. Defaults to "
+            "the built-in conservative public display allowlist. Only used with "
+            "--public-output-only unless an allowlist file is supplied."
+        ),
+    )
+    parser.add_argument(
+        "--public-output-source-allowlist",
+        type=Path,
+        help=(
+            "Optional newline/comma/TSV source abbreviation allowlist for public display "
+            "output. Only source-derived labels, definitions, and MRREL relations from "
+            "these sources may be returned."
+        ),
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
     return parser.parse_args()
@@ -459,6 +506,8 @@ def main() -> None:
         raise SystemExit(f"missing code index file: {args.code_index}")
     if args.active_label_supplement and not args.active_label_supplement.exists():
         raise SystemExit(f"missing active label supplement file: {args.active_label_supplement}")
+    if args.display_name_overrides and not args.display_name_overrides.exists():
+        raise SystemExit(f"missing display name overrides file: {args.display_name_overrides}")
     if args.semantic_type_index and not args.semantic_type_index.exists():
         raise SystemExit(f"missing semantic type index file: {args.semantic_type_index}")
     if args.relation_index and not args.relation_index.exists():
@@ -473,6 +522,10 @@ def main() -> None:
         raise SystemExit(f"missing definition index file: {args.definition_index}")
     if args.provenance_index and not args.provenance_index.exists():
         raise SystemExit(f"missing provenance index file: {args.provenance_index}")
+    if args.public_output_source_allowlist and not args.public_output_source_allowlist.exists():
+        raise SystemExit(
+            f"missing public output source allowlist file: {args.public_output_source_allowlist}"
+        )
     if args.provider == "hashing-idf":
         if not args.idf_path:
             raise SystemExit("--provider hashing-idf requires --idf-path")
@@ -489,8 +542,8 @@ def main() -> None:
     if args.require_elasticsearch:
         require_elasticsearch_available(args.elastic_url, args.elastic_index)
     judgments_path = args.judgments_out or quality_judgment_path(args.progress_plan)
-    evidence_paths = list(args.evidence) if args.evidence is not None else default_evidence_paths()
-    elastic_exclude_source_prefixes = [] if args.no_default_elastic_source_exclusions else ["mimic"]
+    evidence_paths = resolve_evidence_paths(args.evidence)
+    elastic_exclude_source_prefixes = []
     elastic_exclude_source_prefixes.extend(args.elastic_exclude_source_prefix or [])
     print("Loading search index...")
     index = SearchIndex(
@@ -522,6 +575,7 @@ def main() -> None:
         external_cui_vector_index_path=args.external_cui_vector_index,
         definition_index_path=args.definition_index,
         active_label_supplement_path=args.active_label_supplement,
+        display_name_overrides_path=args.display_name_overrides,
         related_limit=args.related_limit,
         related_source_limit=args.related_source_limit,
         expensive_related_source_limit=args.expensive_related_source_limit,
@@ -529,6 +583,9 @@ def main() -> None:
         candidate_pool_multiplier=args.candidate_pool_multiplier,
         candidate_pool_min=args.candidate_pool_min,
         relationship_edges_rank=args.rank_relationship_edges,
+        public_output_only=args.public_output_only,
+        public_output_sources=args.public_output_source,
+        public_output_source_allowlist_path=args.public_output_source_allowlist,
     )
     print(
         f"Loaded {len(index.records):,} vectors from {len(index.vector_paths):,} files "
@@ -546,6 +603,7 @@ def main() -> None:
             index,
             args.html,
             args.progress_html,
+            args.source_dashboard_html if args.source_dashboard_html.exists() else None,
             args.progress_plan,
             args.full_progress_plan,
             judgments_path,
@@ -555,6 +613,8 @@ def main() -> None:
     )
     print(f"Open http://{args.host}:{args.port}/")
     print(f"Progress dashboard http://{args.host}:{args.port}/progress")
+    if args.source_dashboard_html.exists():
+        print(f"Evidence dashboard http://{args.host}:{args.port}/source-dashboard")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

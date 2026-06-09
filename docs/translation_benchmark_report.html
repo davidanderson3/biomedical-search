@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Translation Benchmark Report</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1b2430;
+      --muted: #637083;
+      --line: #d9e0e8;
+      --panel: #f6f8fb;
+      --ok: #0f7a3f;
+      --warn: #a15c00;
+      --bad: #a32929;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #fff;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 32px 24px 56px;
+    }
+    h1, h2 {
+      margin: 0;
+      letter-spacing: 0;
+    }
+    h1 {
+      font-size: 30px;
+      line-height: 1.15;
+    }
+    h2 {
+      font-size: 19px;
+      margin-top: 34px;
+      margin-bottom: 12px;
+    }
+    p {
+      line-height: 1.5;
+    }
+    .muted {
+      color: var(--muted);
+    }
+    code {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-size: 0.92em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      margin: 12px 0 22px;
+      font-size: 14px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 8px;
+      vertical-align: top;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+    th {
+      color: #344154;
+      font-size: 12px;
+      text-transform: uppercase;
+      background: var(--panel);
+    }
+    .status {
+      display: inline-block;
+      border-radius: 4px;
+      padding: 2px 7px;
+      font-weight: 650;
+    }
+    .status.locked {
+      color: var(--ok);
+      background: #e8f5ed;
+    }
+    .status.changed, .status.missing {
+      color: var(--bad);
+      background: #fdeaea;
+    }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin: 10px 0 16px;
+    }
+    .metric-grid > div {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 12px;
+    }
+    .metric-grid strong {
+      display: block;
+      font-size: 20px;
+      margin-bottom: 4px;
+    }
+    .metric-grid span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    ul {
+      padding-left: 20px;
+      line-height: 1.45;
+    }
+    .plain-explanation {
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin: 14px 0;
+      padding: 14px;
+    }
+    .plain-explanation h2 {
+      margin-top: 0;
+    }
+    .plain-explanation p,
+    .plain-explanation li {
+      max-width: 980px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Translation Benchmark Report</h1>
+  <p class="muted">Generated 2026-06-09 from <code>config/translation_benchmark_lock.json</code>. The lock date is 2026-06-09.</p>
+  <p>Separate regression reporting for clinical smoke search, PubMed literature translation, exact/UMLS API comparison, and code mapping coverage.</p>
+
+  
+  <section class="plain-explanation">
+    <h2>Plain-Language Read</h2>
+    <p>Each check starts with medical text and a list of IDs that should be found. A row passes when those expected IDs appear in the first 10 answers.</p>
+    <ul>
+      <li><strong>Clinical examples:</strong> 164 of 167 found every expected ID. This says the clinical-note examples are mostly working.</li>
+      <li><strong>PubMed abstracts:</strong> 2 of 7 practice abstracts and 1 of 6 locked abstracts found every expected ID. This is the weakest area.</li>
+      <li><strong>Official UMLS comparison:</strong> For short phrases, our search found the expected ID 11 of 15 times. The official UMLS search found it 15 of 15 times.</li>
+      <li><strong>Code mappings:</strong> 7 of 8 concepts had all expected code types, and 12 of 13 expected links to SNOMED CT, RxNorm, LOINC, or ICD-10-CM were present.</li>
+    </ul>
+  </section>
+    
+
+  <h2>Overview</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Benchmark part</th>
+        <th>Split</th>
+        <th>Rows</th>
+        <th>Expected CUIs</th>
+        <th>Input lock</th>
+        <th>Captured outcome</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Clinical smoke regression</td><td>regression</td><td>167</td><td>866</td><td><span class="status locked">locked</span></td><td>164/167 rows found every expected ID in the first 10 answers (98.2%); 99.3% of expected IDs found; score 98.6</td></tr>
+<tr><td>PubMed literature dev</td><td>dev</td><td>7</td><td>36</td><td><span class="status locked">locked</span></td><td>2/7 rows found every expected ID in the first 10 answers (28.6%); 72.2% of expected IDs found; score 39.3</td></tr>
+<tr><td>PubMed literature held-out</td><td>heldout</td><td>6</td><td>24</td><td><span class="status locked">locked</span></td><td>1/6 rows found every expected ID in the first 10 answers (16.7%); 70.8% of expected IDs found; score 40.2</td></tr>
+<tr><td>Exact/UMLS API comparison</td><td>diagnostic</td><td>18</td><td>18</td><td><span class="status locked">locked</span></td><td>our search found the expected ID 11/15 times (73.3%); official UMLS found it 15/15 times (100.0%)</td></tr>
+<tr><td>Code coverage</td><td>diagnostic</td><td>8</td><td>8</td><td><span class="status locked">locked</span></td><td>7/8 concepts had all expected code types; 12/13 expected code links found</td></tr>
+    </tbody>
+  </table>
+
+  <section><h2>Clinical smoke regression</h2>
+    <div class="metric-grid">
+      <div><strong>164/167</strong><span>rows where every expected ID was in the first 10 answers</span></div>
+      <div><strong>99.3%</strong><span>expected IDs found in the first 10 answers</span></div>
+      <div><strong>3</strong><span>rows missing at least one expected ID</span></div>
+      <div><strong>98.6</strong><span>overall score</span></div>
+    </div>
+    <table><thead><tr><th>Row</th><th>Missing at top 10</th><th>Top CUI</th><th>Top name</th></tr></thead><tbody><tr><td>paragraph_112</td><td>C4324621</td><td>C0015846</td><td>fentanyl</td></tr>
+<tr><td>paragraph_134</td><td>C0012291|C0075632</td><td>C0149931</td><td>Migraine Disorders</td></tr>
+<tr><td>paragraph_154</td><td>C0042313|C0202115|C4551696</td><td>C0036983</td><td>Septic Shock</td></tr></tbody></table>
+    </section>
+<section><h2>PubMed literature dev</h2>
+    <div class="metric-grid">
+      <div><strong>2/7</strong><span>rows where every expected ID was in the first 10 answers</span></div>
+      <div><strong>72.2%</strong><span>expected IDs found in the first 10 answers</span></div>
+      <div><strong>5</strong><span>rows missing at least one expected ID</span></div>
+      <div><strong>39.3</strong><span>overall score</span></div>
+    </div>
+    <table><thead><tr><th>Row</th><th>Missing at top 10</th><th>Top CUI</th><th>Top name</th></tr></thead><tbody><tr><td>pubmed_status_migrainosus_38307660</td><td>C0154723|C0338480|C0338489</td><td>C0003211</td><td>Anti-Inflammatory Agents, Non-Steroidal</td></tr>
+<tr><td>pubmed_egfr_nsclc_39951884</td><td>C0242792</td><td>C0007131</td><td>Non-Small Cell Lung Carcinoma</td></tr>
+<tr><td>pubmed_cdiff_antibiotic_diarrhea_30945014</td><td>C0003232|C0578159</td><td>C0343386</td><td>Clostridium difficile infection</td></tr>
+<tr><td>pubmed_lupus_preeclampsia_33977794</td><td>C0009506|C0024141|C0024143</td><td>C0032914</td><td>Pre-Eclampsia</td></tr>
+<tr><td>pubmed_stroke_thrombectomy_41052480</td><td>C0003537</td><td>C0872913</td><td>tenecteplase</td></tr></tbody></table>
+    </section>
+<section><h2>PubMed literature held-out</h2>
+    <div class="metric-grid">
+      <div><strong>1/6</strong><span>rows where every expected ID was in the first 10 answers</span></div>
+      <div><strong>70.8%</strong><span>expected IDs found in the first 10 answers</span></div>
+      <div><strong>5</strong><span>rows missing at least one expected ID</span></div>
+      <div><strong>40.2</strong><span>overall score</span></div>
+    </div>
+    <table><thead><tr><th>Row</th><th>Missing at top 10</th><th>Top CUI</th><th>Top name</th></tr></thead><tbody><tr><td>pubmed_status_migrainosus_30198804</td><td>C0154723</td><td>C0003211</td><td>Anti-Inflammatory Agents, Non-Steroidal</td></tr>
+<tr><td>pubmed_egfr_nsclc_37879444</td><td>C0032207|C0242792|C4058811</td><td>C0007131</td><td>Non-Small Cell Lung Carcinoma</td></tr>
+<tr><td>pubmed_cdiff_antibiotic_diarrhea_21288078</td><td>C0343386</td><td>C0042313</td><td>vancomycin</td></tr>
+<tr><td>pubmed_lupus_preeclampsia_8659509</td><td>C0009506</td><td>C0033687</td><td>Proteinuria</td></tr>
+<tr><td>pubmed_cyp2c19_clopidogrel_36890711</td><td>C3845231</td><td>C1332828</td><td>CYP2C19 gene</td></tr></tbody></table>
+    </section>
+<section><h2>Exact/UMLS API comparison</h2><table><thead><tr><th>Run</th><th>Rows</th><th>Our search found expected ID</th><th>Official UMLS found expected ID</th><th>Same first answer</th><th>Shared first-10 answers</th></tr></thead><tbody><tr><td>Default local search, related=0</td><td>18</td><td>11/15 (73.3%)</td><td>15/15 (100.0%)</td><td>12/18</td><td>1.33</td></tr><tr><td>Explicit UMLS+evidence, related=1</td><td>18</td><td>11/15 (73.3%)</td><td>15/15 (100.0%)</td><td>12/18</td><td>1.33</td></tr><tr><td>Exact local mode, UMLS+evidence scope, related=0</td><td>18</td><td>10/15 (66.7%)</td><td>15/15 (100.0%)</td><td>11/18</td><td>0.83</td></tr></tbody></table></section>
+<section><h2>Code coverage</h2><p>7/8 concepts had all expected code types; 12/13 expected code links found.</p><table><thead><tr><th>Row</th><th>ID</th><th>Expected code systems</th><th>Found</th><th>Missing</th></tr></thead><tbody><tr><td>code_atrial_fibrillation</td><td>C0004238</td><td>SNOMEDCT_US|ICD10CM</td><td>SNOMEDCT_US</td><td>ICD10CM</td></tr><tr><td>code_type_2_diabetes</td><td>C0011860</td><td>SNOMEDCT_US|ICD10CM</td><td>ICD10CM|SNOMEDCT_US</td><td></td></tr><tr><td>code_metoprolol</td><td>C0025859</td><td>RXNORM|SNOMEDCT_US</td><td>RXNORM|SNOMEDCT_US</td><td></td></tr><tr><td>code_hba1c</td><td>C0019018</td><td>LNC</td><td>LNC</td><td></td></tr><tr><td>code_chest_pain</td><td>C0008031</td><td>SNOMEDCT_US|ICD10CM</td><td>ICD10CM|SNOMEDCT_US</td><td></td></tr><tr><td>code_electrolytes_outside_reference_range</td><td>C0151613</td><td>SNOMEDCT_US</td><td>SNOMEDCT_US</td><td></td></tr><tr><td>code_chronic_cough</td><td>C0010201</td><td>SNOMEDCT_US|ICD10CM</td><td>ICD10CM|SNOMEDCT_US</td><td></td></tr><tr><td>code_septic_shock</td><td>C0036983</td><td>SNOMEDCT_US</td><td>SNOMEDCT_US</td><td></td></tr></tbody></table></section>
+
+  <section>
+    <h2>Failure-Driven Work Queue</h2>
+    <ul>
+      <li>Use the PubMed dev failures for tuning and keep the PubMed held-out rows untouched for final checks.</li>
+      <li>Improve long-literature translation by chunking abstracts into title, background, methods, results, and conclusion spans, then aggregate concepts across chunks.</li>
+      <li>Score the new span-level mention output separately from ranked hits so treatments, outcomes, genes, organisms, and study entities are not lost behind the main topic.</li>
+      <li>Improve exact-label ranking where the local result chooses a broad parent over the exact UMLS concept.</li>
+      <li>Make code mapping coverage part of translation output checks, separate from whether the CUI ranked highly.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

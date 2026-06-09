@@ -48,6 +48,8 @@ DEFINITION_SEARCH_STOPWORDS = {
 TABLE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS concept_definitions (
     cui TEXT NOT NULL,
+    aui TEXT NOT NULL DEFAULT '',
+    atui TEXT NOT NULL DEFAULT '',
     source TEXT NOT NULL,
     definition TEXT NOT NULL,
     rank INTEGER NOT NULL
@@ -57,6 +59,10 @@ CREATE TABLE IF NOT EXISTS concept_definitions (
 INDEX_SCHEMA = """
 CREATE INDEX IF NOT EXISTS idx_concept_definitions_cui_rank
 ON concept_definitions(cui, rank);
+CREATE INDEX IF NOT EXISTS idx_concept_definitions_aui
+ON concept_definitions(aui);
+CREATE INDEX IF NOT EXISTS idx_concept_definitions_atui
+ON concept_definitions(atui);
 """
 
 FTS_SCHEMA = """
@@ -110,8 +116,11 @@ def _fts_match_query(query: str) -> str:
     return " ".join(f"{token}*" for token in tokens)
 
 
-def _trim_bucket(bucket: list[tuple[tuple[int, str], str, str]]) -> list[tuple[tuple[int, str], str, str]]:
-    return sorted(bucket, key=lambda item: (item[0], len(item[2]), item[2].lower()))
+DefinitionBucketRow = tuple[tuple[int, str], str, str, str, str]
+
+
+def _trim_bucket(bucket: list[DefinitionBucketRow]) -> list[DefinitionBucketRow]:
+    return sorted(bucket, key=lambda item: (item[0], len(item[4]), item[4].lower()))
 
 
 def build_definition_index(
@@ -126,7 +135,7 @@ def build_definition_index(
 ) -> dict[str, int]:
     cuis = set(source_cuis or set())
     cuis.update(read_doc_cuis(doc_paths))
-    buckets: dict[str, list[tuple[tuple[int, str], str, str]]] = {}
+    buckets: dict[str, list[DefinitionBucketRow]] = {}
     seen_definitions: dict[str, set[str]] = {}
     scanned = 0
     accepted = 0
@@ -137,6 +146,8 @@ def build_definition_index(
                 continue
             scanned += 1
             cui = fields[0].strip()
+            aui = fields[1].strip()
+            atui = fields[2].strip()
             if not cui or (cuis and cui not in cuis):
                 continue
             suppress = fields[6].strip()
@@ -154,18 +165,18 @@ def build_definition_index(
             cui_seen.add(normalized_definition)
             source = fields[4].strip()
             bucket = buckets.setdefault(cui, [])
-            bucket.append((_source_sort_key(source), source, definition))
+            bucket.append((_source_sort_key(source), aui, atui, source, definition))
             accepted += 1
             if len(bucket) > max_definitions_per_cui * 5:
                 buckets[cui] = _trim_bucket(bucket)[: max_definitions_per_cui * 3]
 
     rows = []
     for cui, bucket in buckets.items():
-        for rank, (_, source, definition) in enumerate(
+        for rank, (_, aui, atui, source, definition) in enumerate(
             _trim_bucket(bucket)[:max_definitions_per_cui],
             start=1,
         ):
-            rows.append((cui, source, definition, rank))
+            rows.append((cui, aui, atui, source, definition, rank))
 
     conn = connect(out_path)
     if replace:
@@ -175,8 +186,8 @@ def build_definition_index(
     conn.executescript(FTS_SCHEMA)
     conn.executemany(
         """
-        INSERT INTO concept_definitions(cui, source, definition, rank)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO concept_definitions(cui, aui, atui, source, definition, rank)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         rows,
     )
@@ -185,7 +196,7 @@ def build_definition_index(
         INSERT INTO concept_definition_fts(cui, source, definition, definition_rank)
         VALUES (?, ?, ?, ?)
         """,
-        rows,
+        [(cui, source, definition, rank) for cui, _aui, _atui, source, definition, rank in rows],
     )
     conn.executescript(INDEX_SCHEMA)
     conn.commit()
@@ -205,6 +216,7 @@ class DefinitionIndex:
         self._local = threading.local()
         self.lookup_cache: dict[tuple[str, int], list[dict]] = {}
         self.search_cache: dict[tuple[str, int], list[dict]] = {}
+        self.identifier_cache: dict[tuple[str, str, int], list[dict]] = {}
         self._definition_count: int | None = None
         self._cui_count: int | None = None
 
@@ -263,6 +275,50 @@ class DefinitionIndex:
             for row in rows
         ]
         self.lookup_cache[key] = results
+        return [dict(item) for item in results]
+
+    def lookup_identifier(
+        self,
+        identifier: str,
+        *,
+        identifier_type: str = "ATUI",
+        limit: int = 10,
+    ) -> list[dict]:
+        identifier = str(identifier or "").strip().upper()
+        identifier_type = str(identifier_type or "").strip().upper()
+        if not identifier or identifier_type not in {"AUI", "ATUI"}:
+            return []
+        key = (identifier_type, identifier, limit)
+        cached = self.identifier_cache.get(key)
+        if cached is not None:
+            return [dict(item) for item in cached]
+        column = "aui" if identifier_type == "AUI" else "atui"
+        try:
+            rows = self.connection().execute(
+                f"""
+                SELECT cui, source, definition, rank
+                FROM concept_definitions
+                WHERE {column} = ? COLLATE NOCASE
+                ORDER BY rank ASC
+                LIMIT ?
+                """,
+                (identifier, limit),
+            )
+        except sqlite3.OperationalError:
+            self.identifier_cache[key] = []
+            return []
+        results = [
+            {
+                "cui": row["cui"],
+                "source": row["source"],
+                "definition": row["definition"],
+                "rank": int(row["rank"] or 0),
+                "matched_identifier_type": identifier_type,
+                "matched_identifier": identifier,
+            }
+            for row in rows
+        ]
+        self.identifier_cache[key] = results
         return [dict(item) for item in results]
 
     def search(self, query: str, *, limit: int = 50) -> list[dict]:

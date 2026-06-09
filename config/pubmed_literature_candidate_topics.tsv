@@ -1,0 +1,21 @@
+id	term	pmids	expected_cuis	why	disallowed_cuis	retmax
+lit_icb_pneumonitis	immune checkpoint inhibitor pneumonitis case report					5
+lit_colorectal_screening	colonoscopy screening colorectal cancer adenoma					5
+lit_hypoglycemia_ckd	severe hypoglycemia chronic kidney disease cohort					5
+lit_hfrEF_sglt2	heart failure reduced ejection fraction SGLT2 inhibitor trial					5
+lit_af_anticoagulation	atrial fibrillation anticoagulation stroke bleeding cohort					5
+lit_rheumatoid_mtx_jak	rheumatoid arthritis methotrexate JAK inhibitor trial					5
+lit_lupus_nephritis_belimumab	lupus nephritis belimumab mycophenolate trial					5
+lit_sepsis_ards_biomarkers	sepsis ARDS biomarker phenotype cohort					5
+lit_lvo_thrombectomy	large vessel occlusion mechanical thrombectomy tenecteplase					5
+lit_diabetes_glp1_kidney	type 2 diabetes GLP-1 kidney outcomes trial					5
+lit_cdiff_recurrence	Clostridioides difficile fidaxomicin vancomycin recurrence trial					5
+lit_opioid_overdose	opioid overdose naloxone emergency department cohort					5
+lit_alzheimer_amyloid	Alzheimer disease lecanemab amyloid trial					5
+lit_cystic_fibrosis_modulator	cystic fibrosis elexacaftor tezacaftor ivacaftor					5
+lit_prostate_psa_mri	prostate cancer PSA MRI biopsy active surveillance					5
+lit_asthma_biologic	severe asthma biologic eosinophil exacerbation trial					5
+lit_migraine_cgrp	migraine CGRP erenumab fremanezumab trial					5
+lit_covid_aki	covid acute kidney injury respiratory distress syndrome cohort					5
+lit_esbl_uti	ESBL Escherichia coli urinary tract infection ertapenem nitrofurantoin					5
+lit_preeclampsia_aspirin	preeclampsia aspirin pregnancy proteinuria cohort					5

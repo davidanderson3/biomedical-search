@@ -1,0 +1,72 @@
+services:
+  elasticsearch:
+    image: ${ELASTIC_IMAGE:-docker.elastic.co/elasticsearch/elasticsearch:8.15.3}
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms4g -Xmx4g}
+    ports:
+      - "${ELASTIC_PORT:-9200}:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+
+  elastic-loader:
+    build:
+      context: .
+    working_dir: /workspace
+    environment:
+      ELASTIC_URL: http://elasticsearch:9200
+      ELASTIC_INDEX: ${ELASTIC_INDEX:-qe-scaling-sapbert-cls}
+      BULK_DOCS_PER_FILE: ${BULK_DOCS_PER_FILE:-25000}
+      ELASTIC_SHARDS: ${ELASTIC_SHARDS:-1}
+      ELASTIC_REPLICAS: ${ELASTIC_REPLICAS:-0}
+    volumes:
+      - ../..:/workspace
+    depends_on:
+      - elasticsearch
+    profiles:
+      - load
+    command: ["sh", "docker/public-search/load_sapbert_elastic.sh"]
+
+  app:
+    build:
+      context: .
+    working_dir: /workspace
+    environment:
+      ELASTIC_URL: http://elasticsearch:9200
+      ELASTIC_INDEX: ${ELASTIC_INDEX:-qe-scaling-sapbert-cls}
+      HF_HOME: /home/app/.cache/huggingface
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HUB_OFFLINE: "1"
+      PUBLIC_OUTPUT_ONLY: ${PUBLIC_OUTPUT_ONLY:-1}
+      PUBLIC_OUTPUT_SOURCE_ALLOWLIST: ${PUBLIC_OUTPUT_SOURCE_ALLOWLIST:-}
+    ports:
+      - "${APP_PORT:-8766}:8766"
+    volumes:
+      - ../..:/workspace
+      - ${HOME}/.cache/huggingface:/home/app/.cache/huggingface:ro
+    depends_on:
+      - elasticsearch
+    command: ["sh", "-lc", "scripts/start_search_quality_server.sh --host 0.0.0.0"]
+
+  app-local-scan:
+    build:
+      context: .
+    working_dir: /workspace
+    environment:
+      HF_HOME: /home/app/.cache/huggingface
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HUB_OFFLINE: "1"
+      PUBLIC_OUTPUT_ONLY: ${PUBLIC_OUTPUT_ONLY:-1}
+      PUBLIC_OUTPUT_SOURCE_ALLOWLIST: ${PUBLIC_OUTPUT_SOURCE_ALLOWLIST:-}
+    ports:
+      - "${APP_PORT:-8766}:8766"
+    volumes:
+      - ../..:/workspace
+      - ${HOME}/.cache/huggingface:/home/app/.cache/huggingface:ro
+    profiles:
+      - low-disk
+    command: ["sh", "docker/public-search/start_app_local_scan.sh"]
+
+volumes:
+  elasticsearch-data:

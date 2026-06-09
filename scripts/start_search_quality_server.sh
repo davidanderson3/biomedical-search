@@ -4,6 +4,14 @@ set -eu
 PORT="${PORT:-8766}"
 ELASTIC_URL="${ELASTIC_URL:-http://localhost:9200}"
 ELASTIC_INDEX="${ELASTIC_INDEX:-qe-scaling-sapbert-cls}"
+PUBLIC_OUTPUT_ONLY="${PUBLIC_OUTPUT_ONLY:-1}"
+PUBLIC_OUTPUT_ARGS=""
+if [ "$PUBLIC_OUTPUT_ONLY" = "1" ] || [ "$PUBLIC_OUTPUT_ONLY" = "true" ]; then
+  PUBLIC_OUTPUT_ARGS="--public-output-only"
+fi
+if [ "${PUBLIC_OUTPUT_SOURCE_ALLOWLIST:-}" ]; then
+  PUBLIC_OUTPUT_ARGS="$PUBLIC_OUTPUT_ARGS --public-output-source-allowlist $PUBLIC_OUTPUT_SOURCE_ALLOWLIST"
+fi
 
 VECTOR_PATHS=""
 DOC_PATHS=""
@@ -66,6 +74,7 @@ exec python3 scripts/search_quality_server.py \
   --label-index build/umls_biomedicine_search_label_index.sqlite \
   --code-index build/cui_code_index.sqlite \
   --relation-index build/umls_related_concepts.sqlite \
+  $PUBLIC_OUTPUT_ARGS \
   --progress-plan config/pubmed_bulk_recent_1321_1320.plan.json \
   --judgments-out build/scaling_runs/pubmed_bulk_recent_1321_1320/search_quality_judgments.csv \
   "$@"

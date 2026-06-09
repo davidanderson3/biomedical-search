@@ -68,6 +68,13 @@ from qe_evidence_vectors.fetchers import (
     reference_source_policies,
 )
 from qe_evidence_vectors.ingest import read_query_log_tsv, read_snippet_tsv
+from qe_evidence_vectors.incremental_build import (
+    write_atom_fingerprint_diff,
+    write_atom_fingerprints,
+    write_concept_document_manifest,
+    write_incremental_vector_assembly,
+    write_vector_reuse_plan,
+)
 from qe_evidence_vectors.label_index import LabelIndex, build_label_index
 from qe_evidence_vectors.linker import iter_linked_corpus_evidence
 from qe_evidence_vectors.profile_workflow import build_profile_indexes, link_profile_shards
@@ -80,6 +87,10 @@ from qe_evidence_vectors.pubmed_bulk import (
     write_pubmed_bulk_corpus,
 )
 from qe_evidence_vectors.provenance_index import build_provenance_index
+from qe_evidence_vectors.pubtator3 import (
+    PUBTATOR3_RELATION_URL,
+    write_pubtator3_relation_sample,
+)
 from qe_evidence_vectors.relation_index import build_relation_index
 from qe_evidence_vectors.relationship_edge_index import build_relationship_edge_index
 from qe_evidence_vectors.research_relations import build_research_relation_index
@@ -225,6 +236,8 @@ def cmd_fetch_clinicaltrials(args: argparse.Namespace) -> int:
         query=args.query,
         max_records=args.max_records,
         page_size=args.page_size,
+        outcomes_only=getattr(args, "outcomes_only", False),
+        require_results=getattr(args, "require_results", False),
     )
     count = write_jsonl(args.out, documents)
     print(f"Wrote {count:,} ClinicalTrials.gov corpus documents to {args.out}")
@@ -444,6 +457,26 @@ def cmd_build_reviewed_association_edges(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ingest_pubtator3_relations(args: argparse.Namespace) -> int:
+    manifest = write_pubtator3_relation_sample(
+        source=args.input,
+        out_path=args.out,
+        manifest_path=args.manifest,
+        code_index_path=args.code_index,
+        max_records=args.max_records,
+        max_input_lines=args.max_input_lines,
+        include_relation_types=set(args.include_relation_type or []),
+        timeout=args.timeout,
+    )
+    print(
+        f"Wrote {manifest['records']:,} PubTator3 relation edge sample record(s) "
+        f"to {manifest['output']}"
+    )
+    if args.manifest:
+        print(f"Wrote PubTator3 sample manifest to {args.manifest}")
+    return 0
+
+
 def _jsonl_payload(record):
     return asdict(record) if hasattr(record, "__dataclass_fields__") else dict(record)
 
@@ -481,6 +514,8 @@ def fetch_source_subset_documents(args: argparse.Namespace):
                 query=args.query,
                 max_records=args.max_records,
                 page_size=args.page_size,
+                outcomes_only=getattr(args, "outcomes_only", False),
+                require_results=getattr(args, "require_results", False),
             )
         )
     if args.source == "medlineplus":
@@ -702,43 +737,6 @@ def cmd_ingest_tabular_corpus(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_ingest_mimic_structured(args: argparse.Namespace) -> int:
-    from qe_evidence_vectors.mimic_structured import iter_mimic_structured_documents
-
-    documents = iter_mimic_structured_documents(
-        args.root,
-        sources=set(args.source) if args.source else None,
-        source_prefix=args.source_prefix,
-        max_rows_per_table=args.max_rows_per_table,
-        max_examples_per_group=args.max_examples_per_group,
-        note_corpus_paths=args.note_corpus,
-        max_notes_per_admission=args.max_notes_per_admission,
-        max_note_examples_per_group=args.max_note_examples_per_group,
-        note_context_chars=args.note_context_chars,
-    )
-    count = write_jsonl(args.out, documents)
-    print(f"Wrote {count:,} MIMIC structured corpus documents to {args.out}")
-    return 0
-
-
-def cmd_ingest_mimic_notes(args: argparse.Namespace) -> int:
-    from qe_evidence_vectors.mimic_notes import write_mimic_note_corpora
-
-    results = write_mimic_note_corpora(
-        root=args.root,
-        out_dir=args.out_dir,
-        note_kinds=args.note_kind or None,
-        max_discharge_rows=args.max_discharge_rows,
-        max_radiology_rows=args.max_radiology_rows,
-    )
-    total = 0
-    for result in results:
-        total += result.count
-        print(f"Wrote {result.count:,} {result.note_kind} MIMIC-IV-Note documents to {result.path}")
-    print(f"Wrote {total:,} total MIMIC-IV-Note corpus documents from {args.root}")
-    return 0
-
-
 def cmd_filter_evidence(args: argparse.Namespace) -> int:
     records = iter_filtered_evidence_files(
         args.evidence,
@@ -765,6 +763,7 @@ def cmd_build_label_index(args: argparse.Namespace) -> int:
         min_chars=args.min_chars,
         min_tokens=args.min_tokens,
         max_tokens=args.max_tokens,
+        include_lexical_variants=not args.no_lexical_variants,
         replace=args.replace,
     )
     print(f"Indexed {count:,} UMLS labels into {args.out}")
@@ -792,6 +791,81 @@ def cmd_build_semantic_type_index(args: argparse.Namespace) -> int:
         batch_size=args.batch_size,
     )
     print(f"Indexed {count:,} UMLS semantic type rows into {args.out}")
+    return 0
+
+
+def cmd_build_atom_fingerprints(args: argparse.Namespace) -> int:
+    summary = write_atom_fingerprints(
+        mrconso_path=args.mrconso,
+        out_path=args.out,
+        language=args.language,
+        include_suppressed=args.include_suppressed,
+        include_atom_ids=args.include_atom_ids,
+        release=args.release,
+        temp_dir=args.temp_dir,
+        batch_size=args.batch_size,
+    )
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_diff_atom_fingerprints(args: argparse.Namespace) -> int:
+    summary = write_atom_fingerprint_diff(
+        old_path=args.old,
+        new_path=args.new,
+        out_path=args.out,
+        summary_path=args.summary_out,
+        old_release=args.old_release,
+        new_release=args.new_release,
+    )
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_build_document_manifest(args: argparse.Namespace) -> int:
+    summary = write_concept_document_manifest(
+        docs_path=args.docs,
+        out_path=args.out,
+        release=args.release,
+    )
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_plan_vector_reuse(args: argparse.Namespace) -> int:
+    summary = write_vector_reuse_plan(
+        old_manifest_path=args.old_manifest,
+        new_docs_path=args.new_docs,
+        old_vector_paths=args.old_vectors,
+        out_plan_path=args.out_plan,
+        out_reused_vectors_path=args.out_reused_vectors,
+        out_docs_to_embed_path=args.out_docs_to_embed,
+        out_new_manifest_path=args.out_new_manifest,
+        summary_path=args.summary_out,
+        old_release=args.old_release,
+        new_release=args.new_release,
+        omit_text=args.omit_text,
+        include_document_metadata=args.include_document_metadata,
+        require_old_vector_text_hash=args.require_old_vector_text_hash,
+    )
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_assemble_incremental_vectors(args: argparse.Namespace) -> int:
+    summary = write_incremental_vector_assembly(
+        manifest_path=args.manifest,
+        vector_paths=args.vectors,
+        out_path=args.out,
+        summary_path=args.summary_out,
+        release=args.release,
+        expect_dims=args.expect_dims,
+        expect_provider=args.expect_provider,
+        expect_model=args.expect_model,
+        expect_pooling=args.expect_pooling,
+        require_text_hash=args.require_text_hash,
+    )
+    print(json.dumps(summary, indent=2, sort_keys=True))
     return 0
 
 
@@ -1431,6 +1505,16 @@ def build_parser() -> argparse.ArgumentParser:
     clinicaltrials_parser.add_argument("--out", required=True, help="Output corpus JSONL")
     clinicaltrials_parser.add_argument("--max-records", type=int, default=100)
     clinicaltrials_parser.add_argument("--page-size", type=int, default=25)
+    clinicaltrials_parser.add_argument(
+        "--outcomes-only",
+        action="store_true",
+        help="Keep only studies with posted results and index outcome-result text, not protocol or eligibility text.",
+    )
+    clinicaltrials_parser.add_argument(
+        "--require-results",
+        action="store_true",
+        help="Skip studies without posted ClinicalTrials.gov results.",
+    )
     clinicaltrials_parser.set_defaults(func=cmd_fetch_clinicaltrials)
 
     medlineplus_parser = subparsers.add_parser("fetch-medlineplus")
@@ -1638,6 +1722,40 @@ def build_parser() -> argparse.ArgumentParser:
     )
     reviewed_edges_parser.set_defaults(func=cmd_build_reviewed_association_edges)
 
+    pubtator3_parser = subparsers.add_parser("ingest-pubtator3-relations")
+    pubtator3_parser.add_argument(
+        "--input",
+        default=PUBTATOR3_RELATION_URL,
+        help="PubTator3 relation2pubtator3.gz URL or local file.",
+    )
+    pubtator3_parser.add_argument("--out", required=True, help="Output relationship-edge JSONL")
+    pubtator3_parser.add_argument("--manifest", help="Optional JSON manifest output")
+    pubtator3_parser.add_argument(
+        "--code-index",
+        default=str(ROOT / "build" / "cui_code_index.sqlite"),
+        help="SQLite UMLS code index used to map PubTator IDs to CUIs.",
+    )
+    pubtator3_parser.add_argument(
+        "--max-records",
+        type=int,
+        default=1000,
+        help="Maximum mapped relationship-edge records to emit. Use 0 for no output cap.",
+    )
+    pubtator3_parser.add_argument(
+        "--max-input-lines",
+        type=int,
+        default=0,
+        help="Maximum raw PubTator relation lines to scan. Use 0 for no scan cap.",
+    )
+    pubtator3_parser.add_argument(
+        "--include-relation-type",
+        action="append",
+        default=[],
+        help="Restrict to a PubTator relation type such as treat or associate. Repeat as needed.",
+    )
+    pubtator3_parser.add_argument("--timeout", type=int, default=60)
+    pubtator3_parser.set_defaults(func=cmd_ingest_pubtator3_relations)
+
     reference_pages_parser = subparsers.add_parser("fetch-reference-pages")
     reference_pages_parser.add_argument("--source", required=True, choices=reference_page_sources)
     reference_pages_parser.add_argument("--url", action="append", default=[], help="Reference page URL or local HTML file. Repeat as needed.")
@@ -1671,6 +1789,16 @@ def build_parser() -> argparse.ArgumentParser:
     source_subset_parser.add_argument("--label-index", required=True, help="SQLite label index used for CUI assignment.")
     source_subset_parser.add_argument("--mrconso", help="Optional MRCONSO.RRF for labels on evidence-bearing CUIs.")
     source_subset_parser.add_argument("--query", default="cancer OR diabetes OR migraine OR sepsis OR pneumonia", help="ClinicalTrials.gov query.term value.")
+    source_subset_parser.add_argument(
+        "--outcomes-only",
+        action="store_true",
+        help="For ClinicalTrials.gov, index posted outcome-result text only.",
+    )
+    source_subset_parser.add_argument(
+        "--require-results",
+        action="store_true",
+        help="For ClinicalTrials.gov, skip studies without posted results.",
+    )
     source_subset_parser.add_argument("--source-url", help="Source XML/ZIP URL for MedlinePlus or MedlinePlus Genetics.")
     source_subset_parser.add_argument("--include-spanish", action="store_true")
     source_subset_parser.add_argument("--prefer-xml", action="store_true")
@@ -1747,7 +1875,7 @@ def build_parser() -> argparse.ArgumentParser:
     tabular_parser = subparsers.add_parser("ingest-tabular-corpus")
     tabular_parser.add_argument("--input", required=True, help="Input CSV/TSV, optionally .gz")
     tabular_parser.add_argument("--out", required=True, help="Output corpus JSONL")
-    tabular_parser.add_argument("--source", required=True, help="Corpus source name, e.g. mimic_iv_ed")
+    tabular_parser.add_argument("--source", required=True, help="Corpus source name, e.g. local_registry")
     tabular_parser.add_argument(
         "--text-column",
         action="append",
@@ -1769,54 +1897,6 @@ def build_parser() -> argparse.ArgumentParser:
     tabular_parser.add_argument("--delimiter", help="Override delimiter, e.g. ',' or tab")
     tabular_parser.add_argument("--max-rows", type=int)
     tabular_parser.set_defaults(func=cmd_ingest_tabular_corpus)
-
-    mimic_structured_parser = subparsers.add_parser("ingest-mimic-structured")
-    mimic_structured_parser.add_argument("--root", required=True, help="MIMIC-IV root containing hosp/ and icu/")
-    mimic_structured_parser.add_argument("--out", required=True, help="Output corpus JSONL")
-    mimic_structured_parser.add_argument(
-        "--source-prefix",
-        default="mimic_demo",
-        help="Prefix for emitted source names, e.g. mimic_demo or mimic_iv.",
-    )
-    mimic_structured_parser.add_argument(
-        "--source",
-        action="append",
-        default=[],
-        help="Structured source to include after applying --source-prefix. Repeat as needed. Defaults to all non-DRG structured sources.",
-    )
-    mimic_structured_parser.add_argument("--max-rows-per-table", type=int)
-    mimic_structured_parser.add_argument("--max-examples-per-group", type=int, default=8)
-    mimic_structured_parser.add_argument(
-        "--note-corpus",
-        action="append",
-        default=[],
-        help=(
-            "Optional MIMIC-IV-Note corpus JSONL produced by ingest-mimic-notes. "
-            "Repeat to coordinate structured events with discharge and radiology notes by hadm_id."
-        ),
-    )
-    mimic_structured_parser.add_argument("--max-notes-per-admission", type=int, default=3)
-    mimic_structured_parser.add_argument("--max-note-examples-per-group", type=int, default=4)
-    mimic_structured_parser.add_argument("--note-context-chars", type=int, default=240)
-    mimic_structured_parser.set_defaults(func=cmd_ingest_mimic_structured)
-
-    mimic_notes_parser = subparsers.add_parser("ingest-mimic-notes")
-    mimic_notes_parser.add_argument(
-        "--root",
-        required=True,
-        help="MIMIC-IV-Note root containing note/discharge.csv.gz and note/radiology.csv.gz",
-    )
-    mimic_notes_parser.add_argument("--out-dir", required=True, help="Output directory for per-note-source corpus JSONL files")
-    mimic_notes_parser.add_argument(
-        "--note-kind",
-        action="append",
-        default=[],
-        choices=["discharge", "radiology"],
-        help="Note kind to include. Repeat as needed. Defaults to discharge and radiology.",
-    )
-    mimic_notes_parser.add_argument("--max-discharge-rows", type=int, help="Optional cap for discharge.csv.gz rows")
-    mimic_notes_parser.add_argument("--max-radiology-rows", type=int, help="Optional cap for radiology.csv.gz rows")
-    mimic_notes_parser.set_defaults(func=cmd_ingest_mimic_notes)
 
     label_parser = subparsers.add_parser("build-label-index")
     label_parser.add_argument("--mrconso", required=True, help="Path to MRCONSO.RRF")
@@ -1841,6 +1921,11 @@ def build_parser() -> argparse.ArgumentParser:
     label_parser.add_argument("--min-chars", type=int, default=3)
     label_parser.add_argument("--min-tokens", type=int, default=1)
     label_parser.add_argument("--max-tokens", type=int, default=8)
+    label_parser.add_argument(
+        "--no-lexical-variants",
+        action="store_true",
+        help="Only index literal normalized labels; by default SPECIALIST-style lexical variants are also indexed.",
+    )
     label_parser.add_argument("--replace", action="store_true")
     label_parser.set_defaults(func=cmd_build_label_index)
 
@@ -1859,6 +1944,93 @@ def build_parser() -> argparse.ArgumentParser:
     semantic_type_parser.add_argument("--replace", action="store_true")
     semantic_type_parser.add_argument("--batch-size", type=int, default=50_000)
     semantic_type_parser.set_defaults(func=cmd_build_semantic_type_index)
+
+    atom_fingerprint_parser = subparsers.add_parser("build-atom-fingerprints")
+    atom_fingerprint_parser.add_argument("--mrconso", required=True, help="Path to MRCONSO.RRF")
+    atom_fingerprint_parser.add_argument("--out", required=True, help="Output CUI atom fingerprint TSV")
+    atom_fingerprint_parser.add_argument("--language", default="ENG")
+    atom_fingerprint_parser.add_argument("--include-suppressed", action="store_true")
+    atom_fingerprint_parser.add_argument(
+        "--include-atom-ids",
+        action="store_true",
+        help=(
+            "Include AUI/SAUI/LUI/SUI in the fingerprint. Default fingerprints ignore atom-ID churn "
+            "that does not alter searchable atom content."
+        ),
+    )
+    atom_fingerprint_parser.add_argument("--release", default="", help="Optional UMLS release label written to metadata")
+    atom_fingerprint_parser.add_argument(
+        "--temp-dir",
+        help="Directory for the temporary SQLite dedupe database. Defaults to the output file directory.",
+    )
+    atom_fingerprint_parser.add_argument("--batch-size", type=int, default=100_000)
+    atom_fingerprint_parser.set_defaults(func=cmd_build_atom_fingerprints)
+
+    atom_diff_parser = subparsers.add_parser("diff-atom-fingerprints")
+    atom_diff_parser.add_argument("--old", required=True, help="Older atom fingerprint TSV")
+    atom_diff_parser.add_argument("--new", required=True, help="Newer atom fingerprint TSV")
+    atom_diff_parser.add_argument("--out", required=True, help="Output changed-CUI TSV")
+    atom_diff_parser.add_argument("--summary-out", help="Optional JSON summary output")
+    atom_diff_parser.add_argument("--old-release", default="", help="Optional older release label")
+    atom_diff_parser.add_argument("--new-release", default="", help="Optional newer release label")
+    atom_diff_parser.set_defaults(func=cmd_diff_atom_fingerprints)
+
+    document_manifest_parser = subparsers.add_parser("build-document-manifest")
+    document_manifest_parser.add_argument("--docs", required=True, help="Concept document JSONL")
+    document_manifest_parser.add_argument("--out", required=True, help="Output concept-document manifest TSV")
+    document_manifest_parser.add_argument("--release", default="", help="Optional release/build label written to metadata")
+    document_manifest_parser.set_defaults(func=cmd_build_document_manifest)
+
+    vector_reuse_parser = subparsers.add_parser("plan-vector-reuse")
+    vector_reuse_parser.add_argument("--old-manifest", required=True, help="Previous concept-document manifest TSV")
+    vector_reuse_parser.add_argument("--new-docs", required=True, help="New concept document JSONL")
+    vector_reuse_parser.add_argument(
+        "--old-vectors",
+        required=True,
+        nargs="+",
+        help="Previous vector JSONL shard(s). Later shards override earlier duplicate doc_ids.",
+    )
+    vector_reuse_parser.add_argument("--out-plan", required=True, help="Output vector reuse plan TSV")
+    vector_reuse_parser.add_argument("--out-reused-vectors", required=True, help="Output carried-forward vector JSONL")
+    vector_reuse_parser.add_argument("--out-docs-to-embed", required=True, help="Output concept documents that need embedding")
+    vector_reuse_parser.add_argument("--out-new-manifest", help="Optional manifest TSV for --new-docs")
+    vector_reuse_parser.add_argument("--summary-out", help="Optional JSON summary output")
+    vector_reuse_parser.add_argument("--old-release", default="", help="Optional previous release/build label")
+    vector_reuse_parser.add_argument("--new-release", default="", help="Optional new release/build label")
+    vector_reuse_parser.add_argument("--omit-text", action="store_true", help="Omit text from carried-forward vector records")
+    vector_reuse_parser.add_argument(
+        "--include-document-metadata",
+        action="store_true",
+        help="Copy new concept-document metadata into carried-forward vector metadata.",
+    )
+    vector_reuse_parser.add_argument(
+        "--require-old-vector-text-hash",
+        action="store_true",
+        help="Reuse only old vectors that prove the previous manifest text hash.",
+    )
+    vector_reuse_parser.set_defaults(func=cmd_plan_vector_reuse)
+
+    vector_assembly_parser = subparsers.add_parser("assemble-incremental-vectors")
+    vector_assembly_parser.add_argument("--manifest", required=True, help="New concept-document manifest TSV")
+    vector_assembly_parser.add_argument(
+        "--vectors",
+        required=True,
+        nargs="+",
+        help="Reused and freshly embedded vector JSONL files to validate and assemble.",
+    )
+    vector_assembly_parser.add_argument("--out", required=True, help="Output assembled vector JSONL")
+    vector_assembly_parser.add_argument("--summary-out", help="Optional JSON summary output")
+    vector_assembly_parser.add_argument("--release", default="", help="Optional release/build label")
+    vector_assembly_parser.add_argument("--expect-dims", type=int, help="Require this vector dimension")
+    vector_assembly_parser.add_argument("--expect-provider", default="", help="Require this embedding_provider metadata value")
+    vector_assembly_parser.add_argument("--expect-model", default="", help="Require this embedding_model metadata value")
+    vector_assembly_parser.add_argument("--expect-pooling", default="", help="Require this embedding_pooling metadata value")
+    vector_assembly_parser.add_argument(
+        "--require-text-hash",
+        action="store_true",
+        help="Require each vector to prove the manifest text hash via metadata or retained text.",
+    )
+    vector_assembly_parser.set_defaults(func=cmd_assemble_incremental_vectors)
 
     relation_parser = subparsers.add_parser("build-relation-index")
     relation_parser.add_argument("--mrrel", required=True, help="Path to MRREL.RRF")

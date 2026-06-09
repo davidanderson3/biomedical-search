@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS related_concepts (
     target_cui TEXT NOT NULL,
     relation TEXT NOT NULL,
     rela TEXT NOT NULL,
+    rui TEXT NOT NULL DEFAULT '',
     sab TEXT NOT NULL,
     direction TEXT NOT NULL,
     label TEXT NOT NULL,
@@ -30,6 +31,9 @@ ON related_concepts(source_cui, rank);
 
 CREATE INDEX IF NOT EXISTS idx_related_target_rank
 ON related_concepts(target_cui, rank);
+
+CREATE INDEX IF NOT EXISTS idx_related_rui
+ON related_concepts(rui);
 """
 
 REL_PRIORITY = {
@@ -57,6 +61,7 @@ class RelationCandidate:
     target_cui: str
     relation: str
     rela: str
+    rui: str
     sab: str
     direction: str
 
@@ -144,11 +149,12 @@ def collect_relation_candidates(
             fields = line.rstrip("\n").split("|")
             if len(fields) < 15:
                 continue
-            cui1, rel, cui2, rela, sab, suppress = (
+            cui1, rel, cui2, rela, rui, sab, suppress = (
                 fields[0],
                 fields[3],
                 fields[4],
                 fields[7],
+                fields[8],
                 fields[10],
                 fields[14],
             )
@@ -159,13 +165,13 @@ def collect_relation_candidates(
             if cui1 in source_cuis:
                 _maybe_add_candidate(
                     buckets,
-                    RelationCandidate(cui1, cui2, rel, rela, sab, "outgoing"),
+                    RelationCandidate(cui1, cui2, rel, rela, rui, sab, "outgoing"),
                     max_relations_per_cui=max_relations_per_cui,
                 )
             if include_inverse and cui2 in source_cuis:
                 _maybe_add_candidate(
                     buckets,
-                    RelationCandidate(cui2, cui1, rel, rela, sab, "incoming"),
+                    RelationCandidate(cui2, cui1, rel, rela, rui, sab, "incoming"),
                     max_relations_per_cui=max_relations_per_cui,
                 )
     return {
@@ -219,6 +225,7 @@ def build_relation_index(
                     candidate.target_cui,
                     candidate.relation,
                     candidate.rela,
+                    candidate.rui,
                     candidate.sab,
                     candidate.direction,
                     label,
@@ -228,9 +235,9 @@ def build_relation_index(
     conn.executemany(
         """
         INSERT INTO related_concepts(
-            source_cui, target_cui, relation, rela, sab, direction, label, rank
+            source_cui, target_cui, relation, rela, rui, sab, direction, label, rank
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         batch,
     )
@@ -335,6 +342,52 @@ class RelationIndex:
                     "direction": row["direction"],
                     "label": display_label(str(row["label"])),
                     "rank": int(row["rank"] or 0),
+                },
+                subject_cui=row["source_cui"],
+                object_cui=row["target_cui"],
+            )
+            for row in rows
+        ]
+        self.cache[key] = results
+        return results
+
+    def lookup_identifier(self, identifier: str, *, identifier_type: str = "RUI", limit: int = 16) -> list[dict]:
+        identifier = str(identifier or "").strip().upper()
+        if not identifier or str(identifier_type or "").strip().upper() != "RUI":
+            return []
+        key = (f"rui:{identifier}", limit)
+        cached = self.cache.get(key)
+        if cached is not None:
+            return cached
+        try:
+            rows = self.connection().execute(
+                """
+                SELECT source_cui, target_cui, relation, rela, rui, sab, direction, label, rank
+                FROM related_concepts
+                WHERE rui = ? COLLATE NOCASE
+                ORDER BY rank ASC
+                LIMIT ?
+                """,
+                (identifier, limit),
+            )
+        except sqlite3.OperationalError:
+            self.cache[key] = []
+            return []
+        results = [
+            attach_universal_edge(
+                {
+                    "source_cui": row["source_cui"],
+                    "target_cui": row["target_cui"],
+                    "cui": row["target_cui"],
+                    "relation": row["relation"],
+                    "rela": row["rela"],
+                    "rui": row["rui"],
+                    "source": row["sab"],
+                    "direction": row["direction"],
+                    "label": display_label(str(row["label"])),
+                    "rank": int(row["rank"] or 0),
+                    "matched_identifier_type": "RUI",
+                    "matched_identifier": identifier,
                 },
                 subject_cui=row["source_cui"],
                 object_cui=row["target_cui"],

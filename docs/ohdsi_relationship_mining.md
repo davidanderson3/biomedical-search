@@ -121,7 +121,7 @@ These should produce stronger relationship edges than generic literature co-occu
 
 ## Product Rules
 
-- Mine aggregate/public OHDSI artifacts first; do not depend on MIMIC or any real EHR source.
+- Mine aggregate/public OHDSI artifacts first; do not depend on any real EHR source.
 - Keep `evidence.method` distinct from `confidence`: a relationship can be literature-mined but low confidence, or curated but weakly quantified.
 - Do not promote `likely_indication` solely from common comorbidity prevalence. Require at least one of: explicit inclusion criterion, temporal precedence, high lift, published study intent, or repeated network agreement.
 - Always preserve the original OMOP concept IDs, cohort IDs, concept set IDs, and source package URLs as provenance.

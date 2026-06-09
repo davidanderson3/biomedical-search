@@ -10,39 +10,59 @@
   <main class="wrap">
     <section class="panel search-panel">
       <h2>Find Concepts</h2>
-      <div class="grid query-grid">
-        <div>
+      <div class="search-primary-row">
+        <div class="query-field">
           <textarea id="query" aria-label="Search query">heart failure with reduced ejection fraction</textarea>
         </div>
-        <div>
-          <label for="topK">Search pool</label>
-          <input id="topK" type="number" min="18" max="100" value="30">
-        </div>
-        <div>
-          <label for="searchMode">Search mode</label>
-          <select id="searchMode" aria-label="Search mode">
-            <option value="balanced" selected>Expanded</option>
-            <option value="exact">Exact</option>
-          </select>
-        </div>
-        <div>
-          <label for="semanticGroupFilter">Semantic group</label>
-          <select id="semanticGroupFilter" aria-label="Semantic group filter"></select>
-        </div>
-        <div>
-          <label for="includeRelated">Related</label>
-          <label class="check-row">
-            <input id="includeRelated" type="checkbox">
-            Include
-          </label>
-        </div>
-        <div>
+        <div class="search-actions">
           <div class="search-button-row">
             <button id="searchBtn" class="primary">Search</button>
             <button id="randomQueryBtn" type="button">Random</button>
+            <button id="longQueryBtn" type="button" disabled>Long sample</button>
           </div>
+          <div id="sampleStatus" class="sample-status">Loading samples...</div>
         </div>
       </div>
+      <details class="advanced-search-panel">
+        <summary>Search settings</summary>
+        <div class="grid search-settings-grid">
+          <div>
+            <label for="topK">Result depth</label>
+            <input id="topK" type="number" min="60" max="100" value="60">
+          </div>
+          <div>
+            <label for="searchMode">Matching</label>
+            <select id="searchMode" aria-label="Search mode">
+              <option value="balanced" selected>Expanded</option>
+              <option value="exact">Exact</option>
+            </select>
+          </div>
+          <div>
+            <label for="searchScope">Vocabulary scope</label>
+            <select id="searchScope" aria-label="Source scope">
+              <option value="umls_evidence" selected>UMLS + evidence</option>
+              <option value="umls">UMLS only</option>
+            </select>
+          </div>
+          <div>
+            <label for="semanticGroupFilter">Semantic group</label>
+            <select id="semanticGroupFilter" aria-label="Semantic group filter"></select>
+          </div>
+          <div>
+            <label for="sourceCodes">Codes</label>
+            <select id="sourceCodes" aria-label="Source asserted code systems">
+              <option value="default" selected>Default</option>
+              <option value="none">None</option>
+              <option value="SNOMEDCT_US">SNOMED CT US</option>
+              <option value="RXNORM">RxNorm</option>
+              <option value="ICD10CM">ICD-10-CM</option>
+              <option value="LNC">LOINC</option>
+              <option value="all">All</option>
+            </select>
+            <div id="sourceCodesHint" class="field-hint" hidden></div>
+          </div>
+        </div>
+      </details>
       <div id="searchProgress" class="search-progress" role="status" aria-live="polite" hidden>
         <div class="search-progress-label">Searching</div>
         <div class="search-progress-track" aria-hidden="true">
@@ -125,7 +145,7 @@ appendectomy surgical procedure</textarea>
 
     <section class="panel search-purpose-footer" aria-label="Search purpose">
       <p>
-        Ultimately, we are trying to find what we are looking for. The purpose of the UMLS - whether you call it interoperability or NLP or a crosswalk or a thesaurus - is to find the right concepts. Find the right concepts. How do we test whether the UMLS can find the right concepts? The best test is to search. If we focus on search instead of synonymy, we will be closer to real use cases, because every use case involves search of some kind or another. Identifying the right identifier or string or concept.
+        UMLS is useful when it helps people find the right concept. Whether the task is interoperability, NLP, mapping, or terminology lookup, the practical question is the same: can a person start with the language they have and reach the identifier they need? Search is the clearest test, because real workflows begin with finding.
       </p>
     </section>
   </main>
@@ -155,6 +175,6 @@ appendectomy surgical procedure</textarea>
     </section>
   </div>
 
-  <script src="/search_quality_app.js"></script>
+  <script src="/search_quality_app.js?v=temporal-word-hard-block-20260609"></script>
 </body>
 </html>

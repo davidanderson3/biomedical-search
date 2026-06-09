@@ -116,6 +116,15 @@ NOISY_BROAD_RELATION_RELAS = {
     "inverse_clinically_associated_with",
 }
 NOISY_BROAD_RELATION_BUCKET_KEYS = {"CHEM", "CLIN_ATTR", "GENE", "PROC"}
+NOISY_ORGANISM_SOURCE_SEMANTIC_TYPES = {"finding", "sign or symptom"}
+ORGANISM_RELATION_SEMANTIC_TYPES = {
+    "alga",
+    "archaeon",
+    "bacterium",
+    "fungus",
+    "rickettsia or chlamydia",
+    "virus",
+}
 RELATION_OVERLAP_STOPWORDS = {
     "and",
     "for",
@@ -157,6 +166,16 @@ GENERIC_MORTALITY_RELATION_FILLER_TOKENS = {
 }
 
 
+def optional_float(value: object) -> float | None:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    if result != result:
+        return None
+    return result
+
+
 def normalize_semantic_result_buckets(payload: object) -> list[dict]:
     if not isinstance(payload, list):
         return []
@@ -176,6 +195,7 @@ def normalize_semantic_result_buckets(payload: object) -> list[dict]:
             if str(value).strip()
         ]
         codes = [str(value).strip() for value in item.get("codes") or [] if str(value).strip()]
+        min_relevance = optional_float(item.get("minRelevance", item.get("min_relevance", None)))
         buckets.append(
             {
                 "key": key,
@@ -183,6 +203,7 @@ def normalize_semantic_result_buckets(payload: object) -> list[dict]:
                 "code": code,
                 "codes": codes,
                 "semanticTypes": semantic_types,
+                **({"minRelevance": min_relevance} if min_relevance is not None else {}),
             }
         )
         seen_keys.add(key)
@@ -198,7 +219,15 @@ def load_semantic_result_buckets(path: Path = DEFAULT_BUCKET_CONFIG) -> list[dic
 
 
 SEMANTIC_RESULT_BUCKETS = load_semantic_result_buckets()
+FALLBACK_SEMANTIC_RESULT_BUCKET = {
+    "key": "OTHER",
+    "label": "Other Concepts",
+    "code": "OTHER",
+    "codes": ["OTHER"],
+    "semanticTypes": [],
+}
 DEFAULT_SEMANTIC_BUCKET_MIN_RELEVANCE = 0.25
+SELECTED_SEMANTIC_BUCKET_MIN_RELEVANCE = 0.20
 DEFAULT_RELATED_BUCKET_MIN_STRENGTH = 0.58
 DEFAULT_RELATED_BUCKET_MIN_CONFIDENCE = 0.50
 
@@ -312,9 +341,20 @@ def hit_matches_semantic_bucket(hit: dict, bucket: dict) -> bool:
     return type_match or code_match
 
 
-def hit_matches_any_semantic_bucket(hit: dict, semantic_bucket_keys: object = None) -> bool:
+def hit_matches_any_semantic_bucket(
+    hit: dict,
+    semantic_bucket_keys: object = None,
+    *,
+    min_relevance: float | None = None,
+) -> bool:
+    if min_relevance is not None:
+        return any(
+            hit_matches_semantic_bucket(hit, bucket)
+            and hit_clears_semantic_bucket_relevance(hit, min_relevance=min_relevance)
+            for bucket in selected_semantic_result_buckets(semantic_bucket_keys)
+        )
     return any(
-        hit_matches_semantic_bucket(hit, bucket)
+        hit_visible_in_semantic_bucket(hit, bucket)
         for bucket in selected_semantic_result_buckets(semantic_bucket_keys)
     )
 
@@ -337,6 +377,14 @@ def numeric_value(value: object, default: float = 0.0) -> float:
     return result
 
 
+def bucket_min_relevance(bucket: dict) -> float:
+    return numeric_value(bucket.get("minRelevance"), DEFAULT_SEMANTIC_BUCKET_MIN_RELEVANCE)
+
+
+def selected_bucket_min_relevance(bucket: dict) -> float:
+    return min(bucket_min_relevance(bucket), SELECTED_SEMANTIC_BUCKET_MIN_RELEVANCE)
+
+
 def hit_relevance_score(hit: dict) -> float:
     breakdown = hit.get("score_breakdown") if isinstance(hit.get("score_breakdown"), dict) else {}
     for value in (
@@ -352,9 +400,19 @@ def hit_relevance_score(hit: dict) -> float:
 def hit_clears_semantic_bucket_relevance(
     hit: dict,
     *,
-    min_relevance: float = DEFAULT_SEMANTIC_BUCKET_MIN_RELEVANCE,
+    bucket: dict | None = None,
+    min_relevance: float | None = None,
 ) -> bool:
+    if min_relevance is None:
+        min_relevance = bucket_min_relevance(bucket or {})
     return hit_relevance_score(hit) >= min_relevance
+
+
+def hit_visible_in_semantic_bucket(hit: dict, bucket: dict) -> bool:
+    return hit_matches_semantic_bucket(hit, bucket) and hit_clears_semantic_bucket_relevance(
+        hit,
+        bucket=bucket,
+    )
 
 
 def relation_strength_confidence(relation: dict) -> tuple[float, float]:
@@ -574,6 +632,28 @@ def is_noisy_broad_relation(relation: dict, bucket: dict) -> bool:
     return not relation_has_source_label_overlap(relation)
 
 
+def is_noisy_symptom_to_organism_relation(relation: dict, bucket: dict) -> bool:
+    if bucket.get("key") != "ORGANISM":
+        return False
+    category = str(relation.get("category") or "").strip().lower()
+    semantic_type = str(relation.get("semantic_type") or "").strip().lower()
+    if category != "organism" and semantic_type not in ORGANISM_RELATION_SEMANTIC_TYPES:
+        return False
+    source = str(relation.get("source") or "").strip().lower()
+    if source not in NOISY_BROAD_RELATION_SOURCES:
+        return False
+    relation_values = {
+        str(relation.get("rela") or "").strip().lower(),
+        str(relation.get("relation") or "").strip().lower(),
+    }
+    if not relation_values & NOISY_BROAD_RELATION_RELAS:
+        return False
+    source_type = str(relation.get("source_semantic_type") or "").strip().lower()
+    if source_type not in NOISY_ORGANISM_SOURCE_SEMANTIC_TYPES:
+        return False
+    return not relation_has_source_label_overlap(relation)
+
+
 def relation_visible_in_semantic_bucket(relation: dict, bucket: dict, group_code: str) -> bool:
     if not relation_matches_semantic_bucket(relation, bucket, group_code):
         return False
@@ -582,6 +662,8 @@ def relation_visible_in_semantic_bucket(relation: dict, bucket: dict, group_code
     if bucket.get("key") == "GENE" and is_drug_like_gene_bucket_relation(relation):
         return False
     if is_noisy_broad_relation(relation, bucket):
+        return False
+    if is_noisy_symptom_to_organism_relation(relation, bucket):
         return False
     if relation_is_generic_mortality_outcome_noise(relation):
         return False
@@ -595,16 +677,24 @@ def semantic_result_buckets_for_response(
     semantic_bucket_keys: object = None,
 ) -> list[dict]:
     assigned_cuis: set[str] = set()
+    threshold_excluded_cuis: set[str] = set()
     buckets: list[dict] = []
+    selected_keys = normalize_semantic_bucket_filter(semantic_bucket_keys)
     for bucket in selected_semantic_result_buckets(semantic_bucket_keys):
         matches = []
+        min_relevance = (
+            selected_bucket_min_relevance(bucket)
+            if selected_keys
+            else bucket_min_relevance(bucket)
+        )
         for rank, hit in enumerate(hits, start=1):
-            if not hit_clears_semantic_bucket_relevance(hit):
-                continue
             hit_key = str(hit.get("cui") or hit.get("doc_id") or rank)
-            if hit_key in assigned_cuis:
+            if hit_key in assigned_cuis or hit_key in threshold_excluded_cuis:
                 continue
             if not hit_matches_semantic_bucket(hit, bucket):
+                continue
+            if not hit_clears_semantic_bucket_relevance(hit, min_relevance=min_relevance):
+                threshold_excluded_cuis.add(hit_key)
                 continue
             matches.append(
                 {
@@ -629,11 +719,11 @@ def semantic_result_buckets_for_response(
                 "total": len(matches),
                 "relatedTotal": 0,
                 "bestRelevance": round(best_relevance, 6),
-                "minRelevance": DEFAULT_SEMANTIC_BUCKET_MIN_RELEVANCE,
+                "minRelevance": round(min_relevance, 6),
                 "items": matches,
             }
         )
-    return sorted(
+    sorted_buckets = sorted(
         buckets,
         key=lambda bucket: (
             -numeric_value(bucket.get("bestRelevance")),
@@ -641,6 +731,45 @@ def semantic_result_buckets_for_response(
             str(bucket.get("label") or ""),
         ),
     )
+    if selected_keys:
+        return sorted_buckets
+
+    unmatched = []
+    for rank, hit in enumerate(hits, start=1):
+        hit_key = str(hit.get("cui") or hit.get("doc_id") or rank)
+        if hit_key in assigned_cuis or hit_key in threshold_excluded_cuis:
+            continue
+        if not hit_clears_semantic_bucket_relevance(
+            hit,
+            min_relevance=DEFAULT_SEMANTIC_BUCKET_MIN_RELEVANCE,
+        ):
+            continue
+        assigned_cuis.add(hit_key)
+        unmatched.append(
+            {
+                "kind": "hit",
+                "cui": hit.get("cui") or "",
+                "doc_id": hit.get("doc_id") or "",
+                "rank": rank,
+            }
+        )
+    if unmatched:
+        best_relevance = max(
+            hit_relevance_score(hits[item["rank"] - 1])
+            for item in unmatched
+            if 0 < item["rank"] <= len(hits)
+        )
+        sorted_buckets.append(
+            {
+                **FALLBACK_SEMANTIC_RESULT_BUCKET,
+                "total": len(unmatched),
+                "relatedTotal": 0,
+                "bestRelevance": round(best_relevance, 6),
+                "minRelevance": DEFAULT_SEMANTIC_BUCKET_MIN_RELEVANCE,
+                "items": unmatched,
+            }
+        )
+    return sorted_buckets
 
 
 def related_result_buckets_for_response(

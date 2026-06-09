@@ -89,6 +89,12 @@ SEMANTIC_GROUP_VIEW_PRESETS = {
     "OTHER": ("condition", "drug_chemical", "gene_protein", "phenotype", "observation_lab", "procedure_test"),
 }
 LOCAL_EXTENSION_SEMANTIC_TYPES = {
+    "biomedical occupation or discipline": {
+        "tui": "T091",
+        "stn": "A2.6.1",
+        "name": "Biomedical Occupation or Discipline",
+    },
+    "body substance": {"tui": "T031", "stn": "A1.4.2", "name": "Body Substance"},
     "disease or syndrome": {"tui": "T047", "stn": "B2.2.1.2.1", "name": "Disease or Syndrome"},
     "finding": {"tui": "T033", "stn": "A2.2", "name": "Finding"},
     "pathologic function": {"tui": "T046", "stn": "B2.2.1.2", "name": "Pathologic Function"},
@@ -146,6 +152,7 @@ DRUG_CHEMICAL_VIEW_SEMANTIC_TYPES = {
     "antibiotic",
     "biologically active substance",
     "biomedical or dental material",
+    "body substance",
     "chemical",
     "chemical viewed functionally",
     "chemical viewed structurally",
@@ -222,6 +229,10 @@ PHYSIOLOGY_VIEW_SEMANTIC_TYPES = {
     "organism function",
     "physiologic function",
 }
+CONCEPT_VIEW_SEMANTIC_TYPES = {
+    "biomedical occupation or discipline",
+    "idea or concept",
+}
 
 
 def semantic_type_name_set(types: list[dict] | tuple[dict, ...]) -> set[str]:
@@ -283,6 +294,8 @@ def semantic_group_from_types(types: list[dict] | tuple[dict, ...]) -> str:
         return "PHEN"
     if names & PHYSIOLOGY_VIEW_SEMANTIC_TYPES:
         return "PHYS"
+    if names & CONCEPT_VIEW_SEMANTIC_TYPES:
+        return "CONC"
     return "OTHER"
 
 

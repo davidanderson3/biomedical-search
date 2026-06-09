@@ -1,0 +1,4 @@
+id	query	expected_cuis	why	disallowed_cuis
+medlineplus_lay_01	what is high blood pressure and how is it treated	C0020538	MedlinePlus lay-language checks should map patient wording to the hypertension concept.
+medlineplus_lay_02	why am I wheezing with asthma	C0004096|C0043144	MedlinePlus should handle patient symptom wording and the underlying condition.
+medlineplus_lay_03	heart attack warning signs with chest pain	C0027051|C0008031	Lay-language warning-sign queries should retrieve the clinical event and symptom concepts.

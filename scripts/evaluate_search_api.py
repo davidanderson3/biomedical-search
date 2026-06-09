@@ -120,6 +120,7 @@ def score_component_summary(hit: dict) -> str:
         ("exact", "exact_label_component"),
         ("exact_primary", "exact_primary_name_component"),
         ("exact_span", "exact_span_component"),
+        ("tx_drug", "treatment_pharmacologic_component"),
         ("ev", "evidence_component"),
         ("sem", "semantic_component"),
         ("ctx", "evidence_context_component"),

@@ -101,10 +101,6 @@ def step_effort_weight(step: dict[str, Any]) -> float:
 
     if "full_pubmed" in key:
         return 40.0
-    if "full_mimic_ingest" in key:
-        return 30.0
-    if "full_mimic_available" in key:
-        return 0.5
     if "semantic_embeddings" in key:
         return 25.0
     if "incremental_manifests" in key:
@@ -148,8 +144,6 @@ def step_phase(step: dict[str, Any]) -> str:
     label = str(step.get("label", "")).lower()
     key = f"{step_id} {label}"
 
-    if "mimic" in key:
-        return "Restricted clinical data"
     if "full_pubmed" in key:
         return "Evidence acquisition"
     if "fetch" in key or "harvest" in key or "download" in key or "corpus" in key:
@@ -189,10 +183,6 @@ def step_why(step: dict[str, Any]) -> str:
         return "Collects real biomedical language that can reveal how concepts are discussed outside controlled vocabulary labels."
     if "corpus" in key or "parse" in key:
         return "Normalizes source records into JSONL so later linking, aggregation, and provenance are reproducible."
-    if "full_mimic_available" in key:
-        return "Marks whether credentialed clinical data is locally available; the public pipeline should not assume it exists."
-    if "full_mimic_ingest" in key:
-        return "Adds clinical phrasing that PubMed often misses, while keeping restricted artifacts separate from public release outputs."
     if "incremental" in key:
         return "Lets future updates reprocess only changed inputs instead of rebuilding the whole evidence index."
     if "link" in key or ("evidence" in key and "profile" in key):

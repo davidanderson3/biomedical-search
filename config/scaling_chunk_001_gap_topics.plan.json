@@ -2,7 +2,7 @@
   "chunk_id": "scaling_chunk_001_gap_topics",
   "title": "Chunk 001: literature gap topics",
   "max_minutes_per_step": 10,
-  "scope": "PubMed and Europe PMC only. MIMIC is paused until the local download is available.",
+  "scope": "PubMed and Europe PMC only.",
   "steps": [
     {
       "id": "fetch_literature",

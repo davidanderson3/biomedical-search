@@ -4,6 +4,7 @@ import threading
 from pathlib import Path
 
 from qe_evidence_vectors.label_index import LabelIndex
+from qe_evidence_vectors.lexical_normalization import lexical_lookup_keys, lexical_normalized_key
 from qe_evidence_vectors.text import normalized_key
 
 
@@ -114,13 +115,14 @@ class LabelFallback:
             return []
         query_content_tokens = max(self.content_token_count(tokens), 1)
         best: dict[str, dict] = {}
-        for span_norm, token_count, span_content_tokens in self.query_spans(tokens):
+        for span_norm, lookup_norm, token_count, span_content_tokens in self.query_span_lookups(tokens):
             rows = []
             for index in self.indexes():
-                rows.extend(index.lookup(span_norm, limit=self.rows_per_span))
+                rows.extend(index.lookup(lookup_norm, limit=self.rows_per_span))
             if not rows:
                 continue
             unique_cuis = {row["cui"] for row in rows}
+            lexical_variant = lookup_norm != span_norm
             for row in rows:
                 score = self.label_score(
                     token_count=token_count,
@@ -128,6 +130,7 @@ class LabelFallback:
                     span_content_tokens=span_content_tokens,
                     unique_cui_count=len(unique_cuis),
                     is_preferred=str(row["ispref"]) == "Y",
+                    lexical_variant=lexical_variant,
                 )
                 candidate = {
                     "doc_id": f"{row['cui']}:umls_label",
@@ -140,6 +143,8 @@ class LabelFallback:
                     "match_type": "umls_label",
                     "matched_label": row["label"],
                     "matched_query_span": span_norm,
+                    "matched_lookup_norm": lookup_norm,
+                    "matched_lexical_span": lexical_normalized_key(span_norm),
                     "matched_sab": row["sab"],
                     "matched_tty": row["tty"],
                     "matched_ispref": row["ispref"],
@@ -181,6 +186,15 @@ class LabelFallback:
                     continue
                 yield span, length, content_count
 
+    def query_span_lookups(self, tokens: list[str]):
+        for span_norm, token_count, content_count in self.query_spans(tokens):
+            for lookup_norm in lexical_lookup_keys(span_norm):
+                yield span_norm, lookup_norm, token_count, content_count
+
+    @staticmethod
+    def lookup_norms_for_span(span_norm: str) -> list[str]:
+        return lexical_lookup_keys(span_norm)
+
     def content_token_count(self, tokens: list[str]) -> int:
         return sum(1 for token in tokens if token not in self.SKIP_SINGLE_TOKENS)
 
@@ -192,12 +206,14 @@ class LabelFallback:
         span_content_tokens: int,
         unique_cui_count: int,
         is_preferred: bool,
+        lexical_variant: bool = False,
     ) -> float:
         coverage = span_content_tokens / max(query_content_tokens, 1)
         rarity = 0.15 if unique_cui_count <= 3 else (-0.15 if unique_cui_count >= 20 else 0.0)
         preferred = 0.02 if is_preferred else 0.0
+        variant_penalty = 0.03 if lexical_variant else 0.0
         if span_content_tokens >= query_content_tokens:
-            return 1.05 + (0.12 * min(token_count, 5)) + rarity + preferred
+            return 1.05 + (0.12 * min(token_count, 5)) + rarity + preferred - variant_penalty
         if span_content_tokens == 1:
-            return 0.68 + (0.15 * coverage) + (0.30 * rarity) + preferred
-        return 0.78 + (0.35 * coverage) + (0.04 * min(token_count, 4)) + rarity + preferred
+            return 0.68 + (0.15 * coverage) + (0.30 * rarity) + preferred - variant_penalty
+        return 0.78 + (0.35 * coverage) + (0.04 * min(token_count, 4)) + rarity + preferred - variant_penalty

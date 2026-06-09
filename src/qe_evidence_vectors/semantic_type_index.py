@@ -19,6 +19,10 @@ CREATE TABLE IF NOT EXISTS semantic_types (
 INDEX_SCHEMA = """
 CREATE INDEX IF NOT EXISTS idx_semantic_types_cui
 ON semantic_types(cui);
+CREATE INDEX IF NOT EXISTS idx_semantic_types_tui
+ON semantic_types(tui);
+CREATE INDEX IF NOT EXISTS idx_semantic_types_atui
+ON semantic_types(atui);
 """
 
 
@@ -79,6 +83,7 @@ class SemanticTypeIndex:
         self.path = Path(path).expanduser()
         self._local = threading.local()
         self.cache: dict[str, list[dict]] = {}
+        self.identifier_cache: dict[tuple[str, str, int], list[dict]] = {}
 
     def connection(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)
@@ -126,4 +131,49 @@ class SemanticTypeIndex:
             for row in rows
         ]
         self.cache[cui] = results
+        return results
+
+    def lookup_identifier(
+        self,
+        identifier: str,
+        *,
+        identifier_type: str | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        identifier = str(identifier or "").strip().upper()
+        identifier_type = str(identifier_type or "").strip().upper()
+        if not identifier:
+            return []
+        if not identifier_type:
+            identifier_type = "TUI" if identifier.startswith("T") and not identifier.startswith("AT") else "ATUI"
+        if identifier_type not in {"TUI", "ATUI"}:
+            return []
+        key = (identifier_type, identifier, limit)
+        cached = self.identifier_cache.get(key)
+        if cached is not None:
+            return [dict(item) for item in cached]
+        column = "tui" if identifier_type == "TUI" else "atui"
+        rows = self.connection().execute(
+            f"""
+            SELECT cui, tui, stn, sty, atui
+            FROM semantic_types
+            WHERE {column} = ?
+            ORDER BY cui, tui, sty
+            LIMIT ?
+            """,
+            (identifier, limit),
+        )
+        results = [
+            {
+                "cui": row["cui"],
+                "tui": row["tui"],
+                "stn": row["stn"],
+                "name": row["sty"],
+                "atui": row["atui"],
+                "matched_identifier_type": identifier_type,
+                "matched_identifier": identifier,
+            }
+            for row in rows
+        ]
+        self.identifier_cache[key] = [dict(item) for item in results]
         return results

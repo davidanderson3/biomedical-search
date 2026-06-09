@@ -1,6 +1,6 @@
 # Explain It Like I Am 5
 
-Last updated: 2026-05-11
+Last updated: 2026-05-27
 
 We are building a smarter way to search medical ideas.
 
@@ -40,9 +40,7 @@ Right now we use:
 - Europe PMC articles
 - PubMed bulk-download test files
 
-MIMIC clinical data is restricted, so it stays separate from public release
-artifacts. A local availability marker exists, but full MIMIC ingest is still
-paused until we choose a bounded restricted-data run and review it.
+Credentialed clinical corpora are not part of the public release artifacts.
 
 ## Why We Are Not Just Adding Synonyms
 
@@ -74,6 +72,9 @@ language.
 9. Show evidence for each result.
 10. Let a person mark results as relevant, partial, or wrong.
 11. Use those judgments to decide whether the search is improving.
+12. When a new UMLS release arrives, compare which concept cards changed.
+13. Reuse old SapBERT vectors for concept cards whose searchable text did not
+    change, and rebuild only the rest.
 
 ## What The Label Fallback Does
 
@@ -91,6 +92,10 @@ The current local system has:
 - five topic-based evidence chunks
 - one small PubMed bulk-download pilot
 - eight larger two-file PubMed bulk pilots loaded and reviewed
+- a first incremental UMLS update tool that fingerprints MRCONSO atoms by CUI
+  and lists only the changed CUIs between two releases
+- a vector reuse planner that separates unchanged concept documents from the
+  smaller set that needs SapBERT embedding
 - a new way to create local `NEW#######` concepts when UMLS is missing a
   useful idea
 - SapBERT vectors loaded into Elasticsearch

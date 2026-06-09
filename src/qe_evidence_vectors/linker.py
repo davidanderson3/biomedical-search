@@ -11,6 +11,24 @@ from .text import clean_text, normalized_key
 
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
+SENTENCE_BOUNDARY_RE = re.compile(r"[.!?][\"')\]]*(?=\s+|$)")
+SENTENCE_BOUNDARY_ABBREVIATIONS = (
+    "dr.",
+    "mr.",
+    "mrs.",
+    "ms.",
+    "prof.",
+    "fig.",
+    "ref.",
+    "refs.",
+    "vs.",
+    "etc.",
+    "e.g.",
+    "i.e.",
+    "et al.",
+    "u.s.",
+    "u.k.",
+)
 LEADING_LABEL_EDGE_STOPWORDS = {
     "a",
     "an",
@@ -78,15 +96,54 @@ def is_acceptable_label_match(text: str, start: int, end: int, norm: str) -> boo
 def context_window(text: str, start: int, end: int, *, chars: int) -> str:
     left = max(0, start - chars)
     right = min(len(text), end + chars)
-    if left:
+    sentence_bounded_left = False
+    sentence_bounded_right = False
+    sentence_left = _previous_sentence_boundary(text, start)
+    if sentence_left is not None and sentence_left > left:
+        left = sentence_left
+        sentence_bounded_left = True
+    sentence_right = _next_sentence_boundary(text, end, limit=right)
+    if sentence_right is not None:
+        right = sentence_right
+        sentence_bounded_right = True
+    if left and not sentence_bounded_left:
         space = text.find(" ", left)
         if 0 <= space < start:
             left = space + 1
-    if right < len(text):
+    if right < len(text) and not sentence_bounded_right:
         space = text.rfind(" ", end, right)
         if space > end:
             right = space
-    return clean_text(text[left:right])
+    context = clean_text(text[left:right])
+    if context and not re.search(r"[.!?][\"')\]]*$", context):
+        context = f"{context.rstrip(' ,;:')}."
+    return context
+
+
+def _valid_sentence_boundary(text: str, boundary_end: int) -> bool:
+    candidate = text[:boundary_end].strip().lower()
+    if any(candidate.endswith(abbreviation) for abbreviation in SENTENCE_BOUNDARY_ABBREVIATIONS):
+        return False
+    return not re.search(r"(?:\b[a-z]\.){2,}$", candidate)
+
+
+def _previous_sentence_boundary(text: str, start: int) -> int | None:
+    boundary = None
+    for match in SENTENCE_BOUNDARY_RE.finditer(text, 0, start):
+        if _valid_sentence_boundary(text, match.end()):
+            boundary = match.end()
+    if boundary is None:
+        return None
+    while boundary < len(text) and text[boundary].isspace():
+        boundary += 1
+    return boundary
+
+
+def _next_sentence_boundary(text: str, end: int, *, limit: int) -> int | None:
+    for match in SENTENCE_BOUNDARY_RE.finditer(text, end, limit):
+        if _valid_sentence_boundary(text, match.end()):
+            return match.end()
+    return None
 
 
 def _label_weight(row) -> float:

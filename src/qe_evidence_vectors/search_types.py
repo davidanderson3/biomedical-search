@@ -39,6 +39,9 @@ class ScoreBreakdown(TypedDict, total=False):
     exact_primary_name_component: float
     exact_span_component: float
     exact_pharmacologic_component: float
+    treatment_pharmacologic_component: float
+    mention_frequency_component: float
+    mention_count: int
     evidence_component: float
     primary_name_component: float
     negated_finding_component: float
@@ -47,6 +50,7 @@ class ScoreBreakdown(TypedDict, total=False):
     definition_component: float
     mrrel_component: float
     composite_intent_component: float
+    lab_result_abnormal_component: float
     specificity_component: float
     generic_penalty: float
     broad_label_penalty: float
@@ -58,6 +62,7 @@ class ScoreBreakdown(TypedDict, total=False):
     action_observation_penalty: float
     denied_positive_finding_penalty: float
     denied_context_mismatch_penalty: float
+    denied_assertion_penalty: float
     composite_component_penalty: float
     sepsis_subtype_penalty: float
     semantic_fragment_penalty: float

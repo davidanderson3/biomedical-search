@@ -2,7 +2,7 @@
   "chunk_id": "scaling_chunk_004_drug_safety_therapeutics",
   "title": "Chunk 004: drug safety and therapeutics",
   "max_minutes_per_step": 10,
-  "scope": "PubMed and Europe PMC only. MIMIC is paused until the local download is available.",
+  "scope": "PubMed and Europe PMC only.",
   "steps": [
     {
       "id": "fetch_literature",

@@ -39,7 +39,7 @@ Expected current quality:
 
 Use this for an external public build that avoids real EHR data. Public/shareable inputs may include PubMed, PMC Open Access, Europe PMC, bounded ClinicalTrials.gov, MedlinePlus, MedlinePlus Genetics, DailyMed subsets, NCBI Bookshelf / NLM LitArch Open Access packages, reusable government reference pages such as NCI/CDC/FDA/NIDDK, OpenAlex metadata, Wikipedia/Wikimedia-derived enrichment where license-compatible, public OHDSI aggregate artifacts, and any open source vocabularies that can be redistributed under their terms.
 
-This level should not use MIMIC or other credentialed EHR data by default.
+This level should not use credentialed EHR data by default.
 
 ### Level 3: Licensed Local Build
 
@@ -76,7 +76,7 @@ Licensed or local-only sources:
 - LOINC release files when direct LOINC enrichment is used
 - SNOMED CT only where deployment/license terms permit it
 - External CUI vectors such as cui2vec/BioConceptVec only under their own licenses
-- MIMIC or other credentialed EHR data should stay out of the public default path
+- Credentialed EHR data should stay out of the public default path
 
 ## Core Generated Artifacts
 
@@ -372,7 +372,7 @@ it as a build failure.
 | SNOMED CT | optional | no unless deployment license permits | procedures, disorders, findings | Manifested when supplied. |
 | OpenAlex/Wikipedia/Wikimedia | optional | usually yes with attribution/license handling | enrichment, images, cited evidence | Keep source URLs and licenses. |
 | OHDSI aggregate artifacts | optional | only if public/shareable aggregate data | relationship edges | Do not use patient-level EHR data in public rebuilds. |
-| MIMIC/EHR data | no for public build | no | local-only experimentation | Excluded from the public rebuild wrapper. |
+| Credentialed EHR data | no for public build | no | local-only experimentation | Excluded from the public rebuild wrapper. |
 
 ## What Not To Redistribute
 
@@ -380,7 +380,7 @@ Do not commit or publish:
 
 - `build/` artifacts derived from licensed vocabularies unless the source licenses permit redistribution
 - raw UMLS, LOINC, or SNOMED CT release files
-- MIMIC or other credentialed clinical corpora
+- credentialed clinical corpora
 - raw patient-level OHDSI/EHR data
 
 The repository `.gitignore` already excludes `build/`, `data/`, local LOINC drops, and SNOMED release archives.

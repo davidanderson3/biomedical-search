@@ -1,0 +1,9 @@
+id	query	expected_cuis	expected_code_sabs	why
+code_atrial_fibrillation	atrial fibrillation	C0004238	SNOMEDCT_US|ICD10CM	Disorder should map to clinical condition vocabularies.
+code_type_2_diabetes	type 2 diabetes	C0011860	SNOMEDCT_US|ICD10CM	Specific diabetes disorder should keep SNOMED CT and ICD-10-CM mappings.
+code_metoprolol	metoprolol	C0025859	RXNORM|SNOMEDCT_US	Medication should expose RxNorm and SNOMED CT mappings.
+code_hba1c	HbA1c	C0019018	LNC	Lab/analyte concept should expose LOINC mappings.
+code_chest_pain	chest pain	C0008031	SNOMEDCT_US|ICD10CM	Symptom should expose finding and billing vocabulary mappings.
+code_electrolytes_outside_reference_range	Electrolytes outside reference range	C0151613	SNOMEDCT_US	Active electrolyte abnormality concept should expose its SNOMED CT mapping.
+code_chronic_cough	chronic cough	C0010201	SNOMEDCT_US|ICD10CM	Specific cough finding should expose SNOMED CT and ICD-10-CM mappings.
+code_septic_shock	septic shock	C0036983	SNOMEDCT_US	Septic shock disorder should expose SNOMED CT mapping.

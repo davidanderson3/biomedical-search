@@ -85,6 +85,100 @@ def test_clinicaltrials_study_to_document_keeps_conditions_interventions_and_pop
     assert document.metadata["interventions"] == ["Osimertinib"]
 
 
+def test_clinicaltrials_outcomes_only_keeps_posted_result_text() -> None:
+    study = {
+        "hasResults": True,
+        "protocolSection": {
+            "identificationModule": {
+                "nctId": "NCT00000002",
+                "briefTitle": "Diabetic foot ulcer treatment trial",
+            },
+            "descriptionModule": {
+                "briefSummary": "This protocol summary should not be indexed as outcome evidence.",
+            },
+            "conditionsModule": {"conditions": ["Diabetic Foot"]},
+            "armsInterventionsModule": {
+                "interventions": [
+                    {"type": "Drug", "name": "Gentamicin Sponge", "description": "Protocol intervention text"}
+                ],
+            },
+            "eligibilityModule": {"eligibilityCriteria": "Protocol eligibility should be omitted."},
+            "designModule": {"studyType": "INTERVENTIONAL", "phases": ["PHASE2"]},
+            "statusModule": {"overallStatus": "COMPLETED"},
+            "outcomesModule": {
+                "primaryOutcomes": [{"measure": "Planned wound healing endpoint"}],
+            },
+        },
+        "resultsSection": {
+            "outcomeMeasuresModule": {
+                "outcomeMeasures": [
+                    {
+                        "type": "PRIMARY",
+                        "title": "Number of Participants With Clinical Cure",
+                        "description": "Clinical cure at final visit.",
+                        "reportingStatus": "POSTED",
+                        "paramType": "COUNT_OF_PARTICIPANTS",
+                        "unitOfMeasure": "Participants",
+                        "timeFrame": "Day 21",
+                        "groups": [
+                            {"id": "OG000", "title": "Gentamicin Sponge"},
+                            {"id": "OG001", "title": "Levofloxacin"},
+                        ],
+                        "denoms": [
+                            {
+                                "units": "Participants",
+                                "counts": [
+                                    {"groupId": "OG000", "value": "34"},
+                                    {"groupId": "OG001", "value": "15"},
+                                ],
+                            }
+                        ],
+                        "classes": [
+                            {
+                                "categories": [
+                                    {
+                                        "measurements": [
+                                            {"groupId": "OG000", "value": "14"},
+                                            {"groupId": "OG001", "value": "7"},
+                                        ]
+                                    }
+                                ]
+                            }
+                        ],
+                    }
+                ]
+            }
+        },
+    }
+
+    document = clinicaltrials_study_to_document(study, query="diabetes", outcomes_only=True)
+
+    assert document is not None
+    assert "ClinicalTrials.gov posted outcome results" in document.text
+    assert "Number of Participants With Clinical Cure" in document.text
+    assert "Gentamicin Sponge: 14" in document.text
+    assert "Protocol eligibility should be omitted" not in document.text
+    assert "This protocol summary should not be indexed" not in document.text
+    assert document.metadata["evidence_mode"] == "outcomes_only"
+    assert document.metadata["has_results"] is True
+    assert document.metadata["posted_outcome_result_count"] == 1
+    assert document.metadata["posted_primary_outcome_result_count"] == 1
+
+
+def test_clinicaltrials_require_results_skips_protocol_only_study() -> None:
+    study = {
+        "hasResults": False,
+        "protocolSection": {
+            "identificationModule": {"nctId": "NCT00000003", "briefTitle": "Protocol only"},
+            "descriptionModule": {"briefSummary": "Protocol text."},
+            "outcomesModule": {"primaryOutcomes": [{"measure": "Planned endpoint"}]},
+        },
+    }
+
+    assert clinicaltrials_study_to_document(study, require_results=True) is None
+    assert clinicaltrials_study_to_document(study, outcomes_only=True) is None
+
+
 def test_medlineplus_topic_to_document_keeps_lay_synonyms_and_groups() -> None:
     topic = ET.fromstring(
         """

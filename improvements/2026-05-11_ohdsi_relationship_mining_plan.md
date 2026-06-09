@@ -18,7 +18,7 @@ For each source, the plan specifies relationship direction, relationship type, s
 
 ## Practical Impact
 
-The highest-value next implementation is ATLAS cohort JSON plus CohortDiagnostics aggregate outputs. That can produce drug-to-likely-indication edges with quantitative `P(condition | drug cohort)` strength and temporal support, without relying on MIMIC or restricted clinical data.
+The highest-value next implementation is ATLAS cohort JSON plus CohortDiagnostics aggregate outputs. That can produce drug-to-likely-indication edges with quantitative `P(condition | drug cohort)` strength and temporal support, without relying on restricted clinical data.
 
 ## Limitation
 

@@ -1,0 +1,4 @@
+id	query	expected_cuis	why	disallowed_cuis
+pubmed_pmc_lit_01	immune checkpoint inhibitor pneumonitis case report	C4684977|C3714636	PubMed/PMC literature evidence should retrieve drug-class/procedure-like exposure and disease toxicity concepts.
+pubmed_pmc_lit_02	colonoscopy screening and colorectal cancer literature	C0009378|C0009402	Literature-backed procedure queries should keep procedure and disease concepts visible.
+pubmed_pmc_lit_03	severe hypoglycemia in chronic kidney disease cohort study	C4728082|C1561643	PubMed/PMC benchmark rows should preserve literature-backed condition associations.

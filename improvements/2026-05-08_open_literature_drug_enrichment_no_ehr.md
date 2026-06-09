@@ -2,11 +2,11 @@
 
 ## Problem
 
-Drug enrichment needed to improve, but it should not rely on MIMIC or any real EHR/clinical-note data. The previous drug-enrichment shard was separate from the main evidence shards, but the builder did not explicitly enforce a no-EHR source policy and covered only a small set of drug targets.
+Drug enrichment needed to improve, but it should not rely on real EHR/clinical-note data. The previous drug-enrichment shard was separate from the main evidence shards, but the builder did not explicitly enforce a no-EHR source policy and covered only a small set of drug targets.
 
 ## Change
 
-Drug enrichment now has an explicit source policy: `open_literature_and_drug_vocabularies_only_no_mimic_no_ehr`. The enrichment scanner skips corpus paths and source metadata that look like MIMIC, EHR, electronic medical records, or clinical notes, even if those files are present locally or passed on the command line. Drug-enrichment document text now calls these snippets `Open literature evidence` rather than `Real-world evidence`.
+Drug enrichment now has an explicit source policy: `open_literature_and_drug_vocabularies_only_no_ehr`. The enrichment scanner skips corpus paths and source metadata that look like EHR, electronic medical records, or clinical notes, even if those files are present locally or passed on the command line. Drug-enrichment document text now calls these snippets `Open literature evidence` rather than `Real-world evidence`.
 
 Expanded ingredient-level drug targets from 9 to 27 by adding common drugs seen in clinical/research examples: apixaban, sildenafil, lisinopril, levodopa, lorazepam, aspirin, tamoxifen, levetiracetam, hydrocortisone, amoxicillin, cephalexin, ceftriaxone, doxycycline, albuterol, methotrexate, pantoprazole, timolol, and oseltamivir. Added conservative literature-derived relation rules for drug classes, indications/uses, monitoring/effects, and high-signal adverse events.
 
@@ -20,7 +20,7 @@ Rebuilt `build/drug_enrichment/` using open literature and drug-vocabulary sourc
 - Open literature mentions: 1,674
 - Literature-derived relation rows: 61
 - Corpus paths used: 12
-- EHR/MIMIC corpus paths in manifest: none
+- EHR corpus paths in manifest: none
 
 Examples of newly supported drug relations:
 

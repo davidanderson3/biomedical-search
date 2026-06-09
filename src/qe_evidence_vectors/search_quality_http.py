@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from qe_evidence_vectors.code_index import is_cui
-from qe_evidence_vectors.search_execution import SearchBackendUnavailable
+from qe_evidence_vectors.search_execution import SearchBackendUnavailable, normalize_search_scope
 from qe_evidence_vectors.search_service import SearchIndex
 
 
@@ -28,7 +28,7 @@ __all__ = [
     "make_handler",
 ]
 
-API_VERSION = "2026-05-12"
+API_VERSION = "2026-06-09"
 
 
 def api_error(code: str, message: str, *, status: int = 400) -> dict:
@@ -80,7 +80,28 @@ OPENAPI_SPEC = {
                         "in": "query",
                         "schema": {"type": "string", "enum": ["balanced", "exact", "comprehensive"]},
                     },
+                    {
+                        "name": "scope",
+                        "in": "query",
+                        "schema": {"type": "string", "enum": ["umls", "umls_evidence"]},
+                        "description": "Use UMLS-only label/code lookup or UMLS plus evidence-backed retrieval.",
+                    },
                     {"name": "include_related", "in": "query", "schema": {"type": "boolean"}},
+                    {
+                        "name": "linked",
+                        "in": "query",
+                        "schema": {"type": "boolean"},
+                        "description": (
+                            "Include query-linked concept highlights and span-level mentions "
+                            "in the initial search payload."
+                        ),
+                    },
+                    {
+                        "name": "evidence_items",
+                        "in": "query",
+                        "schema": {"type": "boolean"},
+                        "description": "Include compact evidence snippets in search hits. Full evidence is available through /api/detail.",
+                    },
                     {
                         "name": "debug",
                         "in": "query",
@@ -92,6 +113,15 @@ OPENAPI_SPEC = {
                         "in": "query",
                         "schema": {"type": "string"},
                         "description": "Comma-separated custom semantic bucket keys.",
+                    },
+                    {
+                        "name": "codes",
+                        "in": "query",
+                        "schema": {"type": "string"},
+                        "description": (
+                            "Source asserted code systems to return: default, none, all, "
+                            "or comma-separated SABs such as SNOMEDCT_US,RXNORM,ICD10CM,LNC."
+                        ),
                     },
                 ],
                 "responses": {
@@ -116,7 +146,19 @@ OPENAPI_SPEC = {
                 "parameters": [
                     {"name": "doc_id", "in": "query", "schema": {"type": "string"}},
                     {"name": "cui", "in": "query", "schema": {"type": "string", "pattern": "^C[0-9]{7}$"}},
+                    {"name": "q", "in": "query", "schema": {"type": "string"}},
                     {"name": "include_related", "in": "query", "schema": {"type": "boolean"}},
+                    {
+                        "name": "scope",
+                        "in": "query",
+                        "schema": {"type": "string", "enum": ["umls", "umls_evidence"]},
+                    },
+                    {
+                        "name": "codes",
+                        "in": "query",
+                        "schema": {"type": "string"},
+                        "description": "Source asserted code systems to return.",
+                    },
                 ],
                 "responses": {"200": {"description": "Detailed concept record."}},
             }
@@ -262,6 +304,7 @@ def make_handler(
     index: SearchIndex,
     html_path: Path,
     progress_html_path: Path,
+    source_dashboard_html_path: Path | None,
     progress_plan_path: Path,
     full_progress_plan_path: Path,
     judgments_path: Path,
@@ -320,6 +363,12 @@ def make_handler(
             if parsed.path == "/progress":
                 self.send_html(progress_html_path.read_text(encoding="utf-8"))
                 return
+            if parsed.path in {"/source-dashboard", "/evidence-dashboard"}:
+                if not source_dashboard_html_path or not source_dashboard_html_path.exists():
+                    self.send_error_json("not_found", "source dashboard has not been generated", status=404)
+                    return
+                self.send_html(source_dashboard_html_path.read_text(encoding="utf-8"))
+                return
             if parsed.path in static_assets:
                 asset_path, content_type = static_assets[parsed.path]
                 if not asset_path.exists():
@@ -369,7 +418,7 @@ def make_handler(
                 if not query:
                     self.send_error_json("missing_parameter", "missing q", status=400)
                     return
-                self.send_json(index.resolve(query, limit=limit or 10))
+                self.send_json(index.public_output_payload(index.resolve(query, limit=limit or 10)))
                 return
             if parsed.path == "/api/related":
                 params = parse_qs(parsed.query)
@@ -393,10 +442,12 @@ def make_handler(
                     self.send_error_json("invalid_cui", "cui must look like C0000000", status=400)
                     return
                 self.send_json(
-                    index.related_bundle(
-                        cui,
-                        top_k=top_k or 10,
-                        mapping_sabs=parse_multi_param(params, "sab", "vocab", "system"),
+                    index.public_output_payload(
+                        index.related_bundle(
+                            cui,
+                            top_k=top_k or 10,
+                            mapping_sabs=parse_multi_param(params, "sab", "vocab", "system"),
+                        )
                     )
                 )
                 return
@@ -404,12 +455,30 @@ def make_handler(
                 params = parse_qs(parsed.query)
                 doc_id = (params.get("doc_id") or [""])[0].strip()
                 cui = (params.get("cui") or [""])[0].strip()
+                query = (params.get("q") or params.get("query") or [""])[0].strip()
+                return_code_sabs = parse_multi_param(
+                    params,
+                    "codes",
+                    "source_codes",
+                    "source_code",
+                    "code_system",
+                    "code_systems",
+                    "code_sab",
+                    "code_sabs",
+                )
                 include_related = parse_bool_param(
                     params,
                     "related",
                     "include_related",
                     default=True,
                 )
+                try:
+                    search_scope = normalize_search_scope(
+                        (params.get("scope") or params.get("search_scope") or ["umls_evidence"])[0]
+                    )
+                except ValueError as exc:
+                    self.send_error_json("invalid_parameter", str(exc), status=400)
+                    return
                 if not doc_id and not cui:
                     self.send_error_json("missing_parameter", "missing doc_id or cui", status=400)
                     return
@@ -420,6 +489,9 @@ def make_handler(
                     doc_id=doc_id,
                     cui=cui,
                     include_related=include_related,
+                    query=query,
+                    return_code_sabs=return_code_sabs or None,
+                    search_scope=search_scope,
                 )
                 if bundle.get("error"):
                     error_message = str(bundle["error"])
@@ -430,7 +502,7 @@ def make_handler(
                         status=error_status,
                     )
                     return
-                self.send_json(bundle)
+                self.send_json(index.public_output_payload(bundle))
                 return
             if parsed.path == "/api/search":
                 params = parse_qs(parsed.query)
@@ -456,6 +528,20 @@ def make_handler(
                     "include_related",
                     default=True,
                 )
+                include_linked = parse_bool_param(
+                    params,
+                    "linked",
+                    "include_linked",
+                    "linked_concepts",
+                    default=include_related,
+                )
+                include_evidence_items = parse_bool_param(
+                    params,
+                    "evidence_items",
+                    "include_evidence_items",
+                    "evidence_snippets",
+                    default=True,
+                )
                 debug = parse_bool_param(params, "debug", default=False)
                 semantic_bucket_keys = parse_multi_param(
                     params,
@@ -466,20 +552,41 @@ def make_handler(
                     "semantic_group",
                     "semantic_groups",
                 )
+                return_code_sabs = parse_multi_param(
+                    params,
+                    "codes",
+                    "source_codes",
+                    "source_code",
+                    "code_system",
+                    "code_systems",
+                    "code_sab",
+                    "code_sabs",
+                )
                 search_mode = (
                     (params.get("mode") or params.get("search_mode") or ["balanced"])[0]
                     .strip()
                     .lower()
                 )
+                search_scope = (
+                    (params.get("scope") or params.get("search_scope") or ["umls_evidence"])[0]
+                    .strip()
+                    .lower()
+                )
                 try:
                     self.send_json(
-                        index.search(
-                            query,
-                            top_k=top_k or 10,
-                            include_related=include_related,
-                            semantic_bucket_keys=semantic_bucket_keys,
-                            search_mode=search_mode,
-                            debug=debug,
+                        index.public_output_payload(
+                            index.search(
+                                query,
+                                top_k=top_k or 10,
+                                include_related=include_related,
+                                include_linked_concepts=include_linked,
+                                include_evidence_items=include_evidence_items,
+                                semantic_bucket_keys=semantic_bucket_keys,
+                                search_mode=search_mode,
+                                search_scope=search_scope,
+                                return_code_sabs=return_code_sabs or None,
+                                debug=debug,
+                            )
                         )
                     )
                 except ValueError as exc:

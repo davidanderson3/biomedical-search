@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+DEFAULT_CURATION = ROOT / "config" / "pubmed_literature_abstract_curation.tsv"
 
 
 def split_values(value: str) -> list[str]:
@@ -32,6 +33,23 @@ def read_topics(path: Path) -> list[dict[str, str]]:
             )
             if (row.get("id") or "").strip()
         ]
+
+
+def read_curation(path: Path | None) -> dict[str, dict[str, str]]:
+    if not path or not path.exists():
+        return {}
+    rows: dict[str, dict[str, str]] = {}
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(
+            (line for line in handle if line.strip() and not line.lstrip().startswith("#")),
+            delimiter="\t",
+        )
+        for row in reader:
+            pmid = (row.get("pmid") or "").strip()
+            if not pmid:
+                continue
+            rows[pmid] = row
+    return rows
 
 
 def request_text(url: str, *, delay: float, retries: int) -> str:
@@ -125,19 +143,98 @@ def fetch_articles(pmids: list[str], *, email: str, api_key: str, delay: float, 
     return rows
 
 
-def write_tsv(path: Path, rows: list[dict[str, str]]) -> None:
+def write_query_tsv(path: Path, rows: list[dict[str, str]]) -> None:
     fields = ["id", "query", "expected_cuis", "why", "disallowed_cuis"]
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t", lineterminator="\n")
         writer.writeheader()
-        writer.writerows(rows)
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in fields})
+
+
+def write_review_tsv(path: Path, rows: list[dict[str, str]]) -> None:
+    fields = [
+        "review_status",
+        "split",
+        "pmid",
+        "id",
+        "topic_id",
+        "term",
+        "expected_cuis",
+        "topic_expected_cuis",
+        "disallowed_cuis",
+        "why",
+        "title",
+        "query",
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t", lineterminator="\n")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in fields})
+
+
+def curated_query_row(
+    *,
+    topic: dict[str, str],
+    article: dict[str, str],
+    query: str,
+    row_id: str,
+    curation: dict[str, str] | None,
+) -> dict[str, str]:
+    topic_expected = topic.get("expected_cuis") or ""
+    topic_disallowed = topic.get("disallowed_cuis") or ""
+    if curation:
+        expected = curation.get("expected_cuis") or ""
+        disallowed = curation.get("disallowed_cuis") or topic_disallowed
+        why = curation.get("why") or topic.get("why") or ""
+        split = (curation.get("split") or "dev").strip().lower()
+        review_status = (curation.get("review_status") or "approved").strip().lower()
+        expected_source = "per_abstract"
+    else:
+        expected = topic_expected
+        disallowed = topic_disallowed
+        why = topic.get("why") or ""
+        split = "unreviewed"
+        review_status = "pending"
+        expected_source = "topic_fallback"
+    return {
+        "id": row_id,
+        "query": query,
+        "expected_cuis": expected,
+        "why": f"{why} PMID {article['pmid']}.".strip(),
+        "disallowed_cuis": disallowed,
+        "split": split,
+        "review_status": review_status,
+        "expected_source": expected_source,
+        "pmid": article["pmid"],
+        "topic_id": (topic.get("id") or "").strip(),
+        "term": topic.get("term") or "",
+        "title": article.get("title") or "",
+        "topic_expected_cuis": topic_expected,
+    }
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch PubMed abstracts into a paragraph-query TSV for local quality testing.")
     parser.add_argument("--topics", type=Path, default=ROOT / "config" / "pubmed_paragraph_topics.tsv")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "build" / "pubmed_paragraph_tests")
+    parser.add_argument(
+        "--curation",
+        type=Path,
+        default=DEFAULT_CURATION if DEFAULT_CURATION.exists() else None,
+        help=(
+            "Optional per-PMID curation TSV. When present, approved rows are "
+            "also written to split-specific query files."
+        ),
+    )
+    parser.add_argument(
+        "--strict-curation",
+        action="store_true",
+        help="Only write approved per-abstract curation rows to benchmark query files.",
+    )
     parser.add_argument("--email", default="", help="Optional NCBI contact email.")
     parser.add_argument("--api-key", default="", help="Optional NCBI API key.")
     parser.add_argument("--delay", type=float, default=0.4, help="Delay before each NCBI request.")
@@ -148,7 +245,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     topics = read_topics(args.topics)
+    curation_by_pmid = read_curation(args.curation)
     query_rows: list[dict[str, str]] = []
+    approved_rows: list[dict[str, str]] = []
+    review_rows: list[dict[str, str]] = []
     paragraph_rows: list[str] = []
     record_rows: list[dict[str, str]] = []
     for topic in topics:
@@ -166,20 +266,32 @@ def main() -> int:
                 if part
             )
             row_id = f"{topic_id}_{article['pmid']}"
-            query_rows.append(
-                {
-                    "id": row_id,
-                    "query": query,
-                    "expected_cuis": topic.get("expected_cuis") or "",
-                    "why": f"{topic.get('why') or ''} PMID {article['pmid']}.",
-                    "disallowed_cuis": topic.get("disallowed_cuis") or "",
-                }
+            row = curated_query_row(
+                topic=topic,
+                article=article,
+                query=query,
+                row_id=row_id,
+                curation=curation_by_pmid.get(article["pmid"]),
             )
-            paragraph_rows.append(query)
-            record_rows.append({**topic, **article, "id": row_id})
+            if (
+                not args.strict_curation
+                or (row["expected_source"] == "per_abstract" and row["review_status"] == "approved")
+            ):
+                query_rows.append(row)
+                paragraph_rows.append(query)
+            if row["expected_source"] == "per_abstract" and row["review_status"] == "approved":
+                approved_rows.append(row)
+            review_rows.append(row)
+            record_rows.append({**topic, **article, **row})
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    write_tsv(args.output_dir / "pubmed_paragraph_queries.tsv", query_rows)
+    write_query_tsv(args.output_dir / "pubmed_paragraph_queries.tsv", query_rows)
+    write_review_tsv(args.output_dir / "pubmed_review_queue.tsv", review_rows)
+    if approved_rows:
+        for split in sorted({row["split"] for row in approved_rows if row["split"]}):
+            split_rows = [row for row in approved_rows if row["split"] == split]
+            write_query_tsv(args.output_dir / f"pubmed_literature_{split}_queries.tsv", split_rows)
+        write_query_tsv(args.output_dir / "pubmed_literature_approved_queries.tsv", approved_rows)
     (args.output_dir / "pubmed_paragraphs.json").write_text(
         json.dumps(paragraph_rows, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
@@ -187,7 +299,24 @@ def main() -> int:
     with (args.output_dir / "pubmed_records.jsonl").open("w", encoding="utf-8") as handle:
         for row in record_rows:
             handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
-    print(json.dumps({"topics": len(topics), "abstracts": len(query_rows), "output_dir": str(args.output_dir)}, indent=2))
+    manifest = {
+        "topics": len(topics),
+        "abstracts": len(query_rows),
+        "approved_abstracts": len(approved_rows),
+        "curation": str(args.curation) if args.curation else "",
+        "strict_curation": bool(args.strict_curation),
+        "output_dir": str(args.output_dir),
+        "splits": {
+            split: sum(1 for row in approved_rows if row["split"] == split)
+            for split in sorted({row["split"] for row in approved_rows if row["split"]})
+        },
+        "topic_fallback_rows": sum(1 for row in review_rows if row["expected_source"] == "topic_fallback"),
+    }
+    (args.output_dir / "benchmark_manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(json.dumps(manifest, indent=2))
     return 0
 
 

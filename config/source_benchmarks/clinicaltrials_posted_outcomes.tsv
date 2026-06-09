@@ -1,0 +1,4 @@
+id	query	expected_cuis	why	disallowed_cuis
+clinicaltrials_outcome_01	posted trial results HbA1c reduction in type 2 diabetes with metformin	C0202054|C0011860|C0025598	ClinicalTrials.gov evidence-mode checks should use posted outcome-result language, not protocol-only planned outcomes.
+clinicaltrials_outcome_02	posted outcome results apixaban atrial fibrillation stroke prevention	C1831808|C0004238|C1277289	Trial outcome evidence should retrieve posted results around drug, condition, and outcome concepts.
+clinicaltrials_outcome_03	posted results migraine prevention clinical trial	C0149931	ClinicalTrials.gov benchmark rows should be outcome-result scoped for condition-level trial evidence.

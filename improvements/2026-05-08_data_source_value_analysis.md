@@ -15,7 +15,7 @@ The retrieval analysis gives fractional credit when a result has multiple source
 
 | Source artifact | Docs | CUIs | Evidence items | Dominant sources |
 |---|---:|---:|---:|---|
-| Core PubMed/EuropePMC/MIMIC structured | 41,485 | 30,602 | 482,854 | PubMed 28,613 doc-credit; EuropePMC 10,532; MIMIC demo sources collectively ~2,300 |
+| Core PubMed/EuropePMC structured | 39,342 | 29,881 | 443,631 | PubMed and EuropePMC are the dominant sources |
 | New CUI extensions | 13 | 13 | 65 | Existing concept documents |
 | Wikipedia enrichment | 2 | 2 | 8 | Wikipedia |
 | Drug enrichment | 9 | 9 | 511 | RxNorm, ATC, DrugBank, MTHSPL, PubMed bulk, EuropePMC |
@@ -32,7 +32,6 @@ Across 80 paragraph queries, there are 800 top-10 result slots. Fractional sourc
 | UMLS label fallback | 216.0 | 27.0% | 40.20 | 75.0 | 2.0 | 99.0 |
 | EuropePMC | 60.5 | 7.6% | 27.45 | 41.5 | 16.0 | 33.0 |
 | New CUI extension labels/documents | 17 total hits split across two co-sources | ~2.1% combined | 4.21 each split | 13 combined | 5 combined | 15 combined |
-| MIMIC demo structured sources | ~12.5 combined | ~1.6% | low except EMAR | 8 combined | 1.0 | ~7.5 |
 | Active label supplement | 2.5 | 0.3% | 0.43 | 1.0 | 0.0 | 2.5 |
 
 ## Interpretation
@@ -45,8 +44,6 @@ EuropePMC is smaller than PubMed but high-leverage. It provides 7.6% of top-10 c
 
 The new CUI extension layer is small but efficient. Only 13 extension documents exist, yet extension concepts appear in 17 top-10 hits and account for 15 expected-CUI@10 source-credit units when counting the paired extension sources together. This is good evidence that curated/new concepts are high value per document.
 
-MIMIC demo data contributes little to this benchmark, mostly because the current paragraph set is broad and not heavily ICU-table style. It still helps with some microbiology, EMAR, prescription, and chart-event concepts, but the current demo-sized slice is not a major driver.
-
 Wikipedia, open image enrichment, drug enrichment, and OpenAlex cited evidence do not materially appear in the current paragraph benchmark top-10 outputs. That does not mean they are useless; it means this benchmark is not stressing the queries where those sources should help most, such as specific drug lookups, public concept summaries, images, and literature-heavy research concepts.
 
 ## Recommendations
@@ -54,5 +51,5 @@ Wikipedia, open image enrichment, drug enrichment, and OpenAlex cited evidence d
 1. Keep investing in PubMed and EuropePMC; they are the core evidence-retrieval sources.
 2. Treat UMLS label fallback as essential, not a temporary crutch, but use ranking controls to keep generic labels from polluting results.
 3. Expand new CUI creation because it has high return per document in the current benchmark.
-4. Build source-specific evaluations for drug enrichment, Wikipedia, OpenAlex, images, and MIMIC instead of judging them only on the general clinical paragraph benchmark.
+4. Build source-specific evaluations for drug enrichment, Wikipedia, OpenAlex, and images instead of judging them only on the general clinical paragraph benchmark.
 5. Add ablation testing next: run the same benchmark with each source disabled to measure marginal loss in recall and ranking, not just observed source presence.

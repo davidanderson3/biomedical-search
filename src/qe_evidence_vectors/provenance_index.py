@@ -186,24 +186,6 @@ def citation_from_evidence(record) -> dict:
             "cited_by_count": cited_by_count,
             "matched_label": matched_label,
         }
-    if source.startswith("mimic"):
-        bits = [source]
-        if table:
-            bits.append(table)
-        if itemid:
-            bits.append(f"itemid {itemid}")
-        if event_count:
-            bits.append(f"{event_count} events")
-        return {
-            "label": " | ".join(bits),
-            "source": source,
-            "corpus_doc_id": corpus_doc_id,
-            "table": table,
-            "itemid": itemid,
-            "event_count": event_count,
-            "matched_label": matched_label,
-            "source_label": label,
-        }
     return {
         "label": corpus_doc_id or source or "source unavailable",
         "source": source,

@@ -13,10 +13,9 @@ from .text import normalized_key
 DRUG_MAPPING_SABS = ("RXNORM", "ATC", "MTHSPL", "DRUGBANK")
 DRUG_ENRICHMENT_VIEW = "drug_enrichment"
 OPEN_DRUG_ENRICHMENT_SOURCE_POLICY = (
-    "open_literature_and_drug_vocabularies_only_no_mimic_no_ehr"
+    "open_literature_and_drug_vocabularies_only_no_ehr"
 )
 EHR_SOURCE_MARKERS = (
-    "mimic",
     "ehr",
     "electronic health record",
     "electronic medical record",

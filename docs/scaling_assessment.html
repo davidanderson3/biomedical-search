@@ -469,8 +469,8 @@
           <input id="pubmedRecords" type="number" min="0" step="1000000" value="40000000">
         </div>
         <div>
-          <label for="mimicNotes">MIMIC-IV-Note rows</label>
-          <input id="mimicNotes" type="number" min="0" step="100000" value="2653149">
+          <label for="additionalRecords">Additional source records</label>
+          <input id="additionalRecords" type="number" min="0" step="100000" value="0">
         </div>
         <div>
           <label for="projectedDocs">Projected CUI/view docs</label>
@@ -541,7 +541,7 @@
         "docsFile", "vectorsFile", "bulkFiles", "evidenceFiles", "corpusFiles",
         "maxLines", "setCap", "normEvery", "expectedProfiles", "analyzeBtn",
         "resetBtn", "runStatus", "progressBar", "metrics", "checks",
-        "pubmedRecords", "mimicNotes", "projectedDocs", "linkRate",
+        "pubmedRecords", "additionalRecords", "projectedDocs", "linkRate",
         "optimizedLinkRate", "hashRate", "semanticCpuRate", "semanticGpuRate",
         "projectionBtn", "useLoadedDocsBtn", "projection", "sourceBars",
         "viewBars", "samples", "summary", "copySummaryBtn"
@@ -1070,14 +1070,14 @@
     function projectionRows() {
       const profiles = Math.max(1, getNumber("expectedProfiles"));
       const pubmedRecords = getNumber("pubmedRecords");
-      const mimicNotes = getNumber("mimicNotes");
+      const additionalRecords = getNumber("additionalRecords");
       const projectedDocs = getNumber("projectedDocs");
       const linkRate = Math.max(1, getNumber("linkRate"));
       const optimizedLinkRate = Math.max(1, getNumber("optimizedLinkRate"));
       const hashRate = Math.max(1, getNumber("hashRate"));
       const cpuRate = Math.max(0.1, getNumber("semanticCpuRate"));
       const gpuRate = Math.max(0.1, getNumber("semanticGpuRate"));
-      const linkUnits = (pubmedRecords + mimicNotes) * profiles;
+      const linkUnits = (pubmedRecords + additionalRecords) * profiles;
       const currentLinkHours = linkUnits / linkRate / 3600;
       const optimizedLinkHours = linkUnits / optimizedLinkRate / 3600;
       const hashHours = projectedDocs / hashRate / 3600;
@@ -1088,8 +1088,8 @@
       const bulkBytes = state.bulk.bulkSourceLines ? state.bulk.bytes / state.bulk.bulkSourceLines : 4100;
 
       return [
-        ["Link PubMed + MIMIC notes, current rate", fmtDuration(currentLinkHours), `${fmtNum(linkUnits)} record-profile scans at ${fmtNum(linkRate)}/sec`],
-        ["Link PubMed + MIMIC notes, optimized rate", fmtDuration(optimizedLinkHours), `${fmtNum(linkUnits)} record-profile scans at ${fmtNum(optimizedLinkRate)}/sec`],
+        ["Link PubMed + additional sources, current rate", fmtDuration(currentLinkHours), `${fmtNum(linkUnits)} record-profile scans at ${fmtNum(linkRate)}/sec`],
+        ["Link PubMed + additional sources, optimized rate", fmtDuration(optimizedLinkHours), `${fmtNum(linkUnits)} record-profile scans at ${fmtNum(optimizedLinkRate)}/sec`],
         ["Hashing embeddings", fmtDuration(hashHours), `${fmtNum(projectedDocs)} CUI/view docs at ${fmtNum(hashRate)}/sec`],
         ["Transformer embeddings on CPU", fmtDuration(cpuHours), `${fmtNum(projectedDocs)} CUI/view docs at ${cpuRate}/sec`],
         ["Transformer embeddings on GPU", fmtDuration(gpuHours), `${fmtNum(projectedDocs)} CUI/view docs at ${gpuRate}/sec`],
@@ -1101,13 +1101,13 @@
 
     function renderProjection() {
       const rows = projectionRows();
-      const optimizedHours = ((getNumber("pubmedRecords") + getNumber("mimicNotes")) * Math.max(1, getNumber("expectedProfiles"))) / Math.max(1, getNumber("optimizedLinkRate")) / 3600;
+      const optimizedHours = ((getNumber("pubmedRecords") + getNumber("additionalRecords")) * Math.max(1, getNumber("expectedProfiles"))) / Math.max(1, getNumber("optimizedLinkRate")) / 3600;
       const linkLevel = optimizedHours <= 24 ? "pass" : optimizedHours <= 48 ? "warn" : "fail";
       const linkText = linkLevel === "pass"
         ? "Optimized linking is in a one-day range."
         : linkLevel === "warn"
           ? "Optimized linking is close, but still likely needs sharding and resume."
-          : "Optimized linking is not yet fast enough for full PubMed plus MIMIC in a day.";
+          : "Optimized linking is not yet fast enough for full PubMed plus added sources in a day.";
       els.projection.innerHTML = `
         <div class="check" style="border-top: 0; margin-top: 14px;">
           <div><span class="badge ${linkLevel}">${linkLevel}</span></div>
@@ -1219,7 +1219,7 @@
         renderSummary();
       });
       for (const id of [
-        "pubmedRecords", "mimicNotes", "projectedDocs", "linkRate",
+        "pubmedRecords", "additionalRecords", "projectedDocs", "linkRate",
         "optimizedLinkRate", "hashRate", "semanticCpuRate", "semanticGpuRate",
         "expectedProfiles"
       ]) {

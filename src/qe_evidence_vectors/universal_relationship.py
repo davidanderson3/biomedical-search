@@ -144,6 +144,7 @@ def evidence_method_for_source(source: str, *, relation_group: str = "", relatio
             "openfda",
             "pmc",
             "pubmed",
+            "pubtator",
             "wikipedia",
         )
     ):
