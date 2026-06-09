@@ -413,7 +413,7 @@
 		<body>
 		<main>
 		  <h1>Search Quality Repeat Runs</h1>
-		  <p class="muted">Generated 2026-06-09 21:06 UTC. Timestamps are UTC. Showing 8 repeated comparable run types from 41 registered runs.</p>
+		  <p class="muted">Generated 2026-06-09 22:05 UTC. Timestamps are UTC. Showing 8 repeated comparable run types from 43 registered runs.</p>
 		  
       <section class="panel top-read-panel">
         <div class="latest-header">
@@ -444,16 +444,16 @@
     
           
       <div class="summary-card warn">
-        <strong>11/15 local</strong>
+        <strong>18/18 local</strong>
         <span>Short phrase lookup</span>
-        <small>official UMLS search found 15/15</small>
+        <small>official UMLS search found 18/18</small>
       </div>
     
           
-      <div class="summary-card warn">
-        <strong>7/8</strong>
+      <div class="summary-card good">
+        <strong>8/8</strong>
         <span>Code mappings found</span>
-        <small>12/13 expected links to SNOMED/RxNorm/LOINC/ICD codes found</small>
+        <small>13/13 expected links to SNOMED/RxNorm/LOINC/ICD codes found</small>
       </div>
     
         </div>
@@ -511,15 +511,15 @@
             </li>
             <li>
               <strong>Official UMLS comparison:</strong>
-              For short lookup phrases, our search found the expected ID in the first 10 answers 11 of 15 times.
-              The official UMLS search found it 15 of 15 times.
-              That leaves 4 local misses and 0 official-UMLS misses in this set.
+              For short lookup phrases, our search found the expected ID in the first 10 answers 18 of 18 times.
+              The official UMLS search found it 18 of 18 times.
+              That leaves 0 local misses and 0 official-UMLS misses in this set.
             </li>
             <li>
               <strong>Code check:</strong>
               After finding a medical concept, this checks whether we can also show the expected vocabulary code, such as SNOMED CT, RxNorm, LOINC, or ICD-10-CM.
-              7 of 8 rows had all expected code types, and 12 of 13 expected code links were found.
-              1 row still needs a missing code type fixed.
+              8 of 8 rows had all expected code types, and 13 of 13 expected code links were found.
+              0 rows still need a missing code type fixed.
             </li>
           </ul>
         </div>
@@ -533,11 +533,11 @@
           </p>
           <ul class="plain-steps">
             <li>
-              <strong>Better long-document handling:</strong>
-              PubMed abstracts and pasted clinical pages need section-aware chunking,
-              per-section linking, and a merge step that preserves the best supported
-              concepts without letting incidental context dominate. The PubMed abstract
-              scores above make this a current recall and ranking gap, not a theoretical issue.
+              <strong>Long-document validation:</strong>
+              Section-aware chunking, per-section linking, and merged chunk support are
+              now in the search path. Use the PubMed dev misses to tune reranking so
+              secondary concepts survive long abstracts without letting incidental
+              context dominate.
             </li>
             <li>
               <strong>Entity attributes:</strong>
@@ -631,7 +631,7 @@
               <th>Expected rows</th>
             </tr>
           </thead>
-          <tbody><tr><td><strong>Default local search, related=0</strong><br><small><code>default_umls_evidence_related0</code></small><br><small>No explicit scope parameter; server default is umls_evidence.</small></td><td>12/18</td><td>12/18</td><td>12/18</td><td>11/15</td><td>10/15</td><td>1.33/10</td><td>15</td></tr><tr><td><strong>Explicit UMLS+evidence, related=1</strong><br><small><code>explicit_umls_evidence_related1</code></small><br><small>Same retrieval scope with related concept attachment enabled.</small></td><td>12/18</td><td>12/18</td><td>12/18</td><td>11/15</td><td>10/15</td><td>1.33/10</td><td>15</td></tr><tr><td><strong>Exact local mode, UMLS+evidence scope, related=0</strong><br><small><code>exact_umls_evidence_related0</code></small><br><small>Exact local search mode against the evidence-backed scope.</small></td><td>11/18</td><td>11/18</td><td>11/18</td><td>10/15</td><td>9/15</td><td>0.83/10</td><td>15</td></tr></tbody>
+          <tbody><tr><td><strong>Current local search, active-label supplement, related=0</strong><br><small><code>current_active_label_related0</code></small><br><small>Live local API on port 8766 refreshed against cached UMLS payloads; validates exact active-label short phrases.</small></td><td>17/18</td><td>17/18</td><td>17/18</td><td>18/18</td><td>17/18</td><td>1.78/10</td><td>18</td></tr><tr><td><strong>Default local search, related=0</strong><br><small><code>default_umls_evidence_related0</code></small><br><small>No explicit scope parameter; server default is umls_evidence.</small></td><td>12/18</td><td>12/18</td><td>12/18</td><td>11/15</td><td>10/15</td><td>1.33/10</td><td>15</td></tr><tr><td><strong>Explicit UMLS+evidence, related=1</strong><br><small><code>explicit_umls_evidence_related1</code></small><br><small>Same retrieval scope with related concept attachment enabled.</small></td><td>12/18</td><td>12/18</td><td>12/18</td><td>11/15</td><td>10/15</td><td>1.33/10</td><td>15</td></tr><tr><td><strong>Exact local mode, UMLS+evidence scope, related=0</strong><br><small><code>exact_umls_evidence_related0</code></small><br><small>Exact local search mode against the evidence-backed scope.</small></td><td>11/18</td><td>11/18</td><td>11/18</td><td>10/15</td><td>9/15</td><td>0.83/10</td><td>15</td></tr></tbody>
         </table>
       </div>
     

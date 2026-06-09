@@ -327,9 +327,12 @@ def score_breakdown_for_hit(
             hit=hit,
         )
     )
+    assertion = assertion_context_for_hit(query=query, labels=labels, hit=hit)
+    assertion_status = str(assertion.get("status") or "")
     primary_condition_component = (
         0.0
         if denied_positive_finding_penalty > 0.0
+        or assertion_status in {"historical", "family_history", "negated"}
         else primary_condition_component_for_hit(
             query_tokens=query_tokens,
             raw_query_token_list=raw_query_token_list,
@@ -368,7 +371,6 @@ def score_breakdown_for_hit(
         labels=labels,
         hit=hit,
     )
-    assertion = assertion_context_for_hit(query=query, labels=labels, hit=hit)
     assertion_context_penalty = assertion_context_penalty_for_hit(
         assertion=assertion,
         hit=hit,
@@ -1755,6 +1757,13 @@ def apply_evidence_aware_cutoff(
         if not is_blocked_generic_result(hit)
         and not is_contextless_common_word_gene_result(hit, query_tokens=query_tokens)
     ]
+    patient_message_filtered = [
+        hit
+        for hit in ranked_hits
+        if not is_patient_message_meta_noise_result(hit, query_tokens=query_tokens)
+    ]
+    if patient_message_filtered:
+        ranked_hits = patient_message_filtered
     context_filtered = [
         hit
         for hit in ranked_hits
@@ -1828,6 +1837,94 @@ def is_blocked_generic_result(hit: SearchHit) -> bool:
         *labels,
     ]:
         if is_blocked_generic_concept(str(hit.get("cui") or ""), label):
+            return True
+    return False
+
+
+PATIENT_MESSAGE_META_CONTEXT_TOKENS = {
+    "call",
+    "explain",
+    "instruction",
+    "language",
+    "message",
+    "plain",
+    "portal",
+    "reply",
+    "scheduling",
+    "sort",
+    "summary",
+    "visit",
+}
+PATIENT_MESSAGE_META_SELF_TOKENS = {"i", "me", "my"}
+PATIENT_MESSAGE_META_NOISE_TOKENS = {
+    "concern",
+    "concerned",
+    "confuse",
+    "confused",
+    "confusion",
+    "sure",
+    "worry",
+    "worried",
+}
+PATIENT_STATE_CONFUSION_CONTEXT_TOKENS = {
+    "altered",
+    "delirium",
+    "diaphoretic",
+    "encephalopathy",
+    "fall",
+    "febrile",
+    "fever",
+    "glucose",
+    "head",
+    "hypoglycemia",
+    "injury",
+    "lethargic",
+    "mental",
+    "sepsis",
+    "status",
+    "stroke",
+    "unresponsive",
+    "weak",
+    "weakness",
+}
+
+
+def query_has_patient_message_meta_context(query_tokens: set[str]) -> bool:
+    if not (query_tokens & PATIENT_MESSAGE_META_SELF_TOKENS):
+        return False
+    if len(query_tokens & PATIENT_MESSAGE_META_CONTEXT_TOKENS) >= 2:
+        return True
+    return bool({"portal", "message"} & query_tokens and {"summary", "visit", "reply"} & query_tokens)
+
+
+def is_patient_message_meta_noise_result(hit: SearchHit, *, query_tokens: list[str]) -> bool:
+    query_set = set(query_tokens)
+    if not query_has_patient_message_meta_context(query_set):
+        return False
+    candidate_texts = [
+        str(hit.get("matched_query_span") or ""),
+        str(hit.get("matched_label") or ""),
+        str(hit.get("name") or ""),
+        *[str(label or "") for label in hit.get("labels") or []],
+    ]
+    for text in candidate_texts:
+        tokens = set(content_tokens(text))
+        if not tokens:
+            continue
+        meta_tokens = tokens & PATIENT_MESSAGE_META_NOISE_TOKENS
+        if not meta_tokens:
+            continue
+        if meta_tokens & {"confuse", "confused", "confusion"} and (
+            query_set & PATIENT_STATE_CONFUSION_CONTEXT_TOKENS
+        ):
+            return False
+        if tokens <= PATIENT_MESSAGE_META_NOISE_TOKENS or meta_tokens & {
+            "confuse",
+            "confused",
+            "confusion",
+            "worried",
+            "worry",
+        }:
             return True
     return False
 

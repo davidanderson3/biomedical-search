@@ -14846,6 +14846,12 @@ def test_generic_filter_blocks_known_bad_concepts() -> None:
     assert is_blocked_generic_concept("C3647129", "pain pressure")
     assert is_blocked_generic_concept("C1881187", "Increase in Pressure Medical Device Problem")
     assert is_blocked_generic_concept("C3845350", "At least daily")
+    assert is_blocked_generic_concept("C3840725", "Do not")
+    assert is_blocked_generic_concept("C3844332", "Not sure")
+    assert is_blocked_generic_concept("C1410088", "Still")
+    assert is_blocked_generic_concept("C0747608", "PLACEMENT PROBLEM")
+    assert is_blocked_generic_concept("C3263700", "Instructions")
+    assert is_blocked_generic_concept("C2825142", "Result")
     assert is_blocked_generic_concept("C0019932", "Hormones")
     assert is_blocked_generic_concept(
         "C3870121",
@@ -14919,6 +14925,257 @@ def test_definition_fallback_skips_generic_blocked_queries() -> None:
     assert definition_fallback_query_is_too_generic("disease management")
     assert is_blocked_generic_query("large")
     assert not definition_fallback_query_is_too_generic("pain management")
+
+
+def test_query_ranker_filters_patient_portal_meta_fragments_before_central_line_concepts() -> None:
+    query = (
+        "Patient portal message: Hi, I am confused about my visit summary. "
+        "It says I may have need for central venous access, and I came in because of poor peripheral access. "
+        "I also saw the words ultrasound guided venous access and right internal jugular central line placed "
+        "in the note. Can you explain whether the procedure note result is why you are concerned about central "
+        "venous catheter placement? I was told sterile technique might be part of the plan, and I am not sure "
+        "whether central line insertion is something I need now or only if things do not improve. I am also "
+        "worried because the instructions mention watching for line associated infection. My portal still shows "
+        "an older problem, atrial fibrillation, and an old electrocardiogram result from another visit. It also "
+        "still lists metoprolol. I do not know if that old information affects the new central venous catheter "
+        "placement plan or if it is just part of my history. I do not want to confuse the old atrial fibrillation "
+        "history with the new concern from this visit."
+    )
+    ranked = rank_hits(
+        query,
+        [
+            {
+                "cui": "C3840725",
+                "name": "Do not",
+                "labels": ["Do not"],
+                "score": 1.34,
+                "match_type": "umls_label",
+                "matched_query_span": "do not",
+                "evidence_count": 12,
+                "semantic_types": [{"name": "Finding"}],
+            },
+            {
+                "cui": "C0683369",
+                "name": "Clouded consciousness",
+                "labels": ["Clouded consciousness", "confused"],
+                "sources": ["active_label_supplement", "umls_label"],
+                "score": 1.34,
+                "match_type": "umls_label",
+                "matched_label": "confused",
+                "matched_query_span": "confused",
+                "evidence_count": 4,
+                "semantic_types": [{"name": "Finding"}],
+            },
+            {
+                "cui": "C3844332",
+                "name": "Not sure",
+                "labels": ["Not sure"],
+                "score": 1.03,
+                "match_type": "umls_label",
+                "matched_query_span": "not sure",
+                "evidence_count": 8,
+                "semantic_types": [{"name": "Finding"}],
+            },
+            {
+                "cui": "C1410088",
+                "name": "Still",
+                "labels": ["Still"],
+                "score": 1.34,
+                "match_type": "umls_label",
+                "matched_query_span": "still",
+                "evidence_count": 6,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C0233481",
+                "name": "Worried",
+                "labels": ["Worried"],
+                "score": 1.34,
+                "match_type": "umls_label",
+                "matched_query_span": "worried",
+                "evidence_count": 10,
+                "semantic_types": [{"name": "Finding"}],
+            },
+            {
+                "cui": "C2825142",
+                "name": "Result",
+                "labels": ["Result"],
+                "score": 1.29,
+                "match_type": "umls_label",
+                "matched_query_span": "result",
+                "evidence_count": 12,
+                "semantic_types": [{"name": "Finding"}],
+            },
+            {
+                "cui": "C3263700",
+                "name": "Instructions",
+                "labels": ["Instructions"],
+                "score": 1.25,
+                "match_type": "umls_label",
+                "matched_query_span": "instructions",
+                "evidence_count": 12,
+                "semantic_types": [{"name": "Finding"}],
+            },
+            {
+                "cui": "C0439673",
+                "name": "Unknown",
+                "labels": ["Unknown", "Do not know"],
+                "score": 1.22,
+                "match_type": "umls_label",
+                "matched_query_span": "do not know",
+                "evidence_count": 12,
+                "semantic_types": [{"name": "Qualitative Concept"}],
+            },
+            {
+                "cui": "C0459422",
+                "name": "normal result",
+                "labels": ["normal result"],
+                "score": 1.2,
+                "match_type": "umls_label",
+                "matched_query_span": "result",
+                "evidence_count": 12,
+                "semantic_types": [{"name": "Finding"}],
+            },
+            {
+                "cui": "C0398275",
+                "name": "Central venous cannula insertion",
+                "labels": ["Central Venous Catheter Placement"],
+                "score": 1.12,
+                "match_type": "umls_label",
+                "matched_query_span": "central venous catheter placement",
+                "evidence_count": 4,
+                "semantic_types": [{"name": "Therapeutic or Preventive Procedure"}],
+            },
+            {
+                "cui": "C1145640",
+                "name": "Central venous catheter, device",
+                "labels": ["Central venous catheter, device"],
+                "score": 1.08,
+                "match_type": "umls_label",
+                "matched_query_span": "central venous catheter",
+                "evidence_count": 8,
+                "semantic_types": [{"name": "Medical Device"}],
+            },
+            {
+                "cui": "C0501117",
+                "name": "Right internal jugular vein",
+                "labels": ["Right internal jugular vein", "right internal jugular"],
+                "score": 1.07,
+                "match_type": "umls_label",
+                "matched_query_span": "right internal jugular",
+                "evidence_count": 2,
+                "semantic_types": [{"name": "Body Part, Organ, or Organ Component"}],
+            },
+            {
+                "cui": "C3714514",
+                "name": "Infection",
+                "labels": ["Infection"],
+                "score": 1.05,
+                "match_type": "umls_label",
+                "matched_query_span": "infection",
+                "evidence_count": 15,
+                "semantic_types": [{"name": "Pathologic Function"}],
+            },
+            {
+                "cui": "C0004238",
+                "name": "Atrial Fibrillation",
+                "labels": ["Atrial Fibrillation"],
+                "score": 1.03,
+                "match_type": "umls_label",
+                "matched_query_span": "atrial fibrillation",
+                "evidence_count": 30,
+                "semantic_types": [{"name": "Disease or Syndrome"}],
+            },
+            {
+                "cui": "C1623258",
+                "name": "Electrocardiogram",
+                "labels": ["Electrocardiogram"],
+                "score": 1.03,
+                "match_type": "umls_label",
+                "matched_query_span": "electrocardiogram",
+                "evidence_count": 18,
+                "semantic_types": [{"name": "Diagnostic Procedure"}],
+            },
+            {
+                "cui": "C0025859",
+                "name": "metoprolol",
+                "labels": ["metoprolol"],
+                "score": 1.03,
+                "match_type": "umls_label",
+                "matched_query_span": "metoprolol",
+                "evidence_count": 20,
+                "semantic_types": [{"name": "Pharmacologic Substance"}],
+            },
+        ],
+        top_k=10,
+    )
+
+    ordered_cuis = [hit["cui"] for hit in ranked]
+    bad_meta = {
+        "C3840725",
+        "C0683369",
+        "C3844332",
+        "C1410088",
+        "C0233481",
+        "C2825142",
+        "C3263700",
+        "C0439673",
+        "C0459422",
+    }
+    assert not bad_meta & set(ordered_cuis)
+    assert not bad_meta & set(ordered_cuis[:4])
+    assert {"C0398275", "C1145640"} <= set(ordered_cuis)
+    assert {"C0501117", "C3714514", "C0004238", "C1623258", "C0025859"} <= set(ordered_cuis)
+
+    rank_by_cui = {cui: index for index, cui in enumerate(ordered_cuis)}
+    assert rank_by_cui["C0398275"] < rank_by_cui["C0004238"]
+    assert rank_by_cui["C0398275"] < rank_by_cui["C1623258"]
+    assert rank_by_cui["C0398275"] < rank_by_cui["C0025859"]
+
+    historical_hits = {
+        hit["cui"]: hit
+        for hit in ranked
+        if hit["cui"] in {"C0004238", "C1623258", "C0025859"}
+    }
+    central_line = next(hit for hit in ranked if hit["cui"] == "C0398275")
+    assert central_line["score_breakdown"]["assertion"]["status"] == "current"
+    assert {hit["score_breakdown"]["assertion"]["status"] for hit in historical_hits.values()} == {
+        "historical"
+    }
+    assert all(hit["score_breakdown"]["assertion_context_penalty"] > 0 for hit in historical_hits.values())
+
+
+def test_query_ranker_keeps_clinical_confusion_outside_patient_portal_meta_context() -> None:
+    ranked = rank_hits(
+        "Blood glucose was 38 mg/dL after excess insulin use, and the patient was diaphoretic and confused.",
+        [
+            {
+                "cui": "C0683369",
+                "name": "Clouded consciousness",
+                "labels": ["Clouded consciousness", "confused"],
+                "sources": ["active_label_supplement", "umls_label"],
+                "score": 1.34,
+                "match_type": "umls_label",
+                "matched_label": "confused",
+                "matched_query_span": "confused",
+                "evidence_count": 4,
+                "semantic_types": [{"name": "Finding"}],
+            },
+            {
+                "cui": "C0392201",
+                "name": "Blood glucose",
+                "labels": ["blood glucose"],
+                "score": 1.1,
+                "match_type": "umls_label",
+                "matched_query_span": "Blood glucose",
+                "evidence_count": 8,
+                "semantic_types": [{"name": "Laboratory Procedure"}],
+            },
+        ],
+        top_k=2,
+    )
+
+    assert "C0683369" in [hit["cui"] for hit in ranked]
 
 
 def test_query_ranker_filters_contextual_false_positive_results() -> None:

@@ -19,6 +19,7 @@ BLOCKED_GENERIC_LABELS = {
     "degree or extent",
     "disease management",
     "domestic",
+    "do not",
     "elevated",
     "entity risk aggressive",
     "examined",
@@ -50,6 +51,7 @@ BLOCKED_GENERIC_LABELS = {
     "needs",
     "narrowing",
     "notable",
+    "normal result",
     "organism strain",
     "other than",
     "pain pressure",
@@ -67,6 +69,7 @@ BLOCKED_GENERIC_LABELS = {
     "preventive monitoring",
     "primary",
     "patient history",
+    "placement problem",
     "rather",
     "range",
     "removed",
@@ -80,6 +83,8 @@ BLOCKED_GENERIC_LABELS = {
     "setting",
     "settings",
     "settings qualitative",
+    "show",
+    "still",
     "sterile",
     "sterile qualifier value",
     "study results",
@@ -92,9 +97,13 @@ BLOCKED_GENERIC_LABELS = {
     "tests",
     "tests and testing",
     "therapeutic procedure",
+    "not sure",
+    "result",
+    "instructions",
     "true control status",
     "uncomplicated",
     "unable",
+    "unknown",
     "validation",
     "watery",
 }
@@ -122,12 +131,14 @@ BLOCKED_GENERIC_CUIS = {
     "C0439092",  # Less Than
     "C0439093",  # Greater Than
     "C0439661",  # Acquired (qualifier value)
+    "C0439673",  # Unknown / do not know
     "C0441889",  # Levels (qualifier value)
     "C0441994",  # Lower
     "C0442809",  # Inconsistent
     "C0443334",  # Uncomplicated
     "C0449286",  # Degree or extent
     "C0449416",  # Source
+    "C0459422",  # Normal result
     "C0332128",  # Examined
     "C0444611",  # Fluid behavior
     "C0547044",  # Smaller / Less
@@ -169,6 +180,8 @@ BLOCKED_GENERIC_CUIS = {
     "C1881187",  # Increase in Pressure Medical Device Problem
     "C3647129",  # pain pressure
     "C3843661",  # Too little
+    "C3844332",  # Not sure
+    "C3840725",  # Do not
     "C3845350",  # At least daily
     "C3842633",  # At work
     "C4288581",  # Notable
@@ -176,6 +189,11 @@ BLOCKED_GENERIC_CUIS = {
     "C4533435",  # Settings (qualitative)
     "C4698491",  # Rather
     "C4723751",  # Other Than
+    "C1410088",  # Still
+    "C1547282",  # Show
+    "C2825142",  # Experimental Result / Result
+    "C3263700",  # Instructions
+    "C0747608",  # PLACEMENT PROBLEM
     "C3870121",  # Long advance-directive survey narrative
     "C5777012",  # Lower risk
     "C0011750",  # Developing Countries

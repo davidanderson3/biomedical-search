@@ -58,6 +58,11 @@ BEFORE_CUES = {
         ("previous",),
         ("remote",),
         ("old",),
+        ("older",),
+        ("old", "problem"),
+        ("older", "problem"),
+        ("still", "list"),
+        ("still", "lists"),
     ),
     ASSERTION_FAMILY_HISTORY: (
         ("family", "history", "of"),
@@ -110,6 +115,8 @@ AFTER_CUES = {
         ("history",),
         ("historical",),
         ("remote",),
+        ("another", "visit"),
+        ("from", "another", "visit"),
     ),
     ASSERTION_PLANNED: (
         ("planned",),
@@ -145,6 +152,26 @@ PROCEDURE_ASSERTION_TYPES = {
     "health care activity",
     "laboratory procedure",
     "therapeutic or preventive procedure",
+}
+
+HISTORICAL_MEDICATION_TYPES = {
+    "antibiotic",
+    "clinical drug",
+    "pharmacologic substance",
+}
+HISTORICAL_RESULT_PROCEDURE_TYPES = {
+    "diagnostic procedure",
+    "laboratory procedure",
+}
+CHART_HISTORY_CUES = {
+    "old",
+    "older",
+    "old problem",
+    "older problem",
+    "still list",
+    "still lists",
+    "another visit",
+    "from another visit",
 }
 
 
@@ -194,6 +221,13 @@ def assertion_context_penalty_for_hit(*, assertion: dict, hit: dict) -> float:
     if status in {ASSERTION_CURRENT, ASSERTION_CONFIRMED, ASSERTION_NEGATED, ASSERTION_FAMILY_HISTORY}:
         return 0.0
     hit_types = semantic_type_names(hit)
+    if status == ASSERTION_HISTORICAL and str(assertion.get("cue") or "") in CHART_HISTORY_CUES:
+        if hit_types & NON_ACTIVE_ASSERTION_TYPES:
+            return 0.38
+        if hit_types & HISTORICAL_RESULT_PROCEDURE_TYPES:
+            return 0.14
+        if hit_types & HISTORICAL_MEDICATION_TYPES:
+            return 0.12
     if status == ASSERTION_HISTORICAL and hit_types & NON_ACTIVE_ASSERTION_TYPES:
         return 0.22
     if status == ASSERTION_UNCERTAIN and hit_types & NON_ACTIVE_ASSERTION_TYPES:
@@ -337,6 +371,14 @@ def cue_scope_blocked(
         "diagnosed",
         "found",
         "grew",
+    }:
+        return True
+    if status == ASSERTION_NEGATED and between & {
+        "confuse",
+        "confused",
+        "know",
+        "sure",
+        "understand",
     }:
         return True
     return False
