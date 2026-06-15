@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from qe_evidence_vectors.search_mrrel import (
     MRREL_CATEGORY_ROLE_TOKENS,
     MRREL_RANK_COMPONENT_CAP,
@@ -13,6 +15,8 @@ from qe_evidence_vectors.search_denial import (
     has_denial_context,
 )
 from qe_evidence_vectors.search_ranking import (
+    is_blocked_generic_result,
+    is_patient_message_meta_noise_result,
     label_fallback_anchor_queries,
     mrrel_candidate_priority,
     rank_hits,
@@ -115,6 +119,18 @@ def active_label_phrase_in_query(query_norm: str, phrase_norm: str) -> bool:
     return f" {phrase_norm} " in f" {query_norm} "
 
 
+def active_label_phrase_supported_by_query_tokens(query_tokens: set[str], phrase_norm: str) -> bool:
+    phrase_tokens = set(content_tokens(phrase_norm))
+    return bool(phrase_tokens) and phrase_tokens <= query_tokens
+
+
+def active_label_context_matches(query_norm: str, query_tokens: set[str], phrase_norm: str) -> bool:
+    return active_label_phrase_in_query(
+        query_norm,
+        phrase_norm,
+    ) or active_label_phrase_supported_by_query_tokens(query_tokens, phrase_norm)
+
+
 def active_label_row_matches_query_context(row: dict, query_norm: str) -> bool:
     required = active_label_context_values(str(row.get("context_any") or ""))
     blocked = active_label_context_values(str(row.get("block_any") or ""))
@@ -123,6 +139,38 @@ def active_label_row_matches_query_context(row: dict, query_norm: str) -> bool:
     if required and not any(active_label_phrase_in_query(query_norm, phrase) for phrase in required):
         return False
     return True
+
+
+def active_label_context_support_evidence(row: dict, *, query_norm: str, query_tokens: set[str]) -> dict:
+    context_values = active_label_context_values(str(row.get("context_any") or ""))
+    if not context_values:
+        return {}
+    blocked = active_label_context_values(str(row.get("block_any") or ""))
+    if blocked and any(active_label_context_matches(query_norm, query_tokens, phrase) for phrase in blocked):
+        return {}
+    label_tokens = set(content_tokens(str(row.get("label") or "")))
+    if not label_tokens:
+        return {}
+    matched_label_tokens = label_tokens & query_tokens
+    if len(label_tokens) == 1:
+        if not matched_label_tokens:
+            return {}
+    elif len(matched_label_tokens) < min(2, len(label_tokens)):
+        return {}
+    matched_contexts = [
+        phrase
+        for phrase in context_values
+        if active_label_context_matches(query_norm, query_tokens, phrase)
+    ]
+    if not matched_contexts:
+        return {}
+    multi_token_context = any(len(content_tokens(phrase)) >= 2 for phrase in matched_contexts)
+    if len(label_tokens) == 1 and len(matched_contexts) < 2 and not multi_token_context:
+        return {}
+    return {
+        "matched_label_tokens": sorted(matched_label_tokens),
+        "matched_contexts": matched_contexts,
+    }
 
 
 def definition_fallback_query_is_too_generic(query: str) -> bool:
@@ -445,8 +493,9 @@ class SearchRerankMixin:
         has_active_label_supplement = bool(getattr(self, "active_label_rows_by_norm", {}))
         if not self.label_fallback.paths and not has_extension_labels and not has_active_label_supplement:
             return []
-        query_tokens = set(content_tokens(query))
-        if not query_tokens:
+        query_token_list = content_tokens(query)
+        query_tokens = set(query_token_list)
+        if not query_token_list:
             return []
         raw_label_hits: list[dict] = []
         fallback_queries = [query, *label_fallback_anchor_queries(query)]
@@ -513,6 +562,10 @@ class SearchRerankMixin:
                 labels=[str(label or "") for label in hydrated.get("labels") or []],
                 hit=hydrated,
             )
+            if is_blocked_generic_result(hydrated):
+                continue
+            if is_patient_message_meta_noise_result(hydrated, query_tokens=query_token_list):
+                continue
             key = (cui, span_key)
             current = best_by_key.get(key)
             if current is None or self.linked_concept_priority(hydrated) > self.linked_concept_priority(current):
@@ -523,13 +576,22 @@ class SearchRerankMixin:
             reverse=True,
         )[:limit]
 
-    def linked_concept_priority(self, hit: dict) -> tuple[float, int, int, str]:
+    def linked_concept_priority(self, hit: dict) -> tuple[int, int, float, str]:
         assertion = hit.get("assertion") or {}
         span_token_count = len(content_tokens(str(hit.get("matched_query_span") or "")))
+        status_rank = {
+            "current": 5,
+            "confirmed": 5,
+            "planned": 4,
+            "uncertain": 3,
+            "historical": 2,
+            "family_history": 1,
+            "negated": 0,
+        }.get(str(assertion.get("status") or "current"), 5)
         return (
-            float(hit.get("score") or 0.0),
-            1 if assertion.get("status") == "negated" else 0,
+            status_rank,
             span_token_count,
+            float(hit.get("score") or 0.0),
             str(hit.get("name") or ""),
         )
 
@@ -1049,7 +1111,7 @@ class SearchRerankMixin:
         chunk_index = int(chunk_index or 0)
         if chunk_index and chunk_index not in support["chunk_indices"]:
             support["chunk_indices"].append(chunk_index)
-        if source == "mention":
+        if source in {"mention", "active_label_context"}:
             support["mention_count"] = int(support.get("mention_count") or 0) + 1
         else:
             support["chunk_count"] = int(support.get("chunk_count") or 0) + 1
@@ -1193,6 +1255,147 @@ class SearchRerankMixin:
         )
         return hit
 
+    def attach_long_document_exact_label_support(self, query: str, hits: list[dict]) -> None:
+        query_tokens = set(content_tokens(query))
+        query_norm = f" {normalized_key(query)} "
+        if not query_tokens or len(query_tokens) < 40:
+            return
+        for hit in hits:
+            if hit.get("match_type") != "umls_label":
+                continue
+            support = hit.get("long_document_support") or {}
+            if int(support.get("mention_count") or 0) > 0:
+                continue
+            span = str(
+                hit.get("matched_query_span")
+                or hit.get("matched_label")
+                or hit.get("name")
+                or ""
+            ).strip()
+            span_tokens = content_tokens(span)
+            if not span_tokens or not set(span_tokens) <= query_tokens:
+                continue
+            span_norm = normalized_key(span)
+            contiguous = bool(span_norm and f" {span_norm} " in query_norm)
+            occurrences = query_norm.count(f" {span_norm} ") if contiguous else 1
+            group = str(
+                hit.get("semantic_group")
+                or semantic_group_from_types(list(hit.get("semantic_types") or []))
+                or ""
+            )
+            if len(span_tokens) <= 1 and (
+                occurrences < 2
+                or group not in {"CHEM", "GENE"}
+                or len(span_tokens[0]) < 6
+            ):
+                continue
+            condition_variant = group in {"DISO", "FIND"} and len(span_tokens) >= 2
+            if not (contiguous or condition_variant):
+                continue
+            occurrence_count = min(max(1, occurrences), 4)
+            support_score = max(float(hit.get("label_fallback_score") or hit.get("score") or 0.0), 0.82)
+            for _ in range(occurrence_count):
+                self.add_long_document_support(
+                    hit,
+                    source="mention",
+                    section="body",
+                    chunk_index=0,
+                    score=support_score,
+                    section_weight=1.0,
+                    matched_text=span,
+                )
+
+    def active_label_context_support_hits(self, query: str, *, limit: int) -> list[dict]:
+        rows_by_norm = getattr(self, "active_label_rows_by_norm", {})
+        if not rows_by_norm:
+            return []
+        query_norm = normalized_key(query)
+        query_tokens = set(content_tokens(query))
+        if not query_norm or len(query_tokens) < 12:
+            return []
+        candidates: dict[str, dict] = {}
+        seen_rows: set[tuple[str, str, str, str]] = set()
+        for rows in rows_by_norm.values():
+            for row in rows:
+                key = (
+                    str(row.get("cui") or ""),
+                    normalized_key(str(row.get("label") or "")),
+                    str(row.get("context_any") or ""),
+                    str(row.get("block_any") or ""),
+                )
+                if key in seen_rows:
+                    continue
+                seen_rows.add(key)
+                evidence = active_label_context_support_evidence(
+                    row,
+                    query_norm=query_norm,
+                    query_tokens=query_tokens,
+                )
+                if not evidence:
+                    continue
+                context_matches = list(evidence.get("matched_contexts") or [])
+                label_tokens = list(evidence.get("matched_label_tokens") or [])
+                context_score = min(0.16, 0.04 * len(context_matches))
+                token_score = min(0.12, 0.04 * len(label_tokens))
+                score = 0.84 + context_score + token_score
+                label = str(row.get("label") or "")
+                label_hit = {
+                    "doc_id": row.get("doc_id") or f"{row['cui']}:active_label_supplement",
+                    "cui": row["cui"],
+                    "view": "active_label_supplement",
+                    "score": score,
+                    "labels": [label],
+                    "sources": ["active_label_supplement"],
+                    "source": "active_label_supplement",
+                    "evidence_count": 0,
+                    "match_type": "umls_label",
+                    "matched_label": label,
+                    "matched_query_span": context_matches[0] if context_matches else label,
+                    "matched_lookup_norm": normalized_key(label),
+                    "matched_sab": row.get("sab") or "",
+                    "matched_tty": row.get("tty") or "",
+                    "matched_ispref": row.get("ispref") or "",
+                    "text": (
+                        f"CUI: {row['cui']}\n"
+                        "Evidence view: active_label_supplement\n"
+                        "Curated active label context support:\n"
+                        f"- {label}\n"
+                        f"Matched context: {'; '.join(context_matches[:5])}"
+                    ),
+                    "evidence_items": [],
+                }
+                hydrated = self.hydrate_label_hit(label_hit)
+                if not hydrated or should_suppress_label_fallback_hit(hydrated):
+                    continue
+                hydrated["label_fallback_score"] = max(
+                    float(hydrated.get("label_fallback_score") or 0.0),
+                    score,
+                )
+                for context in context_matches[:4]:
+                    self.add_long_document_support(
+                        hydrated,
+                        source="active_label_context",
+                        section="body",
+                        chunk_index=0,
+                        score=score,
+                        section_weight=1.0,
+                        matched_text=context,
+                    )
+                current = candidates.get(str(hydrated.get("cui") or ""))
+                current_context_count = len(
+                    ((current or {}).get("long_document_support") or {}).get("matched_texts") or []
+                )
+                if current is None or len(context_matches) > current_context_count:
+                    candidates[str(hydrated.get("cui") or "")] = hydrated
+        return sorted(
+            candidates.values(),
+            key=lambda hit: (
+                -int((hit.get("long_document_support") or {}).get("mention_count") or 0),
+                -float(hit.get("label_fallback_score") or hit.get("score") or 0.0),
+                str(hit.get("name") or ""),
+            ),
+        )[: max(0, int(limit or 0))]
+
     def merge_long_document_candidates(
         self,
         query: str,
@@ -1201,21 +1404,62 @@ class SearchRerankMixin:
         chunks: list[object],
         chunk_hits: list[dict],
         top_k: int,
+        timing: dict | None = None,
     ) -> list[dict]:
         if not chunks:
             return hits
         best_by_cui = {str(hit.get("cui") or ""): hit for hit in hits if hit.get("cui")}
         for hit in chunk_hits:
             self.merge_long_document_hit(best_by_cui, hit)
-        for mention in self.query_entity_mentions(query, limit=max(top_k * 8, 240)):
+        mention_started = time.time()
+        mentions = self.query_entity_mentions(query, limit=max(top_k * 8, 240))
+        add_timing = getattr(self, "add_search_timing", None)
+        if callable(add_timing):
+            add_timing(
+                timing,
+                "long_document_mention_extraction",
+                mention_started,
+                mention_count=len(mentions),
+            )
+        for mention in mentions:
             if not self.long_document_mention_is_rankable(mention):
                 continue
             hit = self.long_document_mention_hit(mention)
             if hit:
                 self.merge_long_document_hit(best_by_cui, hit)
+        active_label_started = time.time()
+        active_label_hits = self.active_label_context_support_hits(query, limit=max(top_k * 3, 60))
+        if callable(add_timing):
+            add_timing(
+                timing,
+                "active_label_context_search",
+                active_label_started,
+                hit_count=len(active_label_hits),
+            )
+        for hit in active_label_hits:
+            self.merge_long_document_hit(best_by_cui, hit)
         merged = list(best_by_cui.values())
+        support_started = time.time()
+        self.attach_long_document_exact_label_support(query, merged)
         self.attach_mrrel_rank_signals(query, merged, candidate_limit=self.mrrel_rank_candidate_limit(top_k))
-        return rank_hits(query, merged, top_k=top_k)
+        if callable(add_timing):
+            add_timing(
+                timing,
+                "long_document_support_signals",
+                support_started,
+                candidate_count=len(merged),
+            )
+        rerank_started = time.time()
+        ranked = rank_hits(query, merged, top_k=top_k)
+        if callable(add_timing):
+            add_timing(
+                timing,
+                "long_document_merge_ranking",
+                rerank_started,
+                candidate_count=len(merged),
+                hit_count=len(ranked),
+            )
+        return ranked
 
     def long_document_response_metadata(self, chunks: list[object]) -> dict:
         if not chunks:
@@ -1247,6 +1491,7 @@ class SearchRerankMixin:
         include_extension_labels: bool = True,
         include_active_label_supplement: bool = True,
         include_related_anchor_candidates: bool = True,
+        include_molecular_associations: bool = False,
         strip_evidence_before_rank: bool = False,
     ) -> list[dict]:
         has_extension_labels = bool(
@@ -1265,7 +1510,12 @@ class SearchRerankMixin:
             if strip_evidence_before_rank:
                 hits = self.strip_evidence_from_umls_hits(hits)
             self.attach_mrrel_rank_signals(query, hits, candidate_limit=self.mrrel_rank_candidate_limit(top_k))
-            return rank_hits(query, hits, top_k=top_k)
+            return rank_hits(
+                query,
+                hits,
+                top_k=top_k,
+                include_molecular_associations=include_molecular_associations,
+            )
         best_by_cui = {hit.get("cui", ""): hit for hit in hits if hit.get("cui")}
         fallback_queries = clinical_query_variants(query)
         label_hits = []
@@ -1340,18 +1590,37 @@ class SearchRerankMixin:
                 )
                 current_span_tokens = len(content_tokens(str(current.get("matched_query_span") or "")))
                 hydrated_span_tokens = len(content_tokens(str(hydrated.get("matched_query_span") or "")))
+                current["labels"] = self.labels_for_cui(
+                    str(current.get("cui") or ""),
+                    merge_labels(
+                        list(current.get("labels") or []),
+                        list(hydrated.get("labels") or []),
+                    ),
+                )
+                current["sources"] = merge_labels(
+                    list(current.get("sources") or []),
+                    list(hydrated.get("sources") or []),
+                )
+                if int(current.get("evidence_count") or 0) > 0:
+                    if hydrated_span_tokens >= current_span_tokens:
+                        current["matched_label"] = hydrated.get("matched_label") or current.get("matched_label") or ""
+                        current["matched_query_span"] = hydrated.get("matched_query_span") or current.get("matched_query_span") or ""
+                        current["matched_sab"] = hydrated.get("matched_sab") or current.get("matched_sab") or ""
+                        current["matched_tty"] = hydrated.get("matched_tty") or current.get("matched_tty") or ""
+                        current["matched_ispref"] = hydrated.get("matched_ispref") or current.get("matched_ispref") or ""
+                        current["label_fallback_doc_id"] = (
+                            hydrated.get("label_fallback_doc_id")
+                            or current.get("label_fallback_doc_id")
+                            or ""
+                        )
+                    current["vector_score_preserved"] = True
+                    current["source_mix"] = source_mix_from_evidence_items(
+                        list(current.get("evidence_items") or []),
+                        declared_sources=list(current.get("sources") or []),
+                        evidence_count=int(current.get("evidence_count") or 0),
+                    )
+                    continue
                 if current_span_tokens > hydrated_span_tokens:
-                    current["labels"] = self.labels_for_cui(
-                        str(current.get("cui") or ""),
-                        merge_labels(
-                            list(current.get("labels") or []),
-                            list(hydrated.get("labels") or []),
-                        ),
-                    )
-                    current["sources"] = merge_labels(
-                        list(current.get("sources") or []),
-                        list(hydrated.get("sources") or []),
-                    )
                     continue
             if (
                 current is not None
@@ -1417,11 +1686,21 @@ class SearchRerankMixin:
         self.merge_rankable_linked_label_candidates(ranking_query, best_by_cui, top_k=top_k)
         hits = list(best_by_cui.values())
         if include_related_anchor_candidates:
-            hits = self.merge_related_anchor_candidates(ranking_query, hits, top_k=top_k)
+            hits = self.merge_related_anchor_candidates(
+                ranking_query,
+                hits,
+                top_k=top_k,
+                include_molecular_associations=include_molecular_associations,
+            )
         if strip_evidence_before_rank:
             hits = self.strip_evidence_from_umls_hits(hits)
         self.attach_mrrel_rank_signals(ranking_query, hits, candidate_limit=self.mrrel_rank_candidate_limit(top_k))
-        return rank_hits(ranking_query, hits, top_k=top_k)
+        return rank_hits(
+            ranking_query,
+            hits,
+            top_k=top_k,
+            include_molecular_associations=include_molecular_associations,
+        )
 
     def merge_code_fallback(self, query: str, hits: list[dict], *, top_k: int) -> list[dict]:
         code_fallback = getattr(self, "code_fallback_hits_for_query", None)
@@ -1460,7 +1739,14 @@ class SearchRerankMixin:
                 current["score"] = max(float(current.get("score") or 0.0), float(code_hit.get("score") or 0.0))
         return [*best_by_cui.values(), *passthrough]
 
-    def merge_related_anchor_candidates(self, query: str, hits: list[dict], *, top_k: int) -> list[dict]:
+    def merge_related_anchor_candidates(
+        self,
+        query: str,
+        hits: list[dict],
+        *,
+        top_k: int,
+        include_molecular_associations: bool = False,
+    ) -> list[dict]:
         query_tokens = content_tokens(query)
         query_set = set(query_tokens)
         if not (query_set & PROCEDURE_ROLE_TOKENS):
@@ -1486,6 +1772,7 @@ class SearchRerankMixin:
                     query_tokens=query_tokens,
                     seed_hit=seed,
                     candidate_hit=candidate,
+                    include_molecular_associations=include_molecular_associations,
                 ):
                     continue
                 candidate["match_type"] = "related_anchor_vector"

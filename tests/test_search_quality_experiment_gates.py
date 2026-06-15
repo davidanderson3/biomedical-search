@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import importlib.util
 import json
 import sys
+import time
 from pathlib import Path
 
 
@@ -33,12 +35,167 @@ def gate_args(**overrides):
     return argparse.Namespace(**values)
 
 
+def smoke_args(tmp_path: Path, **overrides):
+    values = {
+        "iteration_type": [],
+        "static_command": [],
+        "focused_command": [],
+        "docs_only_change": False,
+        "ui_report_only_change": False,
+        "broad_change": False,
+        "release_quality": False,
+        "force_standing_smoke": False,
+        "force_rotating_smoke": False,
+        "force_patient_portal_smoke": False,
+        "skip_standing_smoke": False,
+        "skip_rotating_smoke": False,
+        "skip_patient_portal_smoke": False,
+        "dry_run": True,
+        "base_url": "http://127.0.0.1:8766",
+        "scope": "umls_evidence",
+        "queries": ROOT / "config" / "search_quality_paragraph_queries.tsv",
+        "top_k": 60,
+        "timeout": 90.0,
+        "workers": 2,
+        "output_root": tmp_path / "experiments",
+        "html_report": tmp_path / "experiments.html",
+        "require_api_backend": "elasticsearch",
+        "verification_run_dir": str(tmp_path / "verification"),
+    }
+    values.update(overrides)
+    return argparse.Namespace(**values)
+
+
 def write_payloads(path: Path, payloads: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "".join(json.dumps(payload, sort_keys=True) + "\n" for payload in payloads),
         encoding="utf-8",
     )
+
+
+def test_iteration_smoke_docs_only_static_plan_skips_live_smoke(tmp_path: Path) -> None:
+    module = load_script_module()
+    args = smoke_args(
+        tmp_path,
+        iteration_type=["process"],
+        docs_only_change=True,
+        static_command=["node --check /tmp/report.js"],
+    )
+
+    types = module.normalize_iteration_types(args.iteration_type)
+    decision = module.smoke_tier_decision(args, types)
+    steps = module.build_iteration_smoke_steps(args, "SQI-docs", types)
+
+    assert decision["standing_smoke"] is False
+    assert decision["rotating_smoke"] is False
+    assert [step["tier"] for step in steps] == ["static"]
+    assert steps[0]["command"] == "node --check /tmp/report.js"
+
+
+def test_iteration_smoke_ranking_plan_includes_focused_standing_rotating_and_portal(tmp_path: Path) -> None:
+    module = load_script_module()
+    args = smoke_args(
+        tmp_path,
+        iteration_type=["ranking"],
+        focused_command=["python3 -m pytest tests/test_evidence_vectors.py -k ranking -q"],
+    )
+
+    types = module.normalize_iteration_types(args.iteration_type)
+    decision = module.smoke_tier_decision(args, types)
+    steps = module.build_iteration_smoke_steps(args, "SQI-ranking", types)
+
+    assert decision["standing_smoke"] is True
+    assert decision["rotating_smoke"] is True
+    assert decision["patient_portal_smoke"] is True
+    assert [step["tier"] for step in steps] == ["focused", "standing", "rotating", "patient_portal"]
+    assert "evaluate_search_api.py" in module.command_text(steps[1]["command"])
+    rotating_text = module.command_text(steps[2]["command"])
+    assert "--query-limit 50" in rotating_text
+    assert "--workers 2" in rotating_text
+    assert "--fail-gates" in rotating_text
+    portal_text = module.command_text(steps[3]["command"])
+    assert "search_quality_patient_portal_queries.tsv" in portal_text
+    assert "--query-limit 0" in portal_text
+    assert "--run-family patient_portal" in portal_text
+    assert "--fail-gates" in portal_text
+
+
+def test_iteration_smoke_can_skip_patient_portal_lane(tmp_path: Path) -> None:
+    module = load_script_module()
+    args = smoke_args(
+        tmp_path,
+        iteration_type=["ranking"],
+        skip_patient_portal_smoke=True,
+    )
+
+    types = module.normalize_iteration_types(args.iteration_type)
+    decision = module.smoke_tier_decision(args, types)
+    steps = module.build_iteration_smoke_steps(args, "SQI-ranking", types)
+
+    assert decision["standing_smoke"] is True
+    assert decision["rotating_smoke"] is True
+    assert decision["patient_portal_smoke"] is False
+    assert [step["tier"] for step in steps] == ["standing", "rotating"]
+
+
+def test_patient_portal_run_family_is_first_class() -> None:
+    module = load_script_module()
+
+    assert module.RUN_FAMILY_DEFINITIONS["patient_portal"]["class"] == "benchmark"
+    assert "patient_portal" in module.RUN_FAMILY_ORDER
+    assert "current" in module.RUN_FAMILY_INTERPRETATIONS["patient_portal"].lower()
+    assert "history" in module.RUN_FAMILY_INTERPRETATIONS["patient_portal"].lower()
+
+
+def test_gate_baseline_requires_matching_payload_shape(tmp_path: Path) -> None:
+    module = load_script_module()
+    queries = tmp_path / "search_quality_patient_portal_queries.tsv"
+    queries.write_text("id\tquery\texpected_cuis\nq1\tportal message\tC0000001\n", encoding="utf-8")
+    manifest = {
+        "runs": [
+            {
+                "run_id": "lean_baseline",
+                "created_at": "2026-06-10T19:00:00Z",
+                "search_system": module.SEARCH_SYSTEM_API,
+                "api_scope": module.SEARCH_SCOPE_UMLS_EVIDENCE,
+                "queries": str(queries),
+                "evaluation_signature": "same-signature",
+                "top_k": 60,
+                "include_related": False,
+                "include_linked_concepts": False,
+                "include_search_evidence_items": False,
+            },
+            {
+                "run_id": "evidence_item_capture",
+                "created_at": "2026-06-10T19:30:00Z",
+                "search_system": module.SEARCH_SYSTEM_API,
+                "api_scope": module.SEARCH_SCOPE_UMLS_EVIDENCE,
+                "queries": str(queries),
+                "evaluation_signature": "same-signature",
+                "top_k": 60,
+                "include_related": False,
+                "include_linked_concepts": False,
+                "include_search_evidence_items": True,
+            },
+        ]
+    }
+
+    baseline = module.find_previous_gate_baseline(
+        manifest,
+        search_system=module.SEARCH_SYSTEM_API,
+        queries=queries,
+        api_scope=module.SEARCH_SCOPE_UMLS_EVIDENCE,
+        current_signature="same-signature",
+        payload_shape={
+            "top_k": 60,
+            "include_related": False,
+            "include_linked_concepts": False,
+            "include_search_evidence_items": False,
+        },
+    )
+
+    assert baseline["run_id"] == "lean_baseline"
 
 
 def test_fail_gates_detect_metric_regressions_and_source_collapse(tmp_path: Path) -> None:
@@ -277,6 +434,147 @@ def test_api_response_requires_elasticsearch_backend_by_default(monkeypatch) -> 
         assert "did not match required backend 'elasticsearch'" in str(exc)
     else:
         raise AssertionError("expected backend mismatch to stop the experiment")
+
+
+def test_run_experiment_parallel_api_keeps_order_and_writes_timings(tmp_path: Path, monkeypatch) -> None:
+    module = load_script_module()
+    queries = tmp_path / "queries.tsv"
+    queries.write_text(
+        "\n".join(
+            [
+                "id\tquery\texpected_cuis",
+                "q1\tslow concept\tC0000001",
+                "q2\tfast concept\tC0000002",
+                "q3\tmiddle concept\tC0000003",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    alternatives = tmp_path / "alternatives.tsv"
+    alternatives.write_text("expected_cui\tacceptable_cui\n", encoding="utf-8")
+    cui_by_query = {
+        "slow concept": "C0000001",
+        "fast concept": "C0000002",
+        "middle concept": "C0000003",
+    }
+    delay_by_query = {
+        "slow concept": 0.04,
+        "fast concept": 0.0,
+        "middle concept": 0.02,
+    }
+
+    def fake_get_json(base_url, path, params, *, timeout):
+        query = str(params["q"])
+        time.sleep(delay_by_query[query])
+        return {
+            "backend": "elasticsearch",
+            "elapsed_ms": delay_by_query[query] * 1000,
+            "server_timing": {
+                "total_ms": delay_by_query[query] * 1000,
+                "by_stage": {
+                    "embedding": 2.0,
+                    "base_vector_search": 2.5,
+                    "long_document_chunk_vector_search": 3.5,
+                    "mention_extraction": 4.0,
+                    "long_document_mention_extraction": 6.0,
+                    "label_fallback_and_ranking": 5.0,
+                    "long_document_merge_and_ranking": 7.0,
+                    "active_label_context_search": 1.25,
+                    "long_document_support_signals": 0.75,
+                    "long_document_merge_ranking": 2.0,
+                    "response_compaction": 0.5,
+                },
+            },
+            "hits": [
+                {
+                    "cui": cui_by_query[query],
+                    "name": query,
+                    "semantic_group": "Concepts & Ideas",
+                    "sources": ["TEST"],
+                    "source_mix": {"items": [{"source": "TEST", "sample_refs": 1}]},
+                }
+            ],
+        }
+
+    monkeypatch.setattr(module, "get_json", fake_get_json)
+    args = argparse.Namespace(
+        label="parallel-test",
+        run_id="parallel-test",
+        run_family="smoke",
+        queries=queries,
+        query_limit=0,
+        query_selection="first",
+        query_rotation_seed="",
+        alternatives=alternatives,
+        base_url="http://127.0.0.1:8766",
+        require_api_backend="elasticsearch",
+        mode="balanced",
+        scope=module.SEARCH_SCOPE_UMLS_EVIDENCE,
+        top_k=5,
+        include_related=False,
+        include_linked_concepts=False,
+        include_search_evidence_items=False,
+        timeout=1.0,
+        workers=2,
+        output_root=tmp_path / "experiments",
+        verbose=False,
+    )
+
+    run = module.run_experiment(args, search_system=module.SEARCH_SYSTEM_API)
+
+    rows_path = Path(run["rows_path"])
+    with rows_path.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle, delimiter="\t"))
+    assert [row["id"] for row in rows] == ["q1", "q2", "q3"]
+    assert run["workers"] == 2
+    assert run["summary"]["workers"] == 2
+    assert run["summary"]["query_parallelism_saved_seconds"] > 0
+
+    timings_path = Path(run["query_timings_path"])
+    with timings_path.open("r", encoding="utf-8", newline="") as handle:
+        timings = list(csv.DictReader(handle, delimiter="\t"))
+    assert [row["id"] for row in timings] == ["q1", "q2", "q3"]
+    assert [row["backend"] for row in timings] == ["elasticsearch", "elasticsearch", "elasticsearch"]
+    assert timings[0]["server_embedding_ms"] == "2.0"
+    assert timings[0]["server_mention_extraction_ms"] == "10.0"
+    assert timings[0]["server_ranking_ms"] == "9.0"
+    assert run["summary"]["server_embedding_sum_seconds"] == 0.006
+    assert run["summary"]["server_ranking_sum_seconds"] == 0.027
+    assert run["summary"]["server_timing_total_sum_seconds"] == 0.06
+
+
+def test_query_timing_row_uses_uncached_server_timing_for_cached_response() -> None:
+    module = load_script_module()
+    spec = module.QuerySpec(query_id="q1", query="cached concept", expected_cuis=[])
+
+    row = module.query_timing_row(
+        spec,
+        {
+            "backend": "elasticsearch",
+            "elapsed_ms": 1.2,
+            "cache_hit": True,
+            "server_timing": {
+                "total_ms": 1.2,
+                "by_stage": {"cache_lookup": 0.8},
+            },
+            "uncached_server_timing": {
+                "total_ms": 42.0,
+                "by_stage": {
+                    "embedding": 3.0,
+                    "base_vector_search": 4.0,
+                },
+            },
+            "hits": [],
+        },
+        hit_count=0,
+        elapsed_seconds=0.002,
+    )
+
+    assert row["cache_hit"] == "1"
+    assert row["server_total_ms"] == 42.0
+    assert row["server_embedding_ms"] == 3.0
+    assert row["server_base_vector_search_ms"] == 4.0
 
 
 def test_source_quality_contribution_tracks_expected_and_bad_hits() -> None:

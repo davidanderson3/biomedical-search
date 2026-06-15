@@ -10,6 +10,7 @@ __pycache__/
 # Generated indexes, evidence corpora, and local source vocabulary drops.
 build/
 data/
+# Legacy root LOINC drops; prefer data/local_sources/loinc/.
 Loinc_2.82/
 SnomedCT_*.zip
 

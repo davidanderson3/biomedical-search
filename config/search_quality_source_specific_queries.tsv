@@ -1,0 +1,10 @@
+id	query	expected_cuis	why	disallowed_cuis	source
+dailymed_label_01	metformin indication for type 2 diabetes	C0025598|C0011860	DailyMed indication queries should retrieve both the drug and indicated condition.		dailymed
+dailymed_label_02	warfarin warning about serious bleeding	C0043031|C1550014|C0019080	DailyMed warning queries should keep the drug, warning context, and bleeding concept visible.		dailymed
+dailymed_label_03	aspirin adverse reaction nausea and vomiting	C0004057|C0041755|C0027497|C0042963	DailyMed adverse-reaction queries should retrieve drug plus adverse event concepts.		dailymed
+medlineplus_lay_01	what is high blood pressure and how is it treated	C0020538	MedlinePlus lay-language checks should map patient wording to the hypertension concept.		medlineplus
+medlineplus_lay_02	why am I wheezing with asthma	C0004096|C0043144	MedlinePlus should handle patient symptom wording and the underlying condition.		medlineplus
+medlineplus_lay_03	heart attack warning signs with chest pain	C0027051|C0008031	Lay-language warning-sign queries should retrieve the clinical event and symptom concepts.		medlineplus
+pubmed_pmc_lit_01	immune checkpoint inhibitor pneumonitis case report	C4684977|C3714636	PubMed/PMC literature evidence should retrieve drug-class/procedure-like exposure and disease toxicity concepts.		pubmed_pmc
+pubmed_pmc_lit_02	colonoscopy screening and colorectal cancer literature	C0009378|C0009402	Literature-backed procedure queries should keep procedure and disease concepts visible.		pubmed_pmc
+pubmed_pmc_lit_03	severe hypoglycemia in chronic kidney disease cohort study	C4728082|C1561643	PubMed/PMC benchmark rows should preserve literature-backed condition associations.		pubmed_pmc

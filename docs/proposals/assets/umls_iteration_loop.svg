@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Iterative UMLS search improvement loop</title>
+  <desc id="desc">A loop showing real-world search weakness discovery, triage, code or evidence integration, benchmark testing, and promotion or rejection.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#2b4b6f"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-20%" width="120%" height="150%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#102033" flood-opacity="0.16"/>
+    </filter>
+    <style>
+      .bg { fill: #f6f8fb; }
+      .panel { fill: #ffffff; stroke: #d7dee8; stroke-width: 2; filter: url(#shadow); }
+      .node { stroke-width: 2; rx: 18; }
+      .node-blue { fill: #e8f1ff; stroke: #2457c5; }
+      .node-green { fill: #e8f7ef; stroke: #15803d; }
+      .node-amber { fill: #fff5df; stroke: #b7791f; }
+      .node-teal { fill: #e4f7f4; stroke: #0f766e; }
+      .node-gray { fill: #f1f5f9; stroke: #64748b; }
+      .title { fill: #17202a; font: 700 30px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .label { fill: #17202a; font: 700 22px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .body { fill: #334155; font: 17px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .small { fill: #5b6673; font: 15px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .arrow { fill: none; stroke: #2b4b6f; stroke-width: 4; marker-end: url(#arrow); }
+      .loop { fill: none; stroke: #94a3b8; stroke-width: 3; stroke-dasharray: 10 8; marker-end: url(#arrow); }
+      .num { fill: #ffffff; font: 800 16px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .dot-blue { fill: #2457c5; }
+      .dot-green { fill: #15803d; }
+      .dot-amber { fill: #b7791f; }
+      .dot-teal { fill: #0f766e; }
+      .dot-gray { fill: #64748b; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1200" height="720"/>
+  <rect class="panel" x="38" y="34" width="1124" height="650" rx="28"/>
+  <text class="title" x="86" y="92">Measured Search Improvement Loop</text>
+  <text class="small" x="86" y="122">Start with real lookup failures. Promote only changes that survive evidence review and benchmarks.</text>
+
+  <rect class="node node-blue" x="92" y="180" width="250" height="130"/>
+  <circle class="dot-blue" cx="126" cy="214" r="17"/>
+  <text class="num" x="121" y="220">1</text>
+  <text class="label" x="154" y="220">Find weakness</text>
+  <text class="body" x="122" y="255">Use query logs, judged</text>
+  <text class="body" x="122" y="279">examples, source-code</text>
+  <text class="body" x="122" y="303">lookups, and audits.</text>
+
+  <rect class="node node-amber" x="475" y="180" width="250" height="130"/>
+  <circle class="dot-amber" cx="509" cy="214" r="17"/>
+  <text class="num" x="504" y="220">2</text>
+  <text class="label" x="537" y="220">Diagnose cause</text>
+  <text class="body" x="505" y="255">Alias, assertion, ranking,</text>
+  <text class="body" x="505" y="279">source freshness, relation,</text>
+  <text class="body" x="505" y="303">or license boundary.</text>
+
+  <rect class="node node-green" x="858" y="180" width="250" height="130"/>
+  <circle class="dot-green" cx="892" cy="214" r="17"/>
+  <text class="num" x="887" y="220">3</text>
+  <text class="label" x="920" y="220">Change safely</text>
+  <text class="body" x="888" y="255">Make a small code fix</text>
+  <text class="body" x="888" y="279">or integrate reviewed,</text>
+  <text class="body" x="888" y="303">authoritative evidence.</text>
+
+  <rect class="node node-teal" x="674" y="430" width="250" height="130"/>
+  <circle class="dot-teal" cx="708" cy="464" r="17"/>
+  <text class="num" x="703" y="470">4</text>
+  <text class="label" x="736" y="470">Benchmark</text>
+  <text class="body" x="704" y="505">Run before/after tests:</text>
+  <text class="body" x="704" y="529">recall, precision, source</text>
+  <text class="body" x="704" y="553">coverage, and leakage.</text>
+
+  <rect class="node node-gray" x="276" y="430" width="250" height="130"/>
+  <circle class="dot-gray" cx="310" cy="464" r="17"/>
+  <text class="num" x="305" y="470">5</text>
+  <text class="label" x="338" y="470">Decide</text>
+  <text class="body" x="306" y="505">Promote validated deltas.</text>
+  <text class="body" x="306" y="529">Reject failed evidence</text>
+  <text class="body" x="306" y="553">or revert weak code.</text>
+
+  <path class="arrow" d="M342 245 H464"/>
+  <path class="arrow" d="M725 245 H846"/>
+  <path class="arrow" d="M982 313 C982 385 934 430 900 451"/>
+  <path class="arrow" d="M674 495 H539"/>
+  <path class="loop" d="M276 495 C134 492 96 400 112 320"/>
+
+  <rect x="414" y="332" width="372" height="64" rx="32" fill="#ffffff" stroke="#d7dee8" stroke-width="2"/>
+  <text class="body" x="457" y="357">Every cycle leaves artifacts:</text>
+  <text class="small" x="457" y="381">tests, manifests, evidence, review notes, and benchmark deltas</text>
+</svg>

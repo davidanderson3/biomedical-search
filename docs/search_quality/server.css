@@ -479,6 +479,137 @@
       padding: 7px 9px;
     }
 
+    .clinical-context-panel {
+      display: grid;
+      gap: 8px;
+    }
+
+    .clinical-context-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .context-bucket {
+      background: #fbfdff;
+      border: 1px solid #dfe6ee;
+      border-left: 3px solid #64748b;
+      border-radius: 6px;
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+      padding: 8px;
+    }
+
+    .context-bucket-chief_concern,
+    .context-bucket-active_assessment {
+      border-left-color: #2457c5;
+    }
+
+    .context-bucket-objective_data,
+    .context-bucket-exam_findings {
+      border-left-color: #0f766e;
+    }
+
+    .context-bucket-care_plan,
+    .context-bucket-watch_for,
+    .context-bucket-follow_up {
+      border-left-color: #7c3aed;
+    }
+
+    .context-bucket-older_history,
+    .context-bucket-handoff_context {
+      border-left-color: #a15c07;
+    }
+
+    .context-bucket-head {
+      align-items: flex-start;
+      display: flex;
+      gap: 8px;
+      justify-content: space-between;
+      min-width: 0;
+    }
+
+    .context-bucket-title {
+      color: #17202a;
+      font-size: 12px;
+      font-weight: 850;
+      line-height: 1.2;
+    }
+
+    .context-bucket-description {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.25;
+      margin-top: 2px;
+    }
+
+    .context-bucket-code {
+      background: #eef2f7;
+      border: 1px solid #d7dde5;
+      border-radius: 5px;
+      color: #334155;
+      flex: 0 0 auto;
+      font-size: 10px;
+      font-weight: 900;
+      line-height: 1;
+      padding: 4px 5px;
+    }
+
+    .context-bucket-items {
+      display: grid;
+      gap: 6px;
+    }
+
+    .context-bucket-item {
+      min-width: 0;
+    }
+
+    .context-bucket-item p {
+      color: #24313f;
+      font-size: 12px;
+      line-height: 1.35;
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .context-concepts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 6px;
+    }
+
+    .context-concept-chip {
+      align-items: baseline;
+      background: #eef6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      color: #1d4ed8;
+      display: inline-flex;
+      gap: 4px;
+      max-width: 100%;
+      padding: 2px 7px;
+      text-decoration: none;
+    }
+
+    .context-concept-chip span:first-child {
+      font-size: 11px;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .context-concept-chip .mono {
+      color: #475569;
+      font-size: 10px;
+      font-weight: 850;
+    }
+
+    .context-concept-chip:hover {
+      border-color: #93c5fd;
+      text-decoration: underline;
+    }
+
     .statement-offset-details {
       border-top: 1px solid #edf0f4;
       margin-top: 8px;
@@ -1057,37 +1188,6 @@
       line-height: 1;
       padding: 3px 5px;
       white-space: nowrap;
-    }
-
-    .confidence-badge {
-      align-self: start;
-      border: 1px solid #cbd5e1;
-      border-radius: 999px;
-      color: #334155;
-      font-size: 10px;
-      font-weight: 850;
-      justify-self: end;
-      line-height: 1;
-      padding: 3px 5px;
-      white-space: nowrap;
-    }
-
-    .confidence-high {
-      background: #ecfdf5;
-      border-color: #bbf7d0;
-      color: #166534;
-    }
-
-    .confidence-medium {
-      background: #f8fafc;
-      border-color: #cbd5e1;
-      color: #334155;
-    }
-
-    .confidence-low {
-      background: #fffbeb;
-      border-color: #fde68a;
-      color: #92400e;
     }
 
     .result-bad-button {
@@ -1880,6 +1980,7 @@
       .search-settings-grid,
       .two-col,
       .metric-grid,
+      .clinical-context-grid,
       .statement-grid {
         grid-template-columns: 1fr 1fr;
       }
@@ -1942,6 +2043,7 @@
       .results-layout,
       .results-split,
       .metric-grid,
+      .clinical-context-grid,
       .statement-grid {
         grid-template-columns: 1fr;
       }

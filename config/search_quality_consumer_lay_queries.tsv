@@ -1,0 +1,14 @@
+id	query	expected_cuis	why	disallowed_cuis	source
+consumer_lay_01_water_pill	water pill	C0012798	Lay medication wording should map water pill to the diuretic drug class, not literal water or hydrotherapy.	C0043047|C1550678|C0020311	consumer_lay
+consumer_lay_02_water_pill_furosemide	water pill furosemide	C0016860	When the lay phrase and drug name appear together, furosemide should lead and literal water concepts should stay out of the visible result set.	C0043047|C1550678|C0020311	consumer_lay
+consumer_lay_03_pee_test	pee test	C0042014	Everyday wording for a urine test should retrieve urinalysis rather than returning no clinical result.		consumer_lay
+consumer_lay_04_urine_test	urine test	C0042014	Clinical synonym control for the pee-test row; urinalysis should stay directly retrievable.		consumer_lay
+consumer_lay_05_belly_pain	belly pain	C0000737	Lay abdominal-pain wording should retrieve abdominal pain before generic pain or belly anatomy.	C0030193|C0224086	consumer_lay
+consumer_lay_06_abdominal_pain	abdominal pain	C0000737	Clinical synonym control for the belly-pain row; abdominal pain should stay directly retrievable.		consumer_lay
+consumer_lay_07_sugar_diabetes	sugar diabetes	C0011849	Lay diabetes wording should map to diabetes mellitus rather than sugar chemicals or a literal sugar-diabetes label.	C2362516|C0242209|C3665462|C0007004	consumer_lay
+consumer_lay_08_heart_tracing	heart tracing	C1623258	Lay ECG wording should retrieve electrocardiography, not heart anatomy, trachea, or TRAC gene noise.	C0018787|C0040578|C1420886	consumer_lay
+consumer_lay_09_ekg	EKG	C1623258	Abbreviated patient wording should retrieve electrocardiography rather than only an ECG-finding concept.	C0438154	consumer_lay
+consumer_lay_10_colon_scope	colon scope	C0009378	Lay colonoscopy wording should retrieve colonoscopy, not colon anatomy or unrelated colon devices.	C0009368|C2684091|C4071907	consumer_lay
+consumer_lay_11_stomach_scope	stomach scope	C0079304	Lay upper-endoscopy wording should retrieve upper GI endoscopy/EGD, not stomach anatomy.	C4266636|C3714551|C0038351	consumer_lay
+consumer_lay_12_blood_thinner	blood thinner	C0003280	Lay anticoagulant wording should retrieve anticoagulants rather than returning no clinical result.		consumer_lay
+consumer_lay_13_anticoagulant	anticoagulant	C0003280	Clinical synonym control for the blood-thinner row; anticoagulants should stay directly retrievable.		consumer_lay

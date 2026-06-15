@@ -41,6 +41,58 @@ This writes:
 - `build/pubmed_literature_benchmark_seed/pubmed_review_queue.tsv`
 - `build/pubmed_literature_benchmark_seed/benchmark_manifest.json`
 
+## Focused Long-Document Slice
+
+SQI-2026-06-10-004 adds a focused dev-only slice for the next long-document
+iteration. The slice intentionally uses reviewed PubMed dev rows and should be
+run before section/chunk linking or reranking changes.
+
+Slice selector:
+
+- `config/search_quality_pubmed_long_document_slice.tsv`
+
+Materialize the evaluator-ready TSV from the strict seed files:
+
+```bash
+python3 scripts/build_pubmed_long_document_slice.py
+```
+
+This writes:
+
+- `build/pubmed_literature_benchmark_seed/pubmed_long_document_focused_queries.tsv`
+- `build/pubmed_literature_benchmark_seed/pubmed_long_document_focused_manifest.json`
+
+Score the focused slice against the current search API:
+
+```bash
+PYTHONPATH=src:scripts python3 scripts/run_search_quality_experiment.py \
+  --queries build/pubmed_literature_benchmark_seed/pubmed_long_document_focused_queries.tsv \
+  --base-url http://127.0.0.1:8766 \
+  --scope umls_evidence \
+  --search-system api \
+  --run-family probe \
+  --label "PubMed long-document focused slice"
+```
+
+Use this slice to diagnose long-text recall failures on secondary concepts:
+treatments, outcomes, biomarkers, organisms, complications, and cohort
+attributes. Keep held-out scoring separate.
+For timing probes, compare `--workers 1` against the default two-worker API run
+and inspect `query_timings.tsv` in the run directory; exact-repeat cache hits
+should not be counted as uncached speed wins.
+
+Baseline run on 2026-06-10 against the local API on port `8766`:
+
+| Slice | Rows | Overall | All Expected@10 | Recall@10 | Recall@20 | Top On Target | Verdicts |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Focused dev | 7 | 29.0 | 1/7 | 24/36 | 30/36 | 6/7 | 6 mixed, 1 poor |
+
+Run artifact:
+`build/search_quality_experiments/runs/20260610T172821Z_pubmed-long-document-focused-slice/paragraph_quality_report.md`.
+
+The first baseline confirms the target failure mode: the top result is usually
+on topic, but secondary concepts still fall out of the first result page.
+
 ## Current Seed Results
 
 Run on 2026-06-09 against the live Elasticsearch-backed API on port `8767`:

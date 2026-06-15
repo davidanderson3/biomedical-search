@@ -1,0 +1,8 @@
+id	split	focus	why
+pubmed_status_migrainosus_38307660	dev	migraine treatment stack	Preserves secondary treatment concepts from a long review abstract: acute migraine treatment, sumatriptan, NSAIDs, acetaminophen, magnesium sulfate, and dihydroergotamine.
+pubmed_egfr_nsclc_39951884	dev	oncology biomarker outcome	Preserves the main cancer topic plus secondary biomarker, targeted therapy, progression-free survival, and brain metastasis concepts.
+pubmed_cdiff_antibiotic_diarrhea_30945014	dev	infectious disease treatment exposure	Preserves C. difficile infection, diarrhea, antibiotic therapy, vancomycin, and antibiotic exposure from a review abstract.
+pubmed_lupus_preeclampsia_33977794	dev	autoimmune renal pregnancy	Preserves SLE, lupus nephritis, preeclampsia, proteinuria, and complement levels across case-series wording.
+pubmed_stroke_thrombectomy_41052480	dev	acute stroke treatment	Preserves large vessel occlusion, expressive aphasia, tenecteplase, and mechanical thrombectomy from an acute stroke abstract.
+pubmed_covid_ards_shock_32416769	dev	critical care complications	Preserves COVID-19, ARDS, septic shock, and acute kidney injury from a management abstract.
+pubmed_cyp2c19_clopidogrel_35396752	dev	pharmacogenomics drug response	Preserves CYP2C19, poor metabolizer status, clopidogrel, ticagrelor, and PCI from a meta-analysis abstract.

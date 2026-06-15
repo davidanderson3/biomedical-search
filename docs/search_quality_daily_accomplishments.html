@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Search Quality Daily Accomplishments</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #fff;
+      --ink: #17202a;
+      --muted: #5b6673;
+      --line: #d7dee8;
+      --blue: #2457c5;
+      --green: #166534;
+      --amber: #9a5b05;
+      --red: #b42318;
+      --code: #eef2f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+    }
+    main, .wrap {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+    }
+    main { padding: 18px 0 44px; }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 20px 0;
+    }
+    h1, h2, h3 {
+      margin: 0;
+      letter-spacing: 0;
+      font-weight: 760;
+    }
+    h1 { font-size: 25px; }
+    h2 { font-size: 17px; margin-bottom: 10px; }
+    h3 { font-size: 15px; margin-bottom: 5px; }
+    p { margin: 0; }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      background: var(--code);
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+    }
+    .muted { color: var(--muted); }
+    .small { font-size: 12px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-bottom: 14px;
+      padding: 16px;
+    }
+    .report-nav {
+      align-self: flex-start;
+      display: grid;
+      gap: 6px;
+      min-width: 300px;
+    }
+    .report-nav-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-align: right;
+      text-transform: uppercase;
+    }
+    .nav-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .nav-links a {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 5px 9px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+    .nav-links a.primary {
+      border-color: #b8c8f6;
+      color: var(--blue);
+      background: #f4f7ff;
+    }
+    .story-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    .story-item {
+      background: #f9fbfe;
+      border: 1px solid var(--line);
+      border-left: 4px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 10px;
+    }
+    .story-item strong {
+      color: var(--muted);
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+    }
+    .story-item.good { border-left-color: #16a34a; }
+    .story-item.warn { border-left-color: #f59e0b; }
+    .result-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .result {
+      background: #f8fafc;
+      border: 1px solid #dfe7f1;
+      border-radius: 8px;
+      padding: 9px;
+    }
+    .result strong {
+      display: block;
+      font-size: 17px;
+      line-height: 1.1;
+    }
+    .result span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 3px;
+    }
+    .result.good {
+      background: #ecfdf3;
+      border-color: #bbf7d0;
+      color: var(--green);
+    }
+    .result.good span {
+      color: inherit;
+      opacity: 0.86;
+    }
+    @media (max-width: 860px) {
+      .topbar { display: block; }
+      .report-nav { min-width: 0; margin-top: 12px; }
+      .report-nav-label { text-align: left; }
+      .nav-links { justify-content: flex-start; }
+      .result-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap topbar">
+      <div>
+        <h1>Search Quality Daily Accomplishments</h1>
+        <p class="muted">Plain-language summaries of what improved each day. This page is intentionally less technical than the SQI ledger and benchmark reports.</p>
+      </div>
+      <div class="report-nav">
+        <div class="report-nav-label">Open</div>
+        <nav class="nav-links" aria-label="Useful search-quality pages">
+          <a class="primary" href="search_quality_progress_log.html">Progress Log</a>
+          <a href="search_quality_progress_log.html#whole-product-quality">Product Quality</a>
+          <a href="search_quality_iterations.html">Iteration Ledger</a>
+          <a href="search_quality_experiments.html">Detailed Run Data</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>How To Use This File</h2>
+      <p class="muted">At the first search-quality iteration of a new calendar day, add a short plain-language summary of the previous day's shipped improvements here. Keep technical CUIs, test internals, and long artifact lists in the iteration ledger; this page should answer what changed in human terms.</p>
+    </section>
+
+    <section class="panel" id="2026-06-12">
+      <h2>June 12, 2026 Accomplishments</h2>
+      <p class="muted small">Added 2026-06-15. This translates the June 12 iteration run into the practical story: the work rotated across several high-priority risks, made weak spots measurable, narrowed the source strategy, and closed the last reviewed PubMed wrong-first issue.</p>
+      <div class="story-grid">
+        <div class="story-item good">
+          <strong>Stopped The Loop From Getting Stuck</strong>
+          <p>The backlog now rotates across several top tasks instead of repeatedly selecting one open item. A proposed short-query expansion was tested live and rejected because it exposed real exact-mention carryover failures rather than passing safely.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>Made Patient Wording Failures Visible</strong>
+          <p>Short consumer wording such as water pill, pee test, belly pain, heart tracing, scopes, and blood thinner now has its own measured test lane. The first run failed, which is useful because the product can no longer hide that everyday wording is not handled well enough.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Narrowed The Source Strategy</strong>
+          <p>Default source checks were pruned back to DailyMed, MedlinePlus, and PubMed/PMC. ClinicalTrials.gov, PubTator3, CUI2Vec, and BioConceptVec remain experiment or opt-in signals unless they prove a concrete gap. DailyMed stayed core because its label sections carry useful drug relationship evidence.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Kept Molecular Associations Out Of Default Results</strong>
+          <p>Gene and protein associations inferred only from relationship data are now hidden from normal search results unless molecular exploration is explicitly requested. Direct EGFR, BRCA1, CYP2C19, mutation, and variant searches can still work.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Closed The Last Reviewed PubMed Wrong-First Row</strong>
+          <p>The status-migrainosus abstract no longer ranks a broad corticosteroid class ahead of the directly relevant treatment concepts. The approved PubMed suite is now top-on-target for all reviewed rows, though several secondary concepts still need recall work.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Found The Long-Document Speed Bottleneck</strong>
+          <p>The slow focused PubMed loop was instrumented inside the server. The result showed that long-document mention extraction, not vector search, is the dominant local runtime cost.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>Also Left Clear Gaps</strong>
+          <p>June 12 did not finish search quality. Consumer lay wording is still weak, the source-specific lane still misses one DailyMed warning-context concept, the approved PubMed suite still has recall misses, and long-document searches remain too slow for comfortable iteration.</p>
+        </div>
+      </div>
+      <div class="result-row">
+        <div class="result good"><strong>13/13</strong><span>approved PubMed rows top-on-target</span></div>
+        <div class="result good"><strong>0</strong><span>approved PubMed wrong-first rows</span></div>
+        <div class="result warn"><strong>148.291s</strong><span>focused PubMed timing run</span></div>
+      </div>
+    </section>
+
+    <section class="panel" id="2026-06-11">
+      <h2>June 11, 2026 Accomplishments</h2>
+      <p class="muted small">Added 2026-06-12. This translates the June 11 iteration run into the practical story: search became better at keeping the main clinical idea first, the long-article tests became more current, and the next work became easier to rotate across.</p>
+      <div class="story-grid">
+        <div class="story-item good">
+          <strong>Kept The Main Problem First</strong>
+          <p>Several wrong-first failures were fixed. Diagnoses such as gestational diabetes, cystic fibrosis, lead poisoning, anaphylaxis, pulmonary embolism, and opioid-use-disorder treatment context now beat nearby symptom, test, trigger, or broad behavior noise when the wording supports that order.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Improved Patient Message Search</strong>
+          <p>Patient-portal messages now keep the current issue first across the reviewed lane. Generic background wording is less likely to outrank the actual problem the patient is asking about.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Made PubMed Article Search More Useful</strong>
+          <p>The focused PubMed abstract probe reached a clean first-page recall result. The broader approved PubMed suite was rerun and reclassified, replacing a stale baseline with a current view of exactly which article-search misses remain.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Promoted Short And Source-Specific Checks</strong>
+          <p>Reviewed short real-world searches became a strict release lane, and source-specific checks exposed where DailyMed, PubMed/PMC, clinical-trial, MedlinePlus, and PubTator3 behavior still needs attention.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Reduced Bad Broad Matches</strong>
+          <p>Broad matches such as generic cancer screening, broad addictive behavior, and overbroad drug classes were made less likely to appear above directly named clinical targets.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Made Iteration Time Visible</strong>
+          <p>The benchmark runner now records per-query timing and can overlap live API calls. That did not solve the slow long-document path by itself, but it showed that the remaining bottleneck is inside the search API rather than the report writer.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Made The Backlog Easier To Work</strong>
+          <p>The progress log now uses stable backlog IDs with a current gap, next diff, artifact, and done condition, so each iteration can be picked up without rereading every prior artifact.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>Also Left Clear Gaps</strong>
+          <p>June 11 did not finish the product. The source-specific lane still has a DailyMed warning-context miss, the approved PubMed suite still has article-search misses, and the long-document path is still too slow for comfortable repeated iteration.</p>
+        </div>
+      </div>
+      <div class="result-row">
+        <div class="result good"><strong>0</strong><span>reviewed wrong-first rows left open</span></div>
+        <div class="result good"><strong>36/36</strong><span>focused PubMed concepts found at top 10</span></div>
+        <div class="result good"><strong>20/20</strong><span>reviewed short queries passed before expansion</span></div>
+      </div>
+    </section>
+
+    <section class="panel" id="2026-06-10">
+      <h2>June 10, 2026 Accomplishments</h2>
+      <p class="muted small">Added 2026-06-11. This translates the June 10 work into the practical story: what got safer, what got easier to trust, and what new weak spots became visible.</p>
+      <div class="story-grid">
+        <div class="story-item good">
+          <strong>Made Every Change Safer</strong>
+          <p>We added a repeatable smoke-check workflow so search changes now have to prove they still work after the fix. Instead of trusting one hand-picked example, the loop now records a reusable pass/fail report.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Added More Real-Life Tests</strong>
+          <p>The test set grew beyond neat clinical paragraphs. It now includes long patient messages, simple everyday searches, source-specific searches, and long medical article checks.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Improved Long Article Search</strong>
+          <p>PubMed-style abstracts became a first-class test lane. The focused article probe improved from finding too few expected ideas to finding many more of them on the first page, while keeping known bad matches out.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Separated Useful Extras From Bad Answers</strong>
+          <p>We reviewed the suspect-result pile and sorted it into useful extra results versus true bad matches. That made the next cleanup target much clearer instead of treating every extra result as wrong.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Fixed Visible Search Problems</strong>
+          <p>Several concrete failures were fixed or guarded: a UMLS-only crash, missing results for clear terms like gastroenterology and appendectomy, a diagnosis that was ranked below a later culture organism, and a common word being mistaken for a gene.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Made Source-Code Search More Trustworthy</strong>
+          <p>Public source-code searches can now return allowed RxNorm and LOINC rows instead of dropping everything or mixing in unrelated concept-style results.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Made The Work Easier To Audit</strong>
+          <p>The reports were reorganized so each iteration says what weakness was found, what was tried, what passed, what failed, and what should happen next.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>Also Made The Remaining Gaps Clearer</strong>
+          <p>June 10 did not make search perfect. It showed that long articles, wrong-first results, source-document retrieval, and overly noisy answers still needed more work.</p>
+        </div>
+      </div>
+      <div class="result-row">
+        <div class="result good"><strong>168 examples</strong><span>broad clinical benchmark established</span></div>
+        <div class="result good"><strong>50 examples</strong><span>rotating safety check automated</span></div>
+        <div class="result good"><strong>69/69</strong><span>suspect precision cases classified</span></div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

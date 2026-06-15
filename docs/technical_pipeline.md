@@ -91,10 +91,10 @@ Last reviewed quality sample:
 
 Current full-pipeline tracker progress:
 
-- Artifact readiness: `79 / 83` steps
-- Effort-weighted progress: `72.4%`
-- Next planned processing step: full PubMed baseline/update bulk ingest as
-  bounded, review-gated shards
+- Artifact readiness: `79 / 82` steps
+- Effort-weighted progress: `91.1%`
+- Next planned processing step: targeted PubMed weakness acquisition and
+  promotion, using judged query misses before adding more PubMed shards
 
 ## Design Principles
 
@@ -935,12 +935,25 @@ from generic follow-up, anatomy, and denied-positive lower-rank hits.
 The previous three reviewed two-file pilots were: `1327/1326` and `1325/1324`
 at `0.600` mean weighted P@5, then `1323/1322` at `0.750` after the
 anchor-recall, fragment-precision, procedure-neighbor, composite-context, and
-sepsis-shock intent ranker updates. The broader scale path remains full PubMed
-baseline/update bulk ingest, run as bounded resumable shards with manifests and
-quality gates. Remaining ranking cleanup is mostly below-rank-1 specificity and
+sepsis-shock intent ranker updates. Those pilots proved the bulk machinery, but
+the product gap is now judged query behavior, not arbitrary coverage volume.
+Remaining ranking cleanup is mostly below-rank-1 specificity and
 component-heavy mixed queries.
 
-A sound full-scale path should:
+A sound targeted PubMed path should:
+
+1. Start from `config/search_quality_targeted_pubmed_weaknesses.tsv`.
+2. Separate rerank-window misses from true evidence/linking gaps.
+3. Fix section/chunk linking, merge behavior, and reranking before acquiring
+   more source records.
+4. Add or relink PubMed evidence only for benchmarked expected CUIs that still
+   miss after local ranking fixes.
+5. Re-embed only promoted CUI/view documents.
+6. Move the cumulative alias only after the focused PubMed lane and regular
+   smoke gates pass.
+7. Preserve manifests so future changes can be incremental.
+
+If broad PubMed ingest becomes necessary later, keep the same release shape:
 
 1. Download PubMed baseline and update files with manifests and MD5 checks.
 2. Stream-parse XML into compact corpus records.

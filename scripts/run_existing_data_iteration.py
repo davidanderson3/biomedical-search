@@ -318,6 +318,16 @@ def loinc_table_path(loinc_root: Path | None) -> Path | None:
     return None
 
 
+def default_loinc_root() -> Path:
+    preferred = Path("data/local_sources/loinc/Loinc_2.82")
+    if (ROOT / preferred).exists():
+        return preferred
+    legacy = Path("Loinc_2.82")
+    if (ROOT / legacy).exists():
+        return legacy
+    return preferred
+
+
 def best_loinc_display_name(row: dict[str, str]) -> tuple[str, str]:
     for field in ("DisplayName", "LONG_COMMON_NAME", "CONSUMER_NAME", "SHORTNAME", "COMPONENT"):
         value = clean_text(row.get(field) or "")
@@ -1098,8 +1108,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--loinc-root",
         type=Path,
-        default=Path("Loinc_2.82"),
-        help="Direct LOINC release root. If present, LoincTable/Loinc.csv is used for coverage and display-name artifacts.",
+        default=default_loinc_root(),
+        help=(
+            "Direct LOINC release root. Defaults to "
+            "data/local_sources/loinc/Loinc_2.82, with a legacy ./Loinc_2.82 "
+            "fallback. If present, LoincTable/Loinc.csv is used for coverage "
+            "and display-name artifacts."
+        ),
     )
     parser.add_argument(
         "--max-loinc-display-rows",

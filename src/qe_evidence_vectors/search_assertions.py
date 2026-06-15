@@ -82,7 +82,6 @@ BEFORE_CUES = {
         ("scheduled",),
         ("deferred",),
         ("recommended",),
-        ("to", "be"),
     ),
     ASSERTION_CONFIRMED: (
         ("confirmed",),
@@ -124,6 +123,16 @@ AFTER_CUES = {
         ("pending",),
         ("scheduled",),
         ("deferred",),
+        ("to", "be", "administered"),
+        ("to", "be", "done"),
+        ("to", "be", "given"),
+        ("to", "be", "inserted"),
+        ("to", "be", "obtained"),
+        ("to", "be", "performed"),
+        ("to", "be", "placed"),
+        ("to", "be", "repeated"),
+        ("to", "be", "scheduled"),
+        ("to", "be", "started"),
     ),
     ASSERTION_CONFIRMED: (
         ("confirmed",),
@@ -172,6 +181,37 @@ CHART_HISTORY_CUES = {
     "still lists",
     "another visit",
     "from another visit",
+}
+AGE_DESCRIPTOR_AFTER_TOKENS = {
+    "adult",
+    "adults",
+    "boy",
+    "child",
+    "female",
+    "gentleman",
+    "girl",
+    "infant",
+    "lady",
+    "male",
+    "man",
+    "newborn",
+    "patient",
+    "person",
+    "toddler",
+    "woman",
+}
+AGE_DESCRIPTOR_BEFORE_TOKENS = {
+    "day",
+    "days",
+    "month",
+    "months",
+    "week",
+    "weeks",
+    "year",
+    "years",
+    "yo",
+    "yr",
+    "yrs",
 }
 
 
@@ -278,6 +318,8 @@ def cue_candidates(
             for pos in find_subsequence_positions(canonical_query, list(phrase)):
                 phrase_end = pos + len(phrase)
                 distance = start - phrase_end
+                if historical_age_descriptor_cue(canonical_query, pos=pos, phrase=phrase):
+                    continue
                 if 0 <= distance <= max_before_distance(status, phrase=phrase) and not cue_scope_blocked(
                     canonical_query,
                     phrase_end,
@@ -307,6 +349,22 @@ def candidate(status: str, phrase: tuple[str, ...], distance: int, direction: st
         "direction": direction,
         "matched_span": span_text,
     }
+
+
+def historical_age_descriptor_cue(
+    canonical_query: list[str],
+    *,
+    pos: int,
+    phrase: tuple[str, ...],
+) -> bool:
+    if phrase not in {("old",), ("older",)}:
+        return False
+    next_index = pos + len(phrase)
+    next_token = canonical_query[next_index] if next_index < len(canonical_query) else ""
+    previous_token = canonical_query[pos - 1] if pos > 0 else ""
+    if next_token in AGE_DESCRIPTOR_AFTER_TOKENS:
+        return True
+    return phrase == ("old",) and previous_token in AGE_DESCRIPTOR_BEFORE_TOKENS
 
 
 def max_before_distance(status: str, *, phrase: tuple[str, ...] | None = None) -> int:

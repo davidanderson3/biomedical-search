@@ -71,6 +71,7 @@ DEFAULT_PUBLIC_EVIDENCE_SOURCE_PREFIXES = (
     "pubmed",
     "pubmed_bulk",
     "rxnorm",
+    "source_code",
     "umls_label",
     "wikipedia",
     "wikimedia",
@@ -362,26 +363,36 @@ class PublicOutputMixin:
             if key in PUBLIC_OUTPUT_DROP_FIELDS or key in PUBLIC_OUTPUT_DROP_CONTAINER_FIELDS:
                 continue
             if key in PUBLIC_OUTPUT_DEFINITION_FIELDS:
-                cleaned[key] = [
-                    definition
-                    for definition in (
-                        self._public_output_definition(definition)
-                        for definition in (item or [])
-                        if isinstance(definition, dict)
-                    )
-                    if definition is not None
-                ]
+                if isinstance(item, list):
+                    cleaned[key] = [
+                        definition
+                        for definition in (
+                            self._public_output_definition(definition)
+                            for definition in item
+                            if isinstance(definition, dict)
+                        )
+                        if definition is not None
+                    ]
+                    continue
+                cleaned_value = self._public_output_value(item, parent_key=str(key))
+                if cleaned_value is not None:
+                    cleaned[key] = cleaned_value
                 continue
             if key in PUBLIC_OUTPUT_RELATION_FIELDS:
-                cleaned[key] = [
-                    relation
-                    for relation in (
-                        self._public_output_relation(relation)
-                        for relation in (item or [])
-                        if isinstance(relation, dict)
-                    )
-                    if relation is not None
-                ]
+                if isinstance(item, list):
+                    cleaned[key] = [
+                        relation
+                        for relation in (
+                            self._public_output_relation(relation)
+                            for relation in item
+                            if isinstance(relation, dict)
+                        )
+                        if relation is not None
+                    ]
+                    continue
+                cleaned_value = self._public_output_value(item, parent_key=str(key))
+                if cleaned_value is not None:
+                    cleaned[key] = cleaned_value
                 continue
             if key == "score_breakdown" and isinstance(item, dict):
                 cleaned_score_breakdown = {
@@ -425,6 +436,8 @@ class PublicOutputMixin:
         public_sources = self.public_evidence_sources_for_hit(hit)
         if public_sources is None:
             return None
+        if hit.get("source_code_result") or str(hit.get("view") or "") == "source_code":
+            return self._public_output_source_code_hit(hit, public_sources=public_sources)
         if cui:
             labels = self.public_labels_for_cui(cui)
             if not labels:
@@ -485,6 +498,112 @@ class PublicOutputMixin:
             cleaned["name"] = name
             cleaned["label"] = name if "label" in hit else cleaned.get("label", name)
             cleaned["labels"] = list(labels)
+        return cleaned
+
+    def _public_output_source_code_hit(
+        self,
+        hit: dict,
+        *,
+        public_sources: list[str],
+    ) -> dict | None:
+        code_rows = []
+        seen_codes = set()
+        for row in [
+            *list(hit.get("source_asserted_codes") or []),
+            *list(hit.get("codes") or []),
+        ]:
+            if not isinstance(row, dict):
+                continue
+            system = str(row.get("system") or row.get("sab") or "").strip()
+            if not system or not self.public_source_allowed(system):
+                continue
+            code = str(row.get("code") or row.get("source_asserted_code") or "").strip()
+            if not code:
+                continue
+            key = (normalize_public_output_source(system), code.upper())
+            if key in seen_codes:
+                continue
+            seen_codes.add(key)
+            label = str(row.get("label") or "").strip()
+            code_rows.append(
+                {
+                    "system": system,
+                    "system_name": str(row.get("system_name") or system).strip(),
+                    "sab": system,
+                    "code": code,
+                    "source_asserted_code": code,
+                    "source_cui": str(row.get("source_cui") or row.get("scui") or "").strip(),
+                    "source_dui": str(row.get("source_dui") or row.get("sdui") or "").strip(),
+                    "scui": str(row.get("scui") or row.get("source_cui") or "").strip(),
+                    "sdui": str(row.get("sdui") or row.get("source_dui") or "").strip(),
+                    "tty": str(row.get("tty") or "").strip(),
+                    "label": label,
+                    "ispref": str(row.get("ispref") or "").strip(),
+                }
+            )
+        if not code_rows:
+            return None
+
+        label_values = [
+            str(row.get("label") or "").strip()
+            for row in code_rows
+            if str(row.get("label") or "").strip()
+        ]
+        name = concept_display_name(label_values, fallback=str(hit.get("name") or "").strip())
+        if not name:
+            return None
+
+        cleaned = {}
+        for key, value in hit.items():
+            if key in PUBLIC_OUTPUT_DROP_CONTAINER_FIELDS:
+                continue
+            if key in PUBLIC_OUTPUT_DROP_FIELDS and key not in {"codes", "source_asserted_codes"}:
+                continue
+            if key == "sources":
+                cleaned[key] = public_sources
+                continue
+            if key in {"name", "label"}:
+                cleaned[key] = name
+                continue
+            if key == "labels":
+                cleaned[key] = label_values[:8]
+                continue
+            if key in {"codes", "source_asserted_codes"}:
+                cleaned[key] = [dict(row) for row in code_rows]
+                continue
+            if key in PUBLIC_OUTPUT_DEFINITION_FIELDS:
+                cleaned[key] = [
+                    definition
+                    for definition in (
+                        self._public_output_definition(definition)
+                        for definition in (value or [])
+                        if isinstance(definition, dict)
+                    )
+                    if definition is not None
+                ]
+                continue
+            if key in PUBLIC_OUTPUT_RELATION_FIELDS:
+                cleaned[key] = [
+                    relation
+                    for relation in (
+                        self._public_output_relation(relation)
+                        for relation in (value or [])
+                        if isinstance(relation, dict)
+                    )
+                    if relation is not None
+                ]
+                continue
+            cleaned_value = self._public_output_value(value, parent_key=str(key))
+            if cleaned_value is not None:
+                cleaned[key] = cleaned_value
+
+        cleaned["cui"] = str(hit.get("cui") or "").strip().upper()
+        cleaned["name"] = name
+        cleaned["label"] = name
+        cleaned["labels"] = label_values[:8]
+        cleaned["codes"] = [dict(row) for row in code_rows]
+        cleaned["source_asserted_codes"] = [dict(row) for row in code_rows]
+        cleaned["source_code_result"] = True
         return cleaned
 
     def _public_output_definition(self, item: dict) -> dict | None:

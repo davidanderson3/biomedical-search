@@ -98,7 +98,7 @@ Run this to inventory what exists locally:
 ```sh
 python3 scripts/reproducibility_manifest.py \
   --umls-meta /path/to/UMLS/META \
-  --loinc-dir /path/to/Loinc_2.82 \
+  --loinc-dir data/local_sources/loinc/Loinc_2.82 \
   --snomed-zip /path/to/SnomedCT_release.zip \
   --hash-small-files \
   --out build/reproducibility_manifest.json

@@ -7,7 +7,7 @@ ELASTIC_ALIAS="${ELASTIC_ALIAS:-}"
 BULK_DOCS_PER_FILE="${BULK_DOCS_PER_FILE:-25000}"
 ELASTIC_SHARDS="${ELASTIC_SHARDS:-1}"
 ELASTIC_REPLICAS="${ELASTIC_REPLICAS:-0}"
-MANIFEST="${MANIFEST:-build/release_candidates/rc_public_search_20260604T211825Z/runtime_payload_manifest.json}"
+MANIFEST="${MANIFEST:-build/release_candidates/rc_public_search_20260604T211825Z/supporting/manifests/runtime_payload_manifest.json}"
 OUT_DIR="${OUT_DIR:-build/docker_elastic/${ELASTIC_INDEX}}"
 
 wait_for_elasticsearch() {

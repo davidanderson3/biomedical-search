@@ -267,13 +267,14 @@ relevant top-1 queries: 8 / 8
 
 The latest reviewed chunk is `pubmed_bulk_recent_1321_1320`. The post-chunk
 efficiency gate remains in place: the prototype has indexed display provenance
-and compact float32 vector exports. The next processing step is the full PubMed
-baseline/update path as bounded resumable shards. The latest reviewed batch
-matches the prior `1323/1322` quality gate (`0.750` mean weighted P@5, MRR
-`1.0`, `8 / 8` relevant top-1). A harder 10-query mixed clinical smoke pass also
-kept relevant top-1 for all 10 queries, but its mean weighted P@5 was `0.570`
-because lower ranks still contain generic follow-up, anatomy, and denied-positive
-concepts. Remaining cleanup is mostly related-concept specificity below rank 1
+and compact float32 vector exports. The next processing step is targeted PubMed
+weakness acquisition and promotion, not broad baseline expansion. The latest
+reviewed batch matches the prior `1323/1322` quality gate (`0.750` mean weighted
+P@5, MRR `1.0`, `8 / 8` relevant top-1). A harder 10-query mixed clinical smoke
+pass also kept relevant top-1 for all 10 queries, but its mean weighted P@5 was
+`0.570` because lower ranks still contain generic follow-up, anatomy, and
+denied-positive concepts. Remaining cleanup is mostly related-concept
+specificity below rank 1
 and composite drug/adverse-event or diagnosis/lab queries where component
 concepts still outrank the combined concept, so scale alone should not be
 treated as quality improvement.

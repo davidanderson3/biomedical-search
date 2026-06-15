@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Testing UMLS With Search, Building UMLS As Search</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --ink: #17202a;
+      --muted: #5b6673;
+      --line: #d7dde5;
+      --panel: #ffffff;
+      --accent: #1d4ed8;
+      --code-bg: #eef2f7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.55;
+    }
+
+    main {
+      width: min(980px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 34px 0 56px;
+    }
+
+    article {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: clamp(20px, 4vw, 44px);
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 28px;
+      padding-bottom: 20px;
+    }
+
+    h1 {
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.12;
+      margin: 0;
+    }
+
+    h2 {
+      border-top: 1px solid var(--line);
+      font-size: 22px;
+      line-height: 1.25;
+      margin: 32px 0 12px;
+      padding-top: 24px;
+    }
+
+    h2:first-of-type {
+      border-top: 0;
+      margin-top: 0;
+      padding-top: 0;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    ul,
+    ol {
+      margin: 0 0 16px;
+      padding-left: 24px;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    code {
+      background: var(--code-bg);
+      border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+      padding: 1px 4px;
+    }
+
+    .table-wrap {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin: 14px 0 18px;
+      overflow-x: auto;
+    }
+
+    table {
+      border-collapse: collapse;
+      min-width: 820px;
+      width: 100%;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid #edf0f4;
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f8fafc;
+      color: #334155;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .process-figure {
+      margin: 22px 0 28px;
+    }
+
+    .process-figure img {
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: block;
+      height: auto;
+      width: 100%;
+    }
+
+    .process-figure figcaption {
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 8px;
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+      }
+
+      main {
+        width: 100%;
+        padding: 0;
+      }
+
+      article {
+        border: 0;
+        padding: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <article>
+      <header>
+        <h1>Testing UMLS With Search, Building UMLS As Search</h1>
+      </header>
+
+      <section>
+        <h2>Thesis</h2>
+        <p>The most direct way to test whether UMLS is doing its job is to ask it to do what nearly every downstream user wants to do: search. If a user starts with a code, acronym, CUI, extracted phrase, abstract, note fragment, or patient message, can the system reliably surface the right concept, source code, label, and useful related concepts?</p>
+        <p>That question is not a secondary convenience feature. It is the operational test of UMLS value. A vocabulary can preserve identifiers and source labels perfectly while still failing the task users care about if the right answer is buried, ambiguous, stale, license-restricted, or outranked by generic prose.</p>
+        <p>UMLS works best as the canonical biomedical identity and crosswalk layer: CUIs, source codes, source labels, semantic types, definitions, and source relationships. The product to build around it is a UMLS-backed biomedical search service: a system that turns real user language into the right biomedical identity, with source-backed aliases, relationships, assertion signals, composition rules, ranking behavior, and evidence.</p>
+        <p>The proposal is not to replace UMLS. It makes search the primary product surface and the primary evaluation harness for UMLS improvement. In that model, new signals enter the product only when they are source-backed, reviewable, license-compatible, and measurably useful for retrieval.</p>
+      </section>
+
+      <section>
+        <h2>Search Is The Product</h2>
+        <p>Most practical UMLS use cases are search with different names. Mapping, NLP, coding support, terminology lookup, literature discovery, clinical data integration, cohort building, and annotation all start from some imperfect input and ask for the right biomedical identity. Sometimes that input is a string. Sometimes it is a code, acronym, paragraph, extracted span, local label, or patient phrase. In every case the user needs retrieval.</p>
+        <p>That makes search both the product and the test. The product is not only a browser over source vocabularies or a static API that returns exact matches. It is a ranked, evidence-backed biomedical search layer that answers the question users actually ask: "given what I have, what biomedical thing is this, and what else do I need to know about it?"</p>
+        <p>Search also makes improvement auditable. In this model, every improvement starts from a measured failure, carries evidence and source policy, and passes before/after benchmarks before promotion.</p>
+      </section>
+
+      <section>
+        <h2>Measured Retrieval Failures</h2>
+        <p>The evaluation was structured around the way users actually use the system:</p>
+        <ol>
+          <li>The input was real biomedical language: an abstract, a paragraph, a phrase, an acronym, or a mention in context.</li>
+          <li>The UMLS-backed search system returned ranked CUIs, source codes, labels, and related concepts.</li>
+          <li>The ranked results were compared with the expected CUIs for that text.</li>
+          <li>Success was counted when the expected answers appeared where a user would actually see them, especially rank 1 and the top ten results.</li>
+        </ol>
+        <p>This tests search, not vocabulary coverage. UMLS may already contain the right concept somewhere, but a user still loses if the search product does not rank that concept near the top for the words the user actually has.</p>
+        <p>The current results show the gap between coverage and findability. In the focused PubMed long-document sample, only 1 of 7 reviewed abstracts had every expected concept in the top ten results. In the clinically useful MedMentions mention-context sample, the exact annotated CUI was ranked first 11% of the time and appeared in the top ten 36% of the time. Because MedMentions uses UMLS 2017AA annotations, some misses may come from release changes rather than pure search mistakes. That caveat does not change the product point: a successful UMLS search product makes the expected concept findable from the language users actually enter.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Literature example</th>
+                <th>Observed retrieval failure</th>
+                <th>Needed search signal</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>PMID 38307660</code>: status migrainosus review</td>
+                <td>Acute-treatment drugs dominated the first page while <code>status migrainosus</code> and migraine-with/without-aura concepts fell out.</td>
+                <td>Disease-state anchors that survive dense treatment lists.</td>
+              </tr>
+              <tr>
+                <td><code>PMID 39951884</code>: EGFR-mutant NSCLC network meta-analysis</td>
+                <td>NSCLC, EGFR, and brain metastasis surfaced, but <code>progression-free survival</code> and, in the focused run, <code>osimertinib</code> fell below the top ten.</td>
+                <td>Typed outcome, biomarker, drug, and population relationships.</td>
+              </tr>
+              <tr>
+                <td><code>PMID 30945014</code>: <em>C. difficile</em> infection review</td>
+                <td><code>Clostridium difficile infection</code> ranked first, but <code>antibiotic-associated diarrhea</code> and antibiotic exposure were missed or weak.</td>
+                <td>Exposure-syndrome-organism-treatment links.</td>
+              </tr>
+              <tr>
+                <td><code>PMID 33977794</code>: lupus-like membranous nephropathy case series</td>
+                <td><code>Pre-eclampsia</code> and nephrotic-syndrome language ranked high while <code>systemic lupus erythematosus</code>, <code>lupus nephritis</code>, and <code>complement C3</code> fell out.</td>
+                <td>Disease, renal-pathology, pregnancy, antibody, and complement relationships with assertion context.</td>
+              </tr>
+              <tr>
+                <td><code>PMID 41052480</code>: first-trimester stroke treated with tenecteplase and thrombectomy</td>
+                <td><code>tenecteplase</code> ranked first, but <code>aphasia</code> and <code>mechanical thrombectomy</code> missed the first page.</td>
+                <td>Context-safe abbreviation and procedure handling for <code>LVO</code>, <code>TNK</code>, <code>MT</code>, symptoms, and interventions.</td>
+              </tr>
+              <tr>
+                <td><code>PMID 32416769</code>: COVID-19 acute kidney injury management</td>
+                <td>COVID-19, ARDS, and septic shock surfaced, but <code>acute kidney injury</code> dropped out of the first ten.</td>
+                <td>Organ-complication links for secondary but title-relevant concepts.</td>
+              </tr>
+              <tr>
+                <td><code>PMID 35396752</code>: CYP2C19 clopidogrel/ticagrelor meta-analysis</td>
+                <td>The first result was <code>aspirin</code>; CYP2C19, clopidogrel, PCI, ticagrelor, and poor-metabolizer concepts were present but not central.</td>
+                <td>Gene-drug-response edges for metabolizer status, loss-of-function alleles, resistance, and alternative therapy.</td>
+              </tr>
+              <tr>
+                <td>MedMentions <code>PMID 27061776</code>: MRSA pneumonia resource-use study</td>
+                <td>Full <code>methicillin-resistant Staphylococcus aureus</code> mentions linked, but acronym-only <code>MRSA</code> rows failed exact retrieval.</td>
+                <td>Durable acronym aliases that work with or without surrounding abstract context.</td>
+              </tr>
+              <tr>
+                <td>MedMentions <code>PMID 27131339</code>: HERG1 in oral squamous cell carcinoma</td>
+                <td><code>HERG1</code> and <code>HERG1 protein</code> often returned newer or adjacent KCNH2 protein concepts instead of the annotated 2017AA CUI.</td>
+                <td>Gene/protein synonym, product, and release-drift handling.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>Gap Classes</h2>
+        <p>This paper uses "missing" in four practical senses: the concept itself may be missing; a concept may exist but common wording is weak; relationships may be too generic for retrieval; or a public deployment may be unable to use a restricted source vocabulary. The important gap classes are:</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Gap class</th>
+                <th>Retrieval problem</th>
+                <th>Examples</th>
+                <th>Needed signal</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Clinical shorthand</td>
+                <td>Common note or abstract language misses or overmatches without context.</td>
+                <td><code>HFrEF</code>, <code>NSTEMI</code>, <code>AFib</code>, <code>DKA</code>, <code>PHQ-9</code>, <code>INR</code>, <code>NSCLC</code>, <code>RA</code></td>
+                <td>Context-scoped aliases and blocked meanings.</td>
+              </tr>
+              <tr>
+                <td>Term-form variants</td>
+                <td>Professional, adjectival, lay, and organ-name variants fail to bridge reliably.</td>
+                <td><code>hepatic</code> / <code>liver</code>, <code>renal</code> / <code>kidney</code>, <code>pulmonary</code> / <code>lung</code>, <code>cardiac</code> / <code>heart</code></td>
+                <td>Evidence-backed lexical bridges, not unconditional synonyms.</td>
+              </tr>
+              <tr>
+                <td>Composite findings</td>
+                <td>Clinically meaningful phrases split into generic parts.</td>
+                <td><code>bibasilar crackles</code>, <code>right heart strain</code>, <code>exposed bone</code>, <code>epileptiform discharges</code>, <code>suppressed TSH</code></td>
+                <td>Phrase anchors or composition rules with semantic constraints.</td>
+              </tr>
+              <tr>
+                <td>Lab and result phrases</td>
+                <td>Coded observations exist, but prose results combine observation, value, interpretation, organism, and trend.</td>
+                <td><code>urine culture grew E. coli</code>, <code>low ferritin</code>, <code>rising creatinine</code>, <code>blood glucose was 38 mg/dL</code></td>
+                <td>LOINC-backed observation anchors plus result-state parsing.</td>
+              </tr>
+              <tr>
+                <td>Procedure coverage</td>
+                <td>Users search specific procedure phrases, but CPT and some source descriptors cannot be the backbone of an open product.</td>
+                <td><code>right heart catheterization</code>, <code>incision and drainage</code>, <code>ultrasound-guided central venous catheter placement</code></td>
+                <td>Allowed procedure sources plus action/anatomy/modality/device composition; private adapters for licensed deployments.</td>
+              </tr>
+              <tr>
+                <td>Assertion and currentness</td>
+                <td>Negated, historical, planned, copied-forward, family-history, or uncertain mentions rank like active problems.</td>
+                <td><code>no evidence of right heart strain</code>, <code>bone biopsy planned</code>, old medication lists</td>
+                <td>Mention status buckets and current-versus-history ranking.</td>
+              </tr>
+              <tr>
+                <td>Patient and workflow language</td>
+                <td>Portal prose and chart metadata can outrank biomedical content.</td>
+                <td><code>I am confused</code>, <code>instructions</code>, <code>result</code>, <code>problem</code>, <code>scheduling</code>, <code>unknown</code></td>
+                <td>Generic role metadata and suppression/demotion rules.</td>
+              </tr>
+              <tr>
+                <td>Emerging domains</td>
+                <td>Release cadence and source integration lag fast-moving clinical language.</td>
+                <td>pharmacogenomics, oncology variants, resistance patterns, taxonomy updates, device safety</td>
+                <td>Source-delta checks, direct refreshed slices, and provisional reviewed edges.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>Improvement Loop</h2>
+        <p>Because search is the product, improvement begins with failed searches rather than abstract coverage wish lists. The loop has six stages:</p>
+        <ol>
+          <li>A measured retrieval failure.</li>
+          <li>Cause classification: alias gap, generic-concept problem, assertion problem, missing relationship, source-ingestion issue, ranking bug, source drift, or license boundary.</li>
+          <li>The smallest source-backed change: code fix, ranking fix, reviewed alias, typed edge, composition rule, source update, or deployment adapter.</li>
+          <li>Candidate, relation, provenance, manifest, and before/after benchmark artifacts.</li>
+          <li>Automated checks for recall, precision, false positives, source drift, restricted-content leakage, and operational repeatability.</li>
+          <li>Promotion for validated deltas; deferral for weak, duplicate, badly bounded, or license-restricted candidates.</li>
+        </ol>
+        <figure class="process-figure">
+          <img src="assets/umls_iteration_loop.svg" alt="Measured search improvement loop from weakness discovery through triage, code or evidence integration, benchmark testing, and promotion or another iteration.">
+          <figcaption>Search improvement is a closed loop: observe a real failure, diagnose it, change the smallest thing, benchmark it, and either promote or iterate.</figcaption>
+        </figure>
+        <figure class="process-figure">
+          <img src="assets/umls_failure_triage.svg" alt="Failure triage diagram showing how real search weaknesses become either coding fixes or authoritative evidence integration tasks.">
+          <figcaption>Failures split into implementation work or evidence work, but both paths require the same review and promotion standard.</figcaption>
+        </figure>
+        <figure class="process-figure">
+          <img src="assets/umls_benchmark_gate.svg" alt="Benchmark gate diagram showing before and after runs, metric checks, and promote or iterate decisions.">
+          <figcaption>The benchmark gate protects the system from attractive changes that improve one example while damaging precision, source policy, or operational repeatability.</figcaption>
+        </figure>
+      </section>
+
+      <section>
+        <h2>Search Product Design</h2>
+        <p>A UMLS search product keeps the canonical UMLS identity layer intact and adds the retrieval signals needed to make it useful in real workflows:</p>
+        <p>The product promise is straightforward: users bring the language they have, and the service returns the best biomedical identities, explains why they matched, and avoids confusing generic terms, stale labels, restricted content, or contextually wrong answers with the right result.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Layer</th>
+                <th>Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Identity backbone</td>
+                <td>CUIs, source codes, semantic types, definitions, and source relationships remain the stable foundation.</td>
+              </tr>
+              <tr>
+                <td>Safe aliases and lexical variants</td>
+                <td>Reviewed labels, acronyms, lay terms, spelling variants, and adjectival/organ bridges include required and blocked context.</td>
+              </tr>
+              <tr>
+                <td>Typed relationships</td>
+                <td>Treatment, indication, complication, diagnostic evidence, phenotype, adverse event, procedure target, organism, gene, and pharmacogenomic response have distinct relationship types.</td>
+              </tr>
+              <tr>
+                <td>Composition</td>
+                <td>Action, target anatomy, laterality, modality, device, specimen, result state, severity, and temporal status are represented when they affect retrieval.</td>
+              </tr>
+              <tr>
+                <td>Assertion and status</td>
+                <td>Current, historical, negated, uncertain, planned, family-history, and confirmed mentions remain in separate ranking buckets.</td>
+              </tr>
+              <tr>
+                <td>Provenance and source policy</td>
+                <td>Evidence source, confidence, review status, source dates, release metadata, and license constraints are tracked for every promoted alias, edge, or provisional concept.</td>
+              </tr>
+              <tr>
+                <td>Generic role metadata</td>
+                <td>Valid but poor standalone answers such as <code>Result</code>, <code>Instructions</code>, <code>Problem</code>, <code>Unknown</code>, <code>Placement</code>, and <code>Therapeutic procedure</code> are marked explicitly.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>These signals are not requests for an LLM to invent biomedical knowledge. LLM coding assistants can inspect failures, localize causes, prepare candidates, modify code, and run tests, but promotion still requires source evidence, query-pressure evidence, reviewer rationale, and validation output.</p>
+      </section>
+
+      <section>
+        <h2>Evidence Sources</h2>
+        <p>The useful organizing question is: what search signal is missing? Some inputs are structured terminologies; others are natural-language sources that vector search can use as evidence. For vocabularies UMLS already carries, the goal is not to duplicate the feed; it is to expose refreshed slices, native xrefs, hierarchy, and licensed adapters when they improve retrieval.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Missing signal</th>
+                <th>Candidate evidence sources</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Disease labels, xrefs, hierarchy, and relationships not already covered by UMLS</td>
+                <td>MONDO and permitted disease reference sources.</td>
+              </tr>
+              <tr>
+                <td>Variant, biomarker, and pharmacogenomic relationships</td>
+                <td>ClinGen, CIViC, CPIC, and similar curated resources where source policy permits.</td>
+              </tr>
+              <tr>
+                <td>Gene and protein search language</td>
+                <td>Literature-derived mentions, protein-name usage examples, oncology biomarker text, and permitted genetics references.</td>
+              </tr>
+              <tr>
+                <td>Drug indications, warnings, and therapeutic-neighbor relationships</td>
+                <td>Full drug-label text, FDA safety communications, prescribing guidance, and permitted drug references.</td>
+              </tr>
+              <tr>
+                <td>Organism names, strain names, and pathogen language</td>
+                <td>CDC pages, public outbreak/surveillance pages, and specialist taxonomy resources where reuse terms permit.</td>
+              </tr>
+              <tr>
+                <td>Procedure lookup and composition</td>
+                <td>Allowed procedure sources, procedure-note examples, local procedure dictionaries, device references, and licensed adapters where permitted.</td>
+              </tr>
+              <tr>
+                <td>Natural-language phrasing and relationship evidence</td>
+                <td>FDA communications, CDC pages, clinical guidelines, open-access reviews, PubMed/PMC literature where permitted, and ClinicalTrials.gov posted records.</td>
+              </tr>
+              <tr>
+                <td>Real-world failure and validation evidence</td>
+                <td>Judged paragraph tests, patient-message examples, reviewed query logs, licensed clinical notes, coding workflows, and source-delta reports.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Vector search makes natural-language evidence practical because it can retrieve source sentences and paragraphs even when wording differs. Vector matches supply candidate evidence, not final truth: lexical matches, CUIs, source codes, provenance, source policy, tests, and review decide whether a candidate becomes a promoted alias, relationship, ranking rule, or provisional concept.</p>
+      </section>
+
+      <section>
+        <h2>Prior Work And Why Now</h2>
+        <p>NLM and Lister Hill have worked on pieces of this problem for years. MetaMap mapped biomedical text to UMLS concepts; SemRep and SemMedDB extracted and stored semantic predications; SPECIALIST Lexicon/LVG, MetamorphoSys, the UMLS Browser/API, PubMed Automatic Term Mapping, MeSH indexing, and the Medical Text Indexer all addressed parts of the same job: connect biomedical strings, concepts, codes, documents, and relationships.</p>
+        <p>The lesson is still valid, but the validation target becomes more explicit: does UMLS get users to the right CUI, code, and string from the language they actually have? Search logs, judged query sets, public literature, source-delta manifests, vector retrieval, LLM-assisted engineering, and continuous tests now make a tight measured loop cheaper to run and maintain.</p>
+      </section>
+
+      <section>
+        <h2>Prototype Evidence</h2>
+        <p>A paired 167-paragraph evaluation compared a UMLS-only label/code baseline with the current search layer on the same queries. This is a prototype benchmark, not a final claim about every UMLS deployment, but it shows the kind of measurable improvement the process is meant to produce.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Check</th>
+                <th>UMLS-only baseline</th>
+                <th>Current prototype</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Paragraphs judged good</td>
+                <td>78/167</td>
+                <td>148/167</td>
+              </tr>
+              <tr>
+                <td>Expected CUI recall@10</td>
+                <td>88.1%</td>
+                <td>96.4%</td>
+              </tr>
+              <tr>
+                <td>Queries with all expected CUIs@10</td>
+                <td>90/167</td>
+                <td>144/167</td>
+              </tr>
+              <tr>
+                <td>Top result clinically on target</td>
+                <td>82.6%</td>
+                <td>95.2%</td>
+              </tr>
+              <tr>
+                <td>Strict success@10</td>
+                <td>45.5%</td>
+                <td>82.0%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The gains came from evidence-backed vector retrieval, active-label supplements, accepted alternatives, acronym handling, assertion handling, generic-prose demotion, lab/result ranking, procedure composition, and repeatable regression checks.</p>
+      </section>
+
+      <section>
+        <h2>Near-Term Work</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Priority</th>
+                <th>Product requirement</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Literature recall</td>
+                <td>Long-document section/chunk merge and reranking that keep secondary treatments, outcomes, biomarkers, organisms, and complications in the first result window.</td>
+              </tr>
+              <tr>
+                <td>Ambiguous abbreviations</td>
+                <td>Context-safe aliases for common clinical and literature short forms such as <code>RA</code>, <code>LVO</code>, <code>TNK</code>, <code>MT</code>, <code>NSCLC</code>, and <code>MRSA</code>.</td>
+              </tr>
+              <tr>
+                <td>Composite findings and procedures</td>
+                <td>Reviewed phrase promotion or composition for phrases such as <code>right heart strain</code>, <code>bibasilar crackles</code>, <code>suppressed TSH</code>, and <code>ultrasound-guided central venous catheter placement</code>.</td>
+              </tr>
+              <tr>
+                <td>Lab/result statements</td>
+                <td>LOINC-backed observations connected to prose values, interpretations, organisms, and trends.</td>
+              </tr>
+              <tr>
+                <td>Relationship expansion</td>
+                <td>Typed treatment, indication, complication, diagnostic, phenotype, organism, gene, and pharmacogenomic edges.</td>
+              </tr>
+              <tr>
+                <td>Assertion semantics</td>
+                <td>Separate ranking behavior for current, negated, historical, planned, uncertain, and family-history mentions.</td>
+              </tr>
+              <tr>
+                <td>Quality gates</td>
+                <td>Standing clinical smoke, literature lanes, precision audits, source-delta checks, and long-document heldout tests in the promotion path.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>Governance And Risks</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Risk or question</th>
+                <th>Control</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Source licensing may limit what a public product can use.</td>
+                <td>Public, restricted, and licensed deployment artifacts remain separate; source policy is recorded with every promoted alias, relation, and evidence record.</td>
+              </tr>
+              <tr>
+                <td>A benchmark can look good because the system was tuned to familiar examples.</td>
+                <td>Heldout query sets rotate, source-specific tests are added, long-document tests remain in place, and precision is audited alongside recall.</td>
+              </tr>
+              <tr>
+                <td>Added aliases or relationships can create false positives.</td>
+                <td>Small deltas, direct-query tests, paragraph-context tests, and rollback artifacts limit the blast radius.</td>
+              </tr>
+              <tr>
+                <td>Natural-language evidence can drift or disappear.</td>
+                <td>Source manifests, dates, hashes, and source-delta checks support re-review when sources change materially.</td>
+              </tr>
+              <tr>
+                <td>Clinical notes and local workflow data can improve search but create privacy and redistribution risks.</td>
+                <td>Licensed or local clinical data stays inside the permitted deployment; raw notes and protected derived artifacts are not published.</td>
+              </tr>
+              <tr>
+                <td>The line between UMLS content and search-layer content needs governance.</td>
+                <td>Provisional concepts, promoted aliases, ranking rules, and evidence records remain visibly separate from official source vocabularies until a review path promotes them.</td>
+              </tr>
+              <tr>
+                <td>Promotion ownership can be ambiguous.</td>
+                <td>Ownership is divided across search quality, domain meaning, and release control: a search-quality owner approves metric movement and smoke-gate results; a domain reviewer approves clinical meaning and source evidence for aliases, relationships, and provisional concepts; a release owner approves licensing, artifact separation, rollback, and public/private deployment boundaries. LLM-assisted review can prepare evidence and diffs, but cannot be the final approver.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </article>
+  </main>
+</body>
+</html>

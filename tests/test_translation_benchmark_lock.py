@@ -90,3 +90,4 @@ def test_search_quality_experiments_page_includes_translation_benchmark_panel(tm
     assert "Translation Benchmark" in panel
     assert "2/7 practice; 1/6 locked" in panel
     assert "translation_benchmark_report.html" in panel
+    assert "Current Live Gold Comparison" not in panel

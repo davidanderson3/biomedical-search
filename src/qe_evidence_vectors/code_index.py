@@ -6,6 +6,8 @@ import threading
 from pathlib import Path
 from typing import Iterable
 
+from .text import normalized_key
+
 
 CUI_RE = re.compile(r"^C\d{7}$", re.IGNORECASE)
 AUI_RE = re.compile(r"^A\d{7,8}$", re.IGNORECASE)
@@ -89,6 +91,45 @@ TTY_PRIORITY = {
     "SY": 6,
     "LLT": 7,
 }
+
+SOURCE_ATOM_SEARCH_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "by",
+    "for",
+    "from",
+    "in",
+    "is",
+    "of",
+    "on",
+    "or",
+    "patient",
+    "patients",
+    "search",
+    "source",
+    "the",
+    "to",
+    "with",
+}
+
+RXNORM_PRODUCT_TTYS = {
+    "BPCK",
+    "GPCK",
+    "SBDC",
+    "SBDF",
+    "SBDG",
+    "SCD",
+    "SCDC",
+    "SCDF",
+    "SCDG",
+}
+RXNORM_INGREDIENT_TTYS = {"IN", "MIN", "PIN"}
+LNC_OBSERVATION_TTYS = {"LC", "LN", "OSN", "DN"}
+LNC_PART_TTYS = {"CN", "LPN", "LPDN"}
+LNC_NON_OBSERVATION_CODE_PREFIXES = ("LA", "LP", "MTHU")
 
 TABLE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS code_mappings (
@@ -275,6 +316,83 @@ def _dedupe_rows(rows: Iterable[sqlite3.Row]) -> list[dict]:
         if current is None or _sort_key(row) < _sort_key(current):
             best_by_key[key] = row
     return [_row_dict(row) for row in sorted(best_by_key.values(), key=_sort_key)]
+
+
+def _source_atom_query_tokens(query: str) -> list[str]:
+    tokens = []
+    seen = set()
+    for token in normalized_key(query).split():
+        if token in SOURCE_ATOM_SEARCH_STOPWORDS:
+            continue
+        if len(token) < 2 and not any(char.isdigit() for char in token):
+            continue
+        if token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+    return tokens
+
+
+def _source_atom_row_score(row: sqlite3.Row, *, query_norm: str, tokens: list[str]) -> float:
+    label_norm = normalized_key(str(row["label"] or ""))
+    label_tokens = label_norm.split()
+    token_hits = sum(1 for token in tokens if token in label_tokens or token in label_norm)
+    coverage = token_hits / max(len(tokens), 1)
+    exact_bonus = 0.45 if label_norm == query_norm else 0.0
+    prefix_bonus = 0.18 if query_norm and label_norm.startswith(query_norm) else 0.0
+    preferred_bonus = 0.03 if str(row["ispref"] or "") == "Y" else 0.0
+    suppress_penalty = 0.50 if str(row["suppress"] or "") != "N" else 0.0
+    tty = str(row["tty"] or "").upper()
+    sab = str(row["sab"] or "").upper()
+    code = str(row["code"] or "").upper()
+    label = str(row["label"] or "")
+    vocabulary_bonus = 0.0
+    vocabulary_penalty = 0.0
+    if sab == "RXNORM":
+        if tty == "IN":
+            vocabulary_bonus = 0.45
+        elif tty == "PIN":
+            vocabulary_bonus = 0.20
+        elif tty == "MIN":
+            vocabulary_bonus = 0.10
+            if len(tokens) <= 1:
+                vocabulary_penalty += 0.25
+            if "/" in label:
+                vocabulary_penalty += 0.25
+        elif tty in RXNORM_PRODUCT_TTYS:
+            if len(tokens) <= 1:
+                vocabulary_penalty += 0.35
+            if "/" in label:
+                vocabulary_penalty += 0.20
+    elif sab == "LNC":
+        if code.startswith(LNC_NON_OBSERVATION_CODE_PREFIXES):
+            vocabulary_penalty += 0.55
+        if tty in LNC_PART_TTYS:
+            vocabulary_penalty += 0.35
+        elif tty in LNC_OBSERVATION_TTYS and looks_like_code(code):
+            vocabulary_bonus = 0.20
+        label_token_set = set(label_tokens)
+        token_set = set(tokens)
+        if "device" in label_token_set and "device" not in token_set:
+            vocabulary_penalty += 0.45
+        if "panel" in label_token_set and "panel" not in token_set:
+            vocabulary_penalty += 0.30
+        if "goal" in label_token_set and "goal" not in token_set:
+            vocabulary_penalty += 0.25
+        label_lower = label.lower()
+        if {"hemoglobin", "a1c"}.issubset(token_set) and "hemoglobin.total" in label_lower:
+            vocabulary_bonus += 0.25 if "hemoglobin.total in blood" in label_lower else 0.12
+    length_penalty = min(max(len(label_tokens) - max(len(tokens), 1), 0), 20) * 0.004
+    return (
+        coverage
+        + exact_bonus
+        + prefix_bonus
+        + preferred_bonus
+        + vocabulary_bonus
+        - vocabulary_penalty
+        - suppress_penalty
+        - length_penalty
+    )
 
 
 def build_code_index(
@@ -529,6 +647,109 @@ class CodeIndex:
         results = _dedupe_rows(rows)[:limit]
         self.cache[key] = results
         return results
+
+    def search_source_atoms(
+        self,
+        query: str,
+        *,
+        sabs: Iterable[str],
+        limit: int = 50,
+    ) -> list[dict]:
+        tokens = _source_atom_query_tokens(query)
+        sab_values = tuple(sorted({normalize_sab(sab) for sab in (sabs or []) if sab}))
+        if not tokens or not sab_values:
+            return []
+        key = ("source_atoms", normalized_key(query), sab_values, limit)
+        cached = self.cache.get(key)
+        if cached is not None:
+            return [dict(row) for row in cached]
+
+        placeholders = ",".join("?" for _ in sab_values)
+        text = str(query or "").strip()
+        label_clauses = " AND ".join("label LIKE ? COLLATE NOCASE" for _token in tokens)
+        query_limit = max(limit * 20, limit + 250)
+        rows: list[sqlite3.Row] = []
+        exact_limit = max(limit * 4, limit + 20)
+        if text:
+            rows.extend(
+                self.connection().execute(
+                    f"""
+                    SELECT cui, sab, code, scui, sdui, tty, label, ispref, suppress
+                    FROM code_mappings
+                    WHERE sab IN ({placeholders})
+                      AND suppress = 'N'
+                      AND label = ? COLLATE NOCASE
+                    LIMIT ?
+                    """,
+                    (*sab_values, text, exact_limit),
+                )
+            )
+            rows.extend(
+                self.connection().execute(
+                    f"""
+                    SELECT cui, sab, code, scui, sdui, tty, label, ispref, suppress
+                    FROM code_mappings
+                    WHERE sab IN ({placeholders})
+                      AND suppress = 'N'
+                      AND label LIKE ? COLLATE NOCASE
+                    LIMIT ?
+                    """,
+                    (*sab_values, f"{text}%", exact_limit),
+                )
+            )
+        rows.extend(
+            self.connection().execute(
+                    f"""
+                    SELECT cui, sab, code, scui, sdui, tty, label, ispref, suppress
+                    FROM code_mappings
+                    WHERE sab IN ({placeholders})
+                      AND suppress = 'N'
+                      AND {label_clauses}
+                    LIMIT ?
+                    """,
+                    (*sab_values, *(f"%{token}%" for token in tokens), query_limit),
+            )
+        )
+        query_norm = normalized_key(query)
+        best_by_code: dict[tuple[str, str], sqlite3.Row] = {}
+        for row in rows:
+            key_by_code = (str(row["sab"] or ""), str(row["code"] or "").upper())
+            current = best_by_code.get(key_by_code)
+            if current is None:
+                best_by_code[key_by_code] = row
+                continue
+            current_score = _source_atom_row_score(
+                current,
+                query_norm=query_norm,
+                tokens=tokens,
+            )
+            row_score = _source_atom_row_score(row, query_norm=query_norm, tokens=tokens)
+            if row_score > current_score or (
+                row_score == current_score and _sort_key(row) < _sort_key(current)
+            ):
+                best_by_code[key_by_code] = row
+
+        ranked = []
+        for row in best_by_code.values():
+            item = _row_dict(row)
+            item["source_atom_score"] = round(
+                _source_atom_row_score(row, query_norm=query_norm, tokens=tokens),
+                6,
+            )
+            item["matched_query_tokens"] = list(tokens)
+            ranked.append(item)
+        ranked.sort(
+            key=lambda item: (
+                -float(item.get("source_atom_score") or 0.0),
+                SAB_PRIORITY.get(str(item.get("sab") or ""), 99),
+                TTY_PRIORITY.get(str(item.get("tty") or ""), 99),
+                str(item.get("label") or "").lower(),
+                str(item.get("code") or ""),
+            )
+        )
+        results = ranked[:limit]
+        self.cache[key] = [dict(row) for row in results]
+        return [dict(row) for row in results]
 
     def lookup_code(
         self,

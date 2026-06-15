@@ -1060,23 +1060,34 @@
       ]
     },
     {
-      "id": "full_pubmed_bulk_ingest",
-      "label": "Full PubMed baseline/update bulk ingest",
+      "id": "targeted_pubmed_weakness_acquisition",
+      "label": "Targeted PubMed weakness acquisition and promotion",
       "status_if_incomplete": "planned",
+      "effort_weight": 12.0,
+      "phase": "Evidence acquisition",
+      "why": "Adds PubMed evidence only for benchmarked query weaknesses instead of expanding arbitrary recent shards.",
       "artifacts": [
         {
-          "path": "build/scaling_runs/full_pubmed_ingest.marker",
+          "path": "config/search_quality_targeted_pubmed_weaknesses.tsv",
+          "kind": "tsv",
+          "min_rows": 1
+        },
+        {
+          "path": "build/scaling_runs/targeted_pubmed_weakness_acquisition/summary.json",
           "kind": "file"
         }
       ]
     },
     {
-      "id": "semantic_embeddings",
-      "label": "Full semantic embedding pass for changed CUI/view docs",
+      "id": "targeted_semantic_embeddings",
+      "label": "Targeted semantic embedding pass for promoted weakness docs",
       "status_if_incomplete": "planned",
+      "effort_weight": 8.0,
+      "phase": "Embedding",
+      "why": "Embeds only documents promoted from targeted weakness work so ranking fixes are measured before broader ingest.",
       "artifacts": [
         {
-          "path": "build/scaling_runs/full_semantic_embeddings.marker",
+          "path": "build/scaling_runs/targeted_semantic_embeddings.marker",
           "kind": "file"
         }
       ]

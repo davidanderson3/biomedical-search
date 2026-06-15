@@ -230,16 +230,14 @@ PRODUCT_ORDER = {
     "pubmed": 0,
     "pmc_oa": 1,
     "europepmc": 2,
-    "pubtator3": 3,
-    "dailymed": 4,
-    "medlineplus": 5,
-    "medlineplus_genetics": 6,
-    "ncbi_bookshelf_oa": 7,
-    "nci": 8,
-    "fda": 9,
-    "cdc": 10,
-    "niddk": 11,
-    "clinicaltrials_gov": 12,
+    "dailymed": 3,
+    "medlineplus": 4,
+    "medlineplus_genetics": 5,
+    "ncbi_bookshelf_oa": 6,
+    "nci": 7,
+    "fda": 8,
+    "cdc": 9,
+    "niddk": 10,
     "hpo": 13,
     "mondo": 14,
     "umls": 15,
@@ -251,6 +249,8 @@ PRODUCT_ORDER = {
     "wikipedia": 21,
     "wikimedia": 22,
     "open_image": 23,
+    "clinicaltrials_gov": 24,
+    "pubtator3": 25,
 }
 
 CROSS_SOURCE_PRODUCT_WEIGHT: dict[str, float] = {
@@ -260,7 +260,6 @@ CROSS_SOURCE_PRODUCT_WEIGHT: dict[str, float] = {
     "dailymed": 3.0,
     "medlineplus": 2.75,
     "medlineplus_genetics": 2.75,
-    "clinicaltrials_gov": 1.5,
     "ncbi_bookshelf_oa": 2.5,
     "nci": 2.25,
     "fda": 2.25,
@@ -419,9 +418,9 @@ PRODUCT_REVIEW: dict[str, dict[str, str]] = {
         "next": "Define the OA ingest scope, article license filters, deduplication against PubMed/Europe PMC, and passage-level relevance evaluation.",
     },
     "pubtator3": {
-        "why": "NCBI literature-mined biomedical entity and relation annotations for PubMed and PMC content.",
-        "evidence": "Current artifacts are a small relation sample from relation2pubtator3.gz, mapped to UMLS CUIs when possible and stored as relationship-edge evidence.",
-        "next": "Evaluate the sampled relationship edges, decide which relation/entity types improve search, then expand with explicit caps and monthly refresh metadata.",
+        "why": "Opt-in candidate discovery for biomedical entity and relation annotations, not a default evidence source.",
+        "evidence": "Current artifacts are a 100-row automated relation sample from relation2pubtator3.gz, mapped to UMLS CUIs when possible and stored as relationship-edge candidates.",
+        "next": "Do not expand by default. Reintroduce only after a measured gap needs relation candidates, the candidates are validated against PubMed/PMC evidence, and ablation shows no default-result drift.",
     },
     "umls": {
         "why": "Core terminology product for CUI lookup, labels, synonyms, source vocabulary codes, semantic types, definitions, and relationship context.",
@@ -439,9 +438,9 @@ PRODUCT_REVIEW: dict[str, dict[str, str]] = {
         "next": "Pin the MONDO release, validate disease synonym and relationship coverage, and check disease-name fallbacks used in public search results.",
     },
     "clinicaltrials_gov": {
-        "why": "Useful only when restricted to posted trial outcome results. Trial registration, recruitment, eligibility, and planned endpoint text are context, not evidence that an intervention works.",
+        "why": "Opt-in candidate source useful only when restricted to posted trial outcome results. Trial registration, recruitment, eligibility, and planned endpoint text are context, not evidence that an intervention works.",
         "evidence": "Current artifacts may include legacy registry-context subsets; evidence-bearing rebuilds should use posted outcome-result fields from studies with hasResults and outcomeMeasuresModule.",
-        "next": "Rebuild the sample in outcomes-only mode, exclude protocol-only studies from ranking evidence, and evaluate whether extracted outcome values improve treatment and intervention queries.",
+        "next": "Do not load by default. Rebuild only in outcomes-only mode, exclude protocol-only studies from ranking evidence, and promote only if ablation improves a measured treatment/intervention gap.",
     },
     "dailymed": {
         "why": "Public SPL drug-label source for medications, indications, contraindications, warnings, adverse reactions, and dosage context.",
@@ -585,9 +584,9 @@ PRODUCT_QUALITY: dict[str, dict[str, str]] = {
         "reason": "Open-access full text can be strong passage evidence; current ingest is topic/chunk limited.",
     },
     "pubtator3": {
-        "label": "Literature-mined / sample",
-        "level": "quality_medium",
-        "reason": "NCBI automated relation annotations are high-value candidates, but they need evaluation before being treated as reviewed relationship evidence.",
+        "label": "Candidate stub",
+        "level": "quality_needs_review",
+        "reason": "The local PubTator3 artifact is a small automated relation sample; use it only for opt-in candidate discovery after validation.",
     },
     "umls": {
         "label": "Reference",
@@ -1108,7 +1107,7 @@ def status_for_bundle(key: str, sources: Counter) -> tuple[str, list[str]]:
         notes.append("Citation-derived enrichment snapshot; evaluate separately from primary evidence.")
         return "enrichment_snapshot", notes
     if "pubtator" in text:
-        notes.append("PubTator3 relation sample; useful for relationship-evidence evaluation, not systematic coverage yet.")
+        notes.append("PubTator3 relation-candidate sample; opt-in stub, not default evidence.")
         return "subset_demo", notes
     if any(source in source_names for source in {"hpo", "mondo"}) or text.startswith(("hpo_", "mondo_")):
         notes.append("Ontology/reference text, useful for normalization but not real-world evidence.")
@@ -1644,7 +1643,7 @@ def product_status(product: ProductStats) -> tuple[str, list[str]]:
         notes.append("Public literature product currently represented by topic/chunk harvests, not a complete baseline ingest.")
         return "topic_harvest", notes
     if key == "pubtator3":
-        notes.append("Small PubTator3 relation sample; relationship edges need evaluation before expansion.")
+        notes.append("Small PubTator3 relation-candidate sample; keep opt-in until validated against PubMed/PMC for a measured gap.")
         return "subset_demo", notes
     if key == "clinicaltrials_gov":
         notes.append("Use for posted outcome-result evidence only; protocol, eligibility, and recruitment text should remain context.")
@@ -1964,9 +1963,14 @@ def h(value: Any) -> str:
     return html.escape(str(value if value is not None else ""), quote=True)
 
 
-def metric_card(label: str, value: str, detail: str = "") -> str:
+def css_token(value: Any) -> str:
+    token = re.sub(r"[^a-z0-9_-]+", "-", str(value or "").strip().lower()).strip("-")
+    return token or "item"
+
+
+def metric_card(label: str, value: str, detail: str = "", tone: str = "neutral") -> str:
     return (
-        '<div class="metric">'
+        f'<div class="metric metric-{h(css_token(tone))}">'
         f"<div class=\"metric-label\">{h(label)}</div>"
         f"<div class=\"metric-value\">{h(value)}</div>"
         f"<div class=\"metric-detail\">{h(detail)}</div>"
@@ -1990,6 +1994,497 @@ def quality_cell(quality: dict[str, Any]) -> str:
     )
 
 
+def quality_block(quality: dict[str, Any]) -> str:
+    label = quality.get("label") or "Needs review"
+    level = quality.get("level") or "quality_needs_review"
+    reason = quality.get("reason") or ""
+    return (
+        '<div class="quality-block">'
+        f'<span class="quality-badge {h(level)}">{h(label)}</span>'
+        f'<div class="muted small">{h(reason)}</div>'
+        "</div>"
+    )
+
+
+def compact_stat(label: str, value: Any) -> str:
+    return (
+        '<div class="compact-stat">'
+        f'<span class="compact-stat-value">{fmt_int(value)}</span>'
+        f'<span class="compact-stat-label">{h(label)}</span>'
+        "</div>"
+    )
+
+
+def stage_chips(product: dict[str, Any]) -> str:
+    stages = [
+        ("corpus_rows", "Corpus"),
+        ("evidence_rows", "Evidence"),
+        ("document_rows", "Docs"),
+        ("vector_rows", "Vectors"),
+    ]
+    chips = []
+    active_count = 0
+    for key, label in stages:
+        active = numeric_count(product.get(key)) > 0
+        active_count += int(active)
+        state = "active" if active else "inactive"
+        chips.append(f'<span class="stage-chip {state}">{h(label)}</span>')
+    if numeric_count(product.get("index_rows")) > 0:
+        chips.append('<span class="stage-chip active reference">Index</span>')
+    readiness = (
+        "Reference index"
+        if numeric_count(product.get("index_rows")) > 0 and active_count == 0
+        else f"{active_count}/4 artifact stages"
+    )
+    return (
+        '<div class="stage-row">'
+        f'<span class="readiness-label">{h(readiness)}</span>'
+        f'<div class="stage-chips">{"".join(chips)}</div>'
+        "</div>"
+    )
+
+
+def product_bucket(product: dict[str, Any]) -> str:
+    key = str(product.get("key") or "")
+    status = str(product.get("status") or "")
+    if key in {"umls", "hpo", "mondo"} or status == "ontology_reference":
+        return "reference"
+    if key in {
+        "clinicaltrials_gov",
+        "openalex",
+        "pubtator3",
+        "local_search_log",
+        "reviewed_notes",
+        "extension",
+    } or status in {
+        "enrichment_snapshot",
+        "unclassified",
+    }:
+        return "governance"
+    return "evidence"
+
+
+def product_bucket_label(bucket: str) -> str:
+    return {
+        "evidence": "Primary and Public Evidence Sources",
+        "reference": "Reference Systems",
+        "governance": "Enrichment and Review Inputs",
+    }.get(bucket, bucket.replace("_", " ").title())
+
+
+def product_use_guide(key: str) -> dict[str, str]:
+    guides = {
+        "pubmed": {
+            "use": "Literature-backed biomedical concepts, associations, guidelines, case reports, and PMID-level provenance.",
+            "avoid": "Pure synonym/display problems, patient-language rewrites, or cases where literature exists but ranking suppresses it.",
+        },
+        "pmc_oa": {
+            "use": "Full-text passages when abstracts are too thin, especially mechanisms, long-document mentions, and detailed clinical context.",
+            "avoid": "A complete source-coverage claim until OA scope, license filters, and deduplication are explicit.",
+        },
+        "europepmc": {
+            "use": "Supplemental literature discovery and open full-text opportunities when PubMed coverage is thin.",
+            "avoid": "Treating the current topic harvest as a systematic Europe PMC baseline.",
+        },
+        "pubtator3": {
+            "use": "Opt-in candidate biomedical entity and relation edges after a measured gap exists and literature-backed validation is planned.",
+            "avoid": "Default search evidence, unreviewed causal/treatment-effect claims, or ranking claims from automated annotations alone.",
+        },
+        "dailymed": {
+            "use": "Drug labels, indications, contraindications, warnings, adverse reactions, dosage, and SPL provenance.",
+            "avoid": "Comparative efficacy or off-label clinical effectiveness questions.",
+        },
+        "medlineplus": {
+            "use": "Consumer-language condition, drug, procedure, and patient-facing context.",
+            "avoid": "Technical relationship proof when terminology or literature evidence is the actual gap.",
+        },
+        "medlineplus_genetics": {
+            "use": "Gene, condition, inheritance, variant, and patient-readable genetics context.",
+            "avoid": "General disease retrieval gaps that HPO, MONDO, or PubMed should cover first.",
+        },
+        "ncbi_bookshelf_oa": {
+            "use": "Review-style background and chapter passages when source text needs more context than an abstract.",
+            "avoid": "Fast-moving or article-specific claims without checking primary literature.",
+        },
+        "cdc": {
+            "use": "Public-health, prevention, epidemiology, infectious disease, and population guidance context.",
+            "avoid": "Individual treatment efficacy or detailed terminology normalization.",
+        },
+        "fda": {
+            "use": "Regulatory, safety, device, approval, label, and public agency context.",
+            "avoid": "Clinical outcome claims unless the source is an FDA result or label section suited to that claim.",
+        },
+        "nci": {
+            "use": "Cancer disease, staging, treatment, terminology, and oncology reference context.",
+            "avoid": "Non-oncology source gaps or unreviewed general health content.",
+        },
+        "niddk": {
+            "use": "Digestive, kidney, endocrine, metabolic, diabetes, and urologic patient/reference pages.",
+            "avoid": "Broad biomedical gaps that should be routed through PubMed or terminology first.",
+        },
+        "clinicaltrials_gov": {
+            "use": "Posted outcome-result fields only when a measured treatment/intervention gap cannot be handled by UMLS, DailyMed, MedlinePlus, or PubMed/PMC.",
+            "avoid": "Default source evidence, protocol, eligibility, recruitment, or planned endpoint text as proof that an intervention works.",
+        },
+        "hpo": {
+            "use": "Phenotype labels, synonyms, definitions, disease-phenotype context, and normalization.",
+            "avoid": "Claims about real-world prevalence, treatment, or outcomes.",
+        },
+        "mondo": {
+            "use": "Disease labels, synonyms, hierarchy, xrefs, and disease normalization.",
+            "avoid": "Primary clinical evidence or article-level support.",
+        },
+        "umls": {
+            "use": "CUI lookup, labels, source vocabulary codes, semantic types, definitions, and relationship context.",
+            "avoid": "Public source evidence claims, outcome evidence, or restricted-label display without policy checks.",
+        },
+        "openalex": {
+            "use": "Citation and metadata enrichment to decide which literature to acquire next.",
+            "avoid": "Primary biomedical evidence. Use it to point to PubMed/PMC, not to replace them.",
+        },
+        "local_search_log": {
+            "use": "Turning realistic query pressure into reviewed benchmarks and expected-source checks.",
+            "avoid": "Treating query text as biomedical evidence.",
+        },
+        "reviewed_notes": {
+            "use": "Human review observations once reviewer, date, source artifact, and decision labels are attached.",
+            "avoid": "Unaudited source-quality claims.",
+        },
+        "extension": {
+            "use": "Reviewed local additions when public-safe provenance and ownership are explicit.",
+            "avoid": "Filling biomedical knowledge gaps without a source registry and expiration/review date.",
+        },
+    }
+    return guides.get(key, {"use": "Inspect source role, quality, and child artifacts before selecting it.", "avoid": "Do not use without source-specific provenance and acceptance criteria."})
+
+
+def product_card(product: dict[str, Any], drilldown_html: str) -> str:
+    review = product.get("source_review") or {}
+    quality = product.get("source_quality") or {}
+    bucket = product_bucket(product)
+    guide = product_use_guide(str(product.get("key") or ""))
+    notes = " ".join(product.get("notes") or [])
+    file_count = sum(len(paths) for paths in product.get("files", {}).values())
+    summary = f"{fmt_int(product.get('bundle_count'))} bundles, {fmt_int(file_count)} files"
+    if product.get("index_artifacts"):
+        summary += f", {fmt_int(len(product.get('index_artifacts') or []))} indexes"
+    notes_html = (
+        f'<div class="product-note"><strong>Status notes:</strong> {h(notes)}</div>'
+        if notes
+        else ""
+    )
+    artifact_detail = drilldown_html or '<div class="muted small">No child artifact detail detected.</div>'
+    return (
+        f'<article class="product-card product-{h(css_token(product.get("status")))} bucket-{h(bucket)}">'
+        '<div class="product-card-head">'
+        '<div>'
+        f'<h3>{h(product.get("label"))}</h3>'
+        f'<div class="muted small">{h(product.get("key"))}</div>'
+        "</div>"
+        f"{status_badge(str(product.get('status') or 'unclassified'))}"
+        "</div>"
+        f"{quality_block(quality)}"
+        '<div class="compact-stats">'
+        f"{compact_stat('vectors', product.get('vector_rows'))}"
+        f"{compact_stat('corpus', product.get('corpus_rows'))}"
+        f"{compact_stat('evidence', product.get('evidence_rows'))}"
+        f"{compact_stat('docs', product.get('document_rows'))}"
+        f"{compact_stat('index', product.get('index_rows'))}"
+        "</div>"
+        f"{stage_chips(product)}"
+        '<div class="product-copy-grid">'
+        f'<div><span class="copy-label">Use when</span><p>{h(guide.get("use"))}</p></div>'
+        f'<div><span class="copy-label">Do not use when</span><p>{h(guide.get("avoid"))}</p></div>'
+        f'<div><span class="copy-label">Next acquisition move</span><p>{h(review.get("next"))}</p></div>'
+        "</div>"
+        f'<details class="source-role"><summary>Why this source is in the inventory</summary><p>{h(review.get("why"))}</p><p>{h(review.get("evidence"))}</p></details>'
+        f"{notes_html}"
+        '<div class="artifact-panel">'
+        f'<div class="artifact-heading">Artifact detail: {h(summary)}</div>'
+        f"{artifact_detail}"
+        "</div>"
+        "</article>"
+    )
+
+
+def status_distribution(summary: dict[str, Any]) -> str:
+    status_counts = summary.get("status_counts") or {}
+    total = sum(numeric_count(value) for value in status_counts.values()) or 1
+    segments = []
+    legends = []
+    for status, _order in sorted(STATUS_ORDER.items(), key=lambda item: item[1]):
+        count = numeric_count(status_counts.get(status))
+        if not count:
+            continue
+        pct = count / total * 100
+        segments.append(
+            f'<span class="bar-segment {h(css_token(status))}" style="width: {pct:.2f}%"></span>'
+        )
+        legends.append(
+            '<div class="status-legend-item">'
+            f"{status_badge(status)}"
+            f"<span>{fmt_int(count)}</span>"
+            "</div>"
+        )
+    return (
+        '<section class="status-panel">'
+        '<div class="section-head">'
+        '<div><h2>Coverage Posture</h2>'
+        '<p class="muted">How detected products are distributed by readiness and source role.</p></div>'
+        "</div>"
+        f'<div class="status-bar">{"".join(segments)}</div>'
+        f'<div class="status-legend">{"".join(legends)}</div>'
+        "</section>"
+    )
+
+
+def source_decision_gate(summary: dict[str, Any], products: list[dict[str, Any]]) -> str:
+    status_counts = summary.get("status_counts") or {}
+    partial_count = numeric_count(status_counts.get("subset_demo")) + numeric_count(status_counts.get("topic_harvest"))
+    systematic_names = ", ".join(
+        h(product.get("label"))
+        for product in products
+        if product.get("status") in {"systematic_pilot", "systematic_snapshot"}
+    )
+    return f"""
+    <section class="decision-panel">
+      <div class="section-head">
+        <div>
+          <h2>Evidence Acquisition Gate</h2>
+          <p class="muted">Use this page only after a concrete search weakness has been reproduced. The first decision is whether more source evidence is actually the fix.</p>
+        </div>
+      </div>
+      <div class="decision-grid gate-grid">
+        <div class="decision-card priority-review">
+          <span class="decision-label">Stop first</span>
+          <strong>Not an evidence path</strong>
+          <p>If the right source appears but is ranked low, filtered out, poorly hydrated, mistranslated, or mislabeled in evaluation, fix search behavior before acquiring evidence.</p>
+        </div>
+        <div class="decision-card priority-high">
+          <span class="decision-label">Evidence path</span>
+          <strong>Acquire or rebuild</strong>
+          <p>Use source acquisition when the weakness lacks a credible source row, has only reference/enrichment support, or depends on a source slice that is known to be partial.</p>
+        </div>
+        <div class="decision-card priority-medium">
+          <span class="decision-label">Authority rule</span>
+          <strong>Start narrow</strong>
+          <p>Prefer the most authoritative source for the weakness, preserve provenance, and add a focused query or judgment so the new evidence can prove its value.</p>
+        </div>
+        <div class="decision-card priority-eval">
+          <span class="decision-label">Current coverage</span>
+          <strong>{fmt_int(summary.get('systematic_product_count'))} systematic / {fmt_int(partial_count)} partial</strong>
+          <p>Systematic products: {systematic_names or "none detected"}. Treat topic and subset products as candidates, not coverage claims.</p>
+        </div>
+      </div>
+    </section>
+    """
+
+
+def coding_vs_evidence_decision() -> str:
+    cards = [
+        {
+            "tone": "code",
+            "label": "Choose coding change",
+            "title": "The right evidence exists but search mishandles it",
+            "checks": [
+                "Correct source rows appear below the fold or behind worse rows.",
+                "Hydration, filters, public-output rules, language handling, or display labels suppress the right result.",
+                "The weakness is reproducible with existing artifacts and can be fixed by ranking, parsing, indexing, or API/UI behavior.",
+            ],
+            "action": "Patch code or configuration, then rerun the focused query and regression/smoke checks.",
+        },
+        {
+            "tone": "evidence",
+            "label": "Choose evidence acquisition",
+            "title": "The source material is missing, too thin, or not trustworthy enough",
+            "checks": [
+                "No credible source row exists for the expected concept, relation, passage, or source family.",
+                "Only ontology, enrichment, local notes, or protocol text supports a claim that needs primary/public evidence.",
+                "The current source slice is explicitly topic/subset/demo scale and the weakness requires broader or different coverage.",
+            ],
+            "action": "Acquire or rebuild the narrowest authoritative source slice, preserve provenance, and add a focused judgment.",
+        },
+        {
+            "tone": "dual",
+            "label": "Choose dual path",
+            "title": "Both evidence and code are blocking the weakness",
+            "checks": [
+                "The source is partially present but incomplete, and ranking/filtering also fails on the present rows.",
+                "A new source slice will not prove useful unless search behavior changes at the same time.",
+                "Evaluation cannot distinguish source absence from retrieval failure without a focused test case.",
+            ],
+            "action": "State both decisions, sequence the lower-risk fix first, and keep acquisition scoped to the reproduced weakness.",
+        },
+    ]
+    card_html = []
+    for card in cards:
+        checks = "".join(f"<li>{h(check)}</li>" for check in card["checks"])
+        card_html.append(
+            f'<article class="boundary-card boundary-{h(card["tone"])}">'
+            f'<span class="decision-label">{h(card["label"])}</span>'
+            f'<h3>{h(card["title"])}</h3>'
+            f"<ul>{checks}</ul>"
+            f'<p><strong>Default action:</strong> {h(card["action"])}</p>'
+            "</article>"
+        )
+    return (
+        '<section class="boundary-section">'
+        '<div class="section-head">'
+        '<div><h2>Coding Change vs Evidence Acquisition</h2>'
+        '<p class="muted">When I work a search weakness, I will name the path before changing code or acquiring sources.</p></div>'
+        "</div>"
+        f'<div class="boundary-grid">{"".join(card_html)}</div>'
+        '<div class="decision-format">'
+        '<span class="decision-label">Report format</span>'
+        '<p><strong>Decision:</strong> coding change, evidence acquisition, or dual path. '
+        '<strong>Reason:</strong> the observed weakness and the evidence/code signal. '
+        '<strong>Verification:</strong> the query, artifact, or test that proves the choice.</p>'
+        "</div>"
+        "</section>"
+    )
+
+
+def weakness_router() -> str:
+    routes = [
+        {
+            "weakness": "Term, synonym, or CUI is missing",
+            "start": "UMLS, HPO, MONDO",
+            "then": "Public-safe label policy and display-name checks",
+            "use": "The concept fails lookup or normalization before ranking has a chance.",
+            "avoid": "The concept is retrieved but loses after ranking, filters, or UI hydration.",
+        },
+        {
+            "weakness": "Biomedical concept lacks article-level support",
+            "start": "PubMed",
+            "then": "PMC Open Access or Europe PMC for full text",
+            "use": "The weakness needs PMID provenance, disease/drug/gene/procedure literature, or guideline/case-report support.",
+            "avoid": "The issue is consumer wording, regulatory wording, or a known long-document ranking failure.",
+        },
+        {
+            "weakness": "Abstracts are too thin or long-document mentions are missed",
+            "start": "PMC Open Access",
+            "then": "NCBI Bookshelf OA for review-style passages",
+            "use": "The needed evidence is likely in body text, mechanisms, paragraphs, tables, or review chapters.",
+            "avoid": "A short abstract already contains the evidence and the ranker is failing to surface it.",
+        },
+        {
+            "weakness": "Drug label, warning, contraindication, or dosage context is weak",
+            "start": "DailyMed",
+            "then": "FDA, then PubMed for supporting literature",
+            "use": "The expected answer depends on SPL label sections or public regulatory context.",
+            "avoid": "The claim is comparative efficacy or off-label outcome evidence.",
+        },
+        {
+            "weakness": "Patient-language query does not match clinical terminology",
+            "start": "MedlinePlus",
+            "then": "MedlinePlus Genetics for genetic language",
+            "use": "The result should bridge consumer phrasing to a known condition, drug, procedure, or symptom.",
+            "avoid": "The weakness is a missing CUI, ontology relation, or article-level biomedical proof.",
+        },
+        {
+            "weakness": "Genetics, inheritance, gene-condition, or phenotype context is weak",
+            "start": "MedlinePlus Genetics",
+            "then": "HPO, MONDO, PubMed",
+            "use": "The query depends on gene names, inherited conditions, phenotypes, or patient-readable genetics context.",
+            "avoid": "The weakness is general disease coverage without a genetics angle.",
+        },
+        {
+            "weakness": "Cancer disease, staging, or oncology treatment context is weak",
+            "start": "NCI",
+            "then": "PubMed or PMC OA for literature support",
+            "use": "The expected source should be cancer-specific and public/authoritative.",
+            "avoid": "The topic is not oncology-specific or only needs terminology normalization.",
+        },
+        {
+            "weakness": "Public health, prevention, epidemiology, or population guidance is weak",
+            "start": "CDC",
+            "then": "NIDDK, FDA, or PubMed depending on domain",
+            "use": "The weakness is guidance, prevention, surveillance, outbreak, or population-facing context.",
+            "avoid": "The expected answer is individual treatment efficacy or terminology lookup.",
+        },
+        {
+            "weakness": "Treatment effect or trial-result evidence is weak",
+            "start": "ClinicalTrials.gov outcomes only",
+            "then": "PubMed randomized trials or guidelines",
+            "use": "Posted outcome results can answer the weakness and protocol-only text is excluded.",
+            "avoid": "Eligibility, recruitment, planned endpoints, or registry text would be the only available support.",
+        },
+        {
+            "weakness": "Relationship edge or co-mention is weak",
+            "start": "PubTator3 as candidate discovery",
+            "then": "PubMed or PMC OA validation",
+            "use": "The weakness is an entity/relation candidate that should be tested against literature evidence.",
+            "avoid": "Automated annotation alone would become the final source of truth.",
+        },
+        {
+            "weakness": "Need to prioritize what literature to acquire next",
+            "start": "OpenAlex",
+            "then": "PubMed or PMC OA acquisition",
+            "use": "Citation metadata can identify high-value gaps or missing papers.",
+            "avoid": "Using citation metadata as primary biomedical evidence.",
+        },
+        {
+            "weakness": "Real query pressure or reviewer observation is unclear",
+            "start": "Local Search Logs and Reviewed Snippets",
+            "then": "Convert to benchmark rows before source acquisition",
+            "use": "The weakness needs a reproducible query, expected concept, and expected source family.",
+            "avoid": "Treating logs or notes as source evidence.",
+        },
+    ]
+    route_cards = []
+    for route in routes:
+        route_cards.append(
+            '<article class="router-card">'
+            f'<h3>{h(route["weakness"])}</h3>'
+            '<div class="route-pair">'
+            f'<span>Start with</span><strong>{h(route["start"])}</strong>'
+            "</div>"
+            '<div class="route-pair">'
+            f'<span>Then check</span><strong>{h(route["then"])}</strong>'
+            "</div>"
+            f'<p><strong>Use when:</strong> {h(route["use"])}</p>'
+            f'<p><strong>Avoid when:</strong> {h(route["avoid"])}</p>'
+            "</article>"
+        )
+    return (
+        '<section class="router-section">'
+        '<div class="section-head">'
+        '<div><h2>Weakness to Source Router</h2>'
+        '<p class="muted">Pick the source family from the observed weakness, not from whichever artifact is easiest to fetch.</p></div>'
+        "</div>"
+        f'<div class="router-grid">{"".join(route_cards)}</div>'
+        "</section>"
+    )
+
+
+def evaluation_cards(evaluations: list[dict[str, Any]]) -> str:
+    cards = []
+    for row in evaluations[:6]:
+        top1 = row.get("top1_accuracy")
+        if top1 is None and row.get("queries_with_relevant_top1") is not None and row.get("queries"):
+            try:
+                top1 = float(row["queries_with_relevant_top1"]) / float(row["queries"])
+            except (TypeError, ValueError, ZeroDivisionError):
+                top1 = None
+        primary_metric = fmt_pct(row.get("mean_weighted_p5")) or fmt_pct(top1) or fmt_pct(row.get("mean_mrr")) or "n/a"
+        cards.append(
+            '<article class="eval-card">'
+            '<div class="eval-card-head">'
+            f'<strong>{h(row.get("run"))}</strong>'
+            f'<span class="badge eval-kind">{h(row.get("kind"))}</span>'
+            "</div>"
+            '<div class="eval-metrics">'
+            f'{compact_stat("queries", row.get("queries"))}'
+            f'{compact_stat("judgments", row.get("judgments"))}'
+            f'<div class="compact-stat"><span class="compact-stat-value">{h(primary_metric)}</span><span class="compact-stat-label">primary</span></div>'
+            f'<div class="compact-stat"><span class="compact-stat-value">{fmt_pct(row.get("mean_mrr")) or "n/a"}</span><span class="compact-stat-label">MRR</span></div>'
+            "</div>"
+            f'<code>{h(row.get("path"))}</code>'
+            "</article>"
+        )
+    return "".join(cards)
+
+
 def write_html(path: Path, payload: dict[str, Any]) -> None:
     summary = payload["summary"]
     products = payload["products"]
@@ -1998,13 +2493,16 @@ def write_html(path: Path, payload: dict[str, Any]) -> None:
 
     cards = "\n".join(
         [
-            metric_card("Products", fmt_int(summary["product_count"]), f"{fmt_int(summary['ready_product_count'])} complete product pipelines"),
-            metric_card("Concept Vectors", fmt_int(summary["vector_rows"]), "All detected vector embeddings"),
-            metric_card("Reference Indexes", fmt_int(summary["index_rows"]), "Detected SQLite index entries"),
-            metric_card("Evaluation Runs", fmt_int(summary["evaluation_run_count"]), f"{fmt_int(summary['judgment_rows'])} saved judgments"),
+            metric_card("Source Products", fmt_int(summary["product_count"]), f"{fmt_int(summary['ready_product_count'])} complete pipelines", "blue"),
+            metric_card("Source Bundles", fmt_int(summary["bundle_count"]), f"{fmt_int(summary['ready_bundle_count'])} complete artifact chains", "green"),
+            metric_card("Evidence Rows", fmt_int(summary["evidence_rows"]), f"{fmt_int(summary['systematic_evidence_rows'])} systematic rows", "amber"),
+            metric_card("Concept Vectors", fmt_int(summary["vector_rows"]), "Candidate retrieval vectors", "violet"),
+            metric_card("Reference Indexes", fmt_int(summary["index_rows"]), "Terminology/reference entries", "slate"),
+            metric_card("Judged Runs", fmt_int(summary["evaluation_run_count"]), f"{fmt_int(summary['judgment_rows'])} saved judgments", "red"),
         ]
     )
 
+    product_cards_by_bucket: dict[str, list[str]] = defaultdict(list)
     product_rows = []
     for product in products:
         notes = " ".join(product.get("notes") or [])
@@ -2059,6 +2557,7 @@ def write_html(path: Path, payload: dict[str, Any]) -> None:
         drilldown_html = drilldown
         if notes:
             drilldown_html = f"<div class=\"muted small status-notes\"><strong>Status notes:</strong> {h(notes)}</div>{drilldown}"
+        product_cards_by_bucket[product_bucket(product)].append(product_card(product, drilldown))
         product_rows.append(
             "<tr>"
             f"<td><strong>{h(product['label'])}</strong><div class=\"muted small\">{h(product['key'])}</div></td>"
@@ -2094,60 +2593,463 @@ def write_html(path: Path, payload: dict[str, Any]) -> None:
             "</tr>"
         )
 
+    product_sections = []
+    for bucket in ("evidence", "reference", "governance"):
+        bucket_cards = product_cards_by_bucket.get(bucket) or []
+        if not bucket_cards:
+            continue
+        product_sections.append(
+            '<section class="product-section">'
+            '<div class="section-head">'
+            f'<div><h2>{h(product_bucket_label(bucket))}</h2>'
+            f'<p class="muted">{fmt_int(len(bucket_cards))} products in this lane.</p></div>'
+            "</div>"
+            f'<div class="product-grid">{"".join(bucket_cards)}</div>'
+            "</section>"
+        )
+
     body = f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Evidence Progress Dashboard</title>
+  <title>Evidence Source Router</title>
   <style>
     :root {{
       color-scheme: light;
-      --bg: #f6f7f8;
+      --bg: #f4f6f9;
       --surface: #ffffff;
-      --line: #d9dee3;
-      --text: #17202a;
-      --muted: #66717d;
-      --green: #157347;
+      --surface-2: #f8fafc;
+      --line: #d8e0ea;
+      --line-strong: #b9c5d3;
+      --text: #16212f;
+      --muted: #5d6877;
+      --green: #187349;
+      --green-soft: #e8f5ee;
       --amber: #9a6200;
+      --amber-soft: #fff4df;
       --red: #b42318;
-      --blue: #1f5f99;
-      --violet: #6a4c93;
+      --red-soft: #fdeceb;
+      --blue: #145ea8;
+      --blue-soft: #e8f2fc;
+      --violet: #65459b;
+      --violet-soft: #f1ecf8;
+      --slate-soft: #eef2f6;
+      --shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
     }}
     * {{ box-sizing: border-box; }}
     body {{
       margin: 0;
       background: var(--bg);
       color: var(--text);
-      font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 14px/1.48 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }}
-    main {{ max-width: 1320px; margin: 0 auto; padding: 24px; }}
-    h1 {{ font-size: 28px; margin: 0 0 4px; letter-spacing: 0; }}
-    h2 {{ font-size: 18px; margin: 0 0 12px; letter-spacing: 0; }}
-    .top {{ display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; margin-bottom: 18px; }}
+    main {{ width: min(1480px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 48px; }}
+    h1, h2, h3, p {{ margin-top: 0; letter-spacing: 0; }}
+    h1 {{ font-size: 30px; line-height: 1.1; margin-bottom: 6px; }}
+    h2 {{ font-size: 18px; line-height: 1.2; margin-bottom: 4px; }}
+    h3 {{ font-size: 15px; line-height: 1.25; margin-bottom: 4px; }}
+    p {{ margin-bottom: 0; }}
+    a {{ color: var(--blue); }}
+    .top {{
+      align-items: flex-end;
+      display: flex;
+      gap: 18px;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }}
+    .top nav {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-bottom: 8px;
+    }}
+    .top nav a {{
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: #314156;
+      font-size: 12px;
+      font-weight: 750;
+      padding: 5px 9px;
+      text-decoration: none;
+    }}
     .muted {{ color: var(--muted); }}
     .small {{ font-size: 12px; }}
+    .eyebrow {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }}
     .cards {{
       display: grid;
-      grid-template-columns: repeat(7, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 10px;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }}
-    .metric, section {{
+    .metric,
+    section,
+    .product-card,
+    .eval-card {{
       background: var(--surface);
       border: 1px solid var(--line);
       border-radius: 8px;
+      box-shadow: var(--shadow);
     }}
-    .metric {{ padding: 12px; min-height: 96px; }}
-    .metric-label {{ color: var(--muted); font-size: 12px; text-transform: uppercase; }}
-    .metric-value {{ font-size: 28px; font-weight: 700; margin-top: 6px; }}
-    .metric-detail {{ color: var(--muted); font-size: 12px; margin-top: 4px; }}
-    section {{ padding: 14px; margin-bottom: 16px; }}
+    .metric {{
+      min-height: 96px;
+      overflow: hidden;
+      padding: 13px;
+      position: relative;
+    }}
+    .metric::before {{
+      content: "";
+      display: block;
+      height: 4px;
+      left: 0;
+      position: absolute;
+      right: 0;
+      top: 0;
+    }}
+    .metric-blue::before {{ background: var(--blue); }}
+    .metric-green::before {{ background: var(--green); }}
+    .metric-amber::before {{ background: var(--amber); }}
+    .metric-violet::before {{ background: var(--violet); }}
+    .metric-slate::before {{ background: #64748b; }}
+    .metric-red::before {{ background: var(--red); }}
+    .metric-label {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }}
+    .metric-value {{ font-size: 28px; font-weight: 760; line-height: 1.05; margin-top: 8px; }}
+    .metric-detail {{ color: var(--muted); font-size: 12px; margin-top: 5px; }}
+    section {{ padding: 16px; margin-bottom: 14px; }}
+    .section-head {{
+      align-items: flex-start;
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }}
+    .decision-grid {{
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }}
+    .gate-grid {{
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }}
+    .decision-card {{
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      min-height: 126px;
+      padding: 13px;
+    }}
+    .decision-card strong {{ display: block; font-size: 22px; line-height: 1.15; margin: 8px 0; }}
+    .decision-card p {{ color: var(--muted); font-size: 13px; }}
+    .decision-label {{
+      color: #344255;
+      display: block;
+      font-size: 12px;
+      font-weight: 820;
+      text-transform: uppercase;
+    }}
+    .priority-high {{ background: var(--green-soft); border-color: #badbc7; }}
+    .priority-medium {{ background: var(--amber-soft); border-color: #f1d099; }}
+    .priority-review {{ background: var(--red-soft); border-color: #efc1bd; }}
+    .priority-eval {{ background: var(--blue-soft); border-color: #bbd5f2; }}
+    .boundary-grid {{
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }}
+    .boundary-card {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 13px;
+    }}
+    .boundary-code {{ background: var(--blue-soft); border-color: #bbd5f2; }}
+    .boundary-evidence {{ background: var(--green-soft); border-color: #badbc7; }}
+    .boundary-dual {{ background: var(--amber-soft); border-color: #f1d099; }}
+    .boundary-card h3 {{ font-size: 16px; margin: 8px 0; }}
+    .boundary-card ul {{
+      color: var(--muted);
+      margin: 8px 0 0;
+      padding-left: 20px;
+    }}
+    .boundary-card li {{ margin: 5px 0; }}
+    .boundary-card p {{
+      border-top: 1px solid rgba(52, 66, 85, 0.15);
+      color: #344255;
+      margin-top: 10px;
+      padding-top: 9px;
+    }}
+    .decision-format {{
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-top: 10px;
+      padding: 12px;
+    }}
+    .decision-format p {{ color: var(--muted); margin-top: 6px; }}
+    .decision-format strong {{ color: #344255; }}
+    .router-grid {{
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }}
+    .router-card {{
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+    }}
+    .router-card h3 {{ font-size: 15px; margin-bottom: 10px; }}
+    .router-card p {{ color: var(--muted); font-size: 13px; margin-top: 8px; }}
+    .router-card p strong {{ color: #344255; }}
+    .route-pair {{
+      align-items: baseline;
+      border-top: 1px solid var(--line);
+      display: grid;
+      gap: 8px;
+      grid-template-columns: 88px 1fr;
+      padding: 7px 0;
+    }}
+    .route-pair:first-of-type {{ border-top: 0; }}
+    .route-pair span {{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 820;
+      text-transform: uppercase;
+    }}
+    .route-pair strong {{
+      color: #1f2d3d;
+      overflow-wrap: anywhere;
+    }}
+    .next-action-strip {{
+      border-top: 1px solid var(--line);
+      display: grid;
+      gap: 16px;
+      grid-template-columns: minmax(220px, 0.8fr) minmax(0, 2fr);
+      margin-top: 14px;
+      padding-top: 14px;
+    }}
+    .next-action-strip ol {{
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      list-style-position: inside;
+      margin: 0;
+      padding: 0;
+    }}
+    .next-action-strip li {{
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+    }}
+    .next-action-strip li strong {{ display: inline; margin-right: 4px; }}
+    .next-action-strip li span {{ color: var(--muted); display: block; margin-top: 4px; }}
+    .status-bar {{
+      background: var(--slate-soft);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      display: flex;
+      height: 18px;
+      overflow: hidden;
+    }}
+    .bar-segment {{ min-width: 4px; }}
+    .bar-segment.systematic_pilot, .bar-segment.systematic_snapshot {{ background: var(--green); }}
+    .bar-segment.mixed_public_bundle, .bar-segment.enrichment_snapshot {{ background: var(--blue); }}
+    .bar-segment.ontology_reference {{ background: var(--violet); }}
+    .bar-segment.topic_harvest, .bar-segment.subset_demo {{ background: var(--amber); }}
+    .bar-segment.restricted_private, .bar-segment.unclassified {{ background: var(--red); }}
+    .status-legend {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }}
+    .status-legend-item {{
+      align-items: center;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      display: inline-flex;
+      gap: 7px;
+      padding: 3px 7px 3px 3px;
+    }}
+    .status-legend-item > span:last-child {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }}
+    .product-grid {{
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }}
+    .product-card {{ padding: 14px; }}
+    .product-card-head {{
+      align-items: flex-start;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      min-height: 42px;
+    }}
+    .product-card-head h3 {{ font-size: 17px; }}
+    .quality-block {{
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin: 12px 0;
+      padding: 10px;
+    }}
+    .compact-stats {{
+      display: grid;
+      gap: 7px;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      margin: 10px 0;
+    }}
+    .compact-stat {{
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      min-width: 0;
+      padding: 8px;
+    }}
+    .compact-stat-value {{
+      display: block;
+      font-size: 16px;
+      font-weight: 760;
+      line-height: 1.05;
+      overflow-wrap: anywhere;
+    }}
+    .compact-stat-label {{
+      color: var(--muted);
+      display: block;
+      font-size: 11px;
+      font-weight: 800;
+      margin-top: 4px;
+      text-transform: uppercase;
+    }}
+    .stage-row {{
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: space-between;
+      margin: 10px 0 12px;
+    }}
+    .readiness-label {{ color: var(--muted); font-size: 12px; font-weight: 800; }}
+    .stage-chips {{ display: flex; flex-wrap: wrap; gap: 5px; }}
+    .stage-chip {{
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 7px;
+      text-transform: uppercase;
+    }}
+    .stage-chip.active {{ background: var(--green-soft); border-color: #badbc7; color: var(--green); }}
+    .stage-chip.reference {{ background: var(--violet-soft); border-color: #d8c8ec; color: var(--violet); }}
+    .product-copy-grid {{
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 12px;
+    }}
+    .copy-label {{
+      color: #344255;
+      display: block;
+      font-size: 12px;
+      font-weight: 820;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }}
+    .product-copy-grid p {{ color: #344255; font-size: 13px; }}
+    .source-role {{
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-top: 10px;
+      padding: 9px;
+    }}
+    .source-role summary {{
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 800;
+    }}
+    .source-role p {{
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 6px;
+    }}
+    .product-note {{
+      background: #fff8e8;
+      border: 1px solid #f1d099;
+      border-radius: 8px;
+      color: #60450b;
+      font-size: 12px;
+      margin-top: 12px;
+      padding: 9px;
+    }}
+    .artifact-panel {{
+      border-top: 1px solid var(--line);
+      margin-top: 12px;
+      padding-top: 10px;
+    }}
+    .artifact-heading {{
+      color: #344255;
+      font-size: 12px;
+      font-weight: 820;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }}
+    .evaluation-grid {{
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }}
+    .eval-card {{ padding: 12px; }}
+    .eval-card-head {{
+      align-items: flex-start;
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      min-height: 48px;
+    }}
+    .eval-card-head strong {{
+      display: block;
+      overflow-wrap: anywhere;
+    }}
+    .eval-metrics {{
+      display: grid;
+      gap: 7px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin: 9px 0;
+    }}
     table {{ width: 100%; border-collapse: collapse; }}
     th, td {{ text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); padding: 8px; }}
-    th {{ font-size: 12px; color: var(--muted); text-transform: uppercase; background: #fbfbfc; position: sticky; top: 0; }}
+    th {{ font-size: 12px; color: var(--muted); text-transform: uppercase; background: var(--surface-2); position: sticky; top: 0; }}
     tr:last-child td {{ border-bottom: 0; }}
-    code {{ font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }}
+    code {{
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      display: inline-block;
+      font: 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      padding: 2px 5px;
+    }}
     .table-wrap {{ overflow: auto; max-height: 620px; border: 1px solid var(--line); border-radius: 8px; }}
     details {{ margin-top: 8px; }}
     summary {{ cursor: pointer; color: var(--blue); font-weight: 700; }}
@@ -2189,11 +3091,22 @@ def write_html(path: Path, payload: dict[str, Any]) -> None:
     .ontology_reference {{ background: #f0ecf7; color: var(--violet); }}
     .topic_harvest, .subset_demo {{ background: #fff4dd; color: var(--amber); }}
     .restricted_private, .unclassified {{ background: #fdeceb; color: var(--red); }}
-    @media (max-width: 900px) {{
-      main {{ padding: 14px; }}
+    .raw-inventory summary {{ font-size: 15px; }}
+    @media (max-width: 1180px) {{
+      .cards {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
+      .decision-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      .boundary-grid {{ grid-template-columns: 1fr; }}
+      .router-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      .product-grid, .evaluation-grid {{ grid-template-columns: 1fr; }}
+      .product-copy-grid {{ grid-template-columns: 1fr; }}
+    }}
+    @media (max-width: 760px) {{
+      main {{ width: min(100vw - 24px, 1480px); padding: 14px 0 36px; }}
       .top {{ display: block; }}
-      .cards {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      .top nav {{ justify-content: flex-start; margin-top: 14px; }}
+      .cards, .decision-grid, .boundary-grid, .router-grid, .next-action-strip, .next-action-strip ol, .compact-stats, .eval-metrics {{ grid-template-columns: 1fr; }}
       .metric-value {{ font-size: 22px; }}
+      .section-head {{ display: block; }}
     }}
   </style>
 </head>
@@ -2201,41 +3114,67 @@ def write_html(path: Path, payload: dict[str, Any]) -> None:
   <main>
     <div class="top">
       <div>
-        <h1>Evidence Progress Dashboard</h1>
-        <div class="muted">Artifact-driven source ingestion and evaluation status.</div>
+        <div class="eyebrow">Evidence acquisition decision support</div>
+        <h1>Evidence Source Router</h1>
+        <div class="muted">Use this to decide whether a search weakness needs new evidence, and which source family should supply it.</div>
       </div>
-      <div class="muted small">Generated {h(generated_at)}</div>
+      <div>
+        <nav aria-label="Related reports">
+          <a href="source_contribution_report.html">Contribution Report</a>
+          <a href="search_quality_experiments.html">Quality Experiments</a>
+          <a href="search_quality_progress_log.html">Progress Log</a>
+        </nav>
+        <div class="muted small">Generated {h(generated_at)}</div>
+      </div>
     </div>
     <div class="cards">
       {cards}
     </div>
+    {source_decision_gate(summary, products)}
+    {coding_vs_evidence_decision()}
+    {weakness_router()}
+    {status_distribution(summary)}
+    {''.join(product_sections)}
     <section>
-      <h2>Products</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Product</th><th>Why Included</th><th>Evidence Chosen</th><th>Evidence Quality</th><th>Next Steps</th>
-              <th>Status</th><th>Vectors</th><th>Index Entries</th><th>Drilldown</th>
-            </tr>
-          </thead>
-          <tbody>{''.join(product_rows)}</tbody>
-        </table>
+      <div class="section-head">
+        <div>
+          <h2>Evaluation Runs</h2>
+          <p class="muted">Recent saved judgments and regression checks attached to the evidence work.</p>
+        </div>
       </div>
+      <div class="evaluation-grid">
+        {evaluation_cards(evaluations)}
+      </div>
+      <details class="raw-inventory">
+        <summary>Show evaluation table</summary>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Run</th><th>Queries</th><th>Judgments</th><th>Top 1</th>
+                <th>Top 3</th><th>Weighted P@5</th><th>MRR</th><th>File</th>
+              </tr>
+            </thead>
+            <tbody>{''.join(eval_rows)}</tbody>
+          </table>
+        </div>
+      </details>
     </section>
     <section>
-      <h2>Evaluation</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Run</th><th>Queries</th><th>Judgments</th><th>Top 1</th>
-              <th>Top 3</th><th>Weighted P@5</th><th>MRR</th><th>File</th>
-            </tr>
-          </thead>
-          <tbody>{''.join(eval_rows)}</tbody>
-        </table>
-      </div>
+      <details class="raw-inventory">
+        <summary>Show raw product inventory table</summary>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th><th>Why Included</th><th>Evidence Chosen</th><th>Evidence Quality</th><th>Next Steps</th>
+                <th>Status</th><th>Vectors</th><th>Index Entries</th><th>Drilldown</th>
+              </tr>
+            </thead>
+            <tbody>{''.join(product_rows)}</tbody>
+          </table>
+        </div>
+      </details>
     </section>
   </main>
 </body>

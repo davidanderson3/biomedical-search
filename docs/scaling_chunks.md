@@ -223,9 +223,11 @@ mean MRR: 1.0
 relevant top-1 queries: 6 / 8
 ```
 
-After quality review, the eventual scaling target is full PubMed
+After quality review, the eventual scale option remains full PubMed
 baseline/update bulk ingest with manifests, resume support, and incremental
-changed-document re-embedding.
+changed-document re-embedding. The current next step is narrower: add or
+relink PubMed evidence only for benchmarked search weaknesses that cannot be
+fixed by section/chunk linking, merge behavior, or reranking.
 
 ## PubMed Bulk Recent Next-Two-Shards Pilot
 
@@ -332,7 +334,8 @@ indexed/on-demand store.
 ## Efficiency Gate: Indexed Provenance and Compact Vectors
 
 Purpose: remove the assessment-server startup bottleneck and define smaller
-release-shaped artifacts before continuing toward full PubMed.
+release-shaped artifacts before targeted PubMed weakness acquisition or any
+future broad PubMed expansion.
 
 Primary outputs:
 
@@ -361,10 +364,13 @@ display: the first six evidence bullets per concept document and up to five
 source citations per bullet. The lookup key is a 128-bit hash of normalized
 evidence text, so the index does not store the full evidence text as a key.
 
-This gate is complete. The next scaling step can move to full PubMed
-baseline/update ingestion, but it should keep this shape: chunked downloads,
-streamed linking, display-scoped provenance, compact vectors, Elasticsearch
-bulk parts around 5,000 documents, and quality review before alias promotion.
+This gate is complete. The next scaling step should not add arbitrary recent
+PubMed shards. Use targeted weakness acquisition first: start from judged
+PubMed query misses, prove local ranking/linking cannot recover the expected
+CUI, then add or relink only the evidence needed for that query shape. Any
+future broader ingest should keep this shape: chunked downloads, streamed
+linking, display-scoped provenance, compact vectors, Elasticsearch bulk parts
+around 5,000 documents, and quality review before alias promotion.
 
 ## PubMed Bulk Recent Shards 1329 and 1328
 

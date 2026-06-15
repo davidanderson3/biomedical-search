@@ -552,7 +552,7 @@ Input TSV needs `query` and `cui`. Optional columns include `count`, `weight`,
 
 ```sh
 python3 scripts/evidence_vectors.py ingest-query-log \
-  --input examples/query_log.tsv \
+  --input /path/to/reviewed_query_log.tsv \
   --out build/query_evidence.jsonl \
   --source local_search_log
 ```
@@ -564,7 +564,7 @@ Input TSV needs `cui` and `text`. Optional columns include `source`,
 
 ```sh
 python3 scripts/evidence_vectors.py ingest-snippets \
-  --input examples/snippets.tsv \
+  --input /path/to/reviewed_snippets.tsv \
   --out build/snippet_evidence.jsonl \
   --source reviewed_notes
 ```

@@ -17,10 +17,10 @@ python3 scripts/search_quality_server.py --port 8766 --public-output-only
 ```
 
 In this mode, restricted source-vocabulary content can still be used internally
-for retrieval and ranking, but API responses use only labels, definitions, and
-MRREL relation rows from the configured public display source allowlist. Source
-code mappings are not returned, and concepts without an allowed display label
-are suppressed from public responses.
+for retrieval and ranking, but API responses use only labels, definitions,
+source-code rows, and MRREL relation rows from the configured public display
+source allowlist. Concept-hit source-code mapping fields are omitted, and
+concepts without an allowed display label are suppressed from public responses.
 
 Base URL:
 
@@ -106,8 +106,11 @@ Parameters:
 - `codes` optional: source-asserted code systems to return: `default`, `none`,
   `all`, or comma-separated SABs such as `SNOMEDCT_US,RXNORM,ICD10CM,LNC`
 
-When `--public-output-only` is enabled, source-code mapping fields are omitted
-from responses even if `codes=all` or a specific source-code system is requested.
+When `--public-output-only` is enabled, concept-hit source-code mapping fields
+are omitted from responses even if `codes=all`. If a specific allowlisted
+source-code system is requested, such as `RXNORM` or `LNC` in the default public
+allowlist, strict source-code rows are returned. Requests for non-allowlisted
+source-code systems are suppressed from public responses.
 
 Aliases:
 

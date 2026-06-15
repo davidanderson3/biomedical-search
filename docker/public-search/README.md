@@ -36,6 +36,11 @@ This exports the current SapBERT vector shards to temporary Elasticsearch bulk f
 docker compose -f docker/public-search/docker-compose.yml up app
 ```
 
+The app waits for the Elasticsearch container healthcheck and then waits for the
+configured index to answer `_count` before enforcing `--require-elasticsearch`.
+If the index has not been loaded, startup fails with an explicit readiness
+message after the configured timeout.
+
 Open:
 
 ```text
@@ -77,6 +82,12 @@ PUBLIC_OUTPUT_ONLY=1 docker compose -f docker/public-search/docker-compose.yml -
 
 This avoids the extra Elasticsearch copy of the vectors. It still mounts the existing local `build/` payload and uses local vector scanning, so searches are expected to be slower than the Elasticsearch-backed mode.
 
+To reduce local scan memory and startup cost, run only the core shards:
+
+```sh
+LOCAL_SCAN_PROFILE=core docker compose -f docker/public-search/docker-compose.yml --profile low-disk up app-local-scan
+```
+
 ## Useful Checks
 
 ```sh
@@ -95,10 +106,13 @@ Environment variables:
 - `ELASTIC_IMAGE`: Elasticsearch image, default `docker.elastic.co/elasticsearch/elasticsearch:8.15.3`
 - `ES_JAVA_OPTS`: Elasticsearch heap, default `-Xms4g -Xmx4g`
 - `ELASTIC_INDEX`: target index, default `qe-scaling-sapbert-cls`
+- `ELASTIC_STARTUP_TIMEOUT`: app wait time for the Elasticsearch index, default `180` seconds in Compose
 - `APP_PORT`: host port for the UI/API, default `8766`
 - `ELASTIC_PORT`: host port for Elasticsearch, default `9200`
 - `BULK_DOCS_PER_FILE`: temporary bulk part size, default `25000`
-- `PUBLIC_OUTPUT_ONLY`: set to `1` for public-safe API output filtering
+- `LOCAL_SCAN_PROFILE`: low-disk mode shard set, `full` or `core`, default `full`
+- `MAX_SEQ_LENGTH`: SapBERT max sequence length, default `128`
+- `PUBLIC_OUTPUT_ONLY`: set to `1` for public-safe API output filtering; Compose defaults to `1`
 - `PUBLIC_OUTPUT_SOURCE_ALLOWLIST`: optional source allowlist file mounted in the container
 
 ## Boundary

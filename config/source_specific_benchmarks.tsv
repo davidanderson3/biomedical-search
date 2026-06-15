@@ -1,6 +1,4 @@
 source_id	source_name	benchmark_path	focus	release_gate
-pubtator3	PubTator3	config/source_benchmarks/pubtator3_relationship_correctness.tsv	Relationship correctness for literature-mined entity pairs.	Must preserve expected CUI pairs and avoid relationship-only false positives.
-clinicaltrials_gov	ClinicalTrials.gov	config/source_benchmarks/clinicaltrials_posted_outcomes.tsv	Posted outcome-result queries only.	Must not use protocol, recruitment, eligibility, or planned endpoint text as evidence.
 dailymed	DailyMed	config/source_benchmarks/dailymed_drug_label_queries.tsv	Drug indication, warning, and adverse-reaction queries.	Must preserve drug plus label-context concepts.
 medlineplus	MedlinePlus	config/source_benchmarks/medlineplus_lay_condition_queries.tsv	Lay-language condition queries.	Must retrieve clinical concepts from patient wording.
 pubmed_pmc	PubMed/PMC	config/source_benchmarks/pubmed_pmc_literature_queries.tsv	Literature-backed disease, drug, and procedure queries.	Must keep literature evidence useful without crowding exact UMLS concepts.

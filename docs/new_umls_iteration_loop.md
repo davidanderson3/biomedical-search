@@ -28,7 +28,8 @@ flowchart TD
   subgraph Inputs
     UMLS["UMLS META<br/>level-0/category-0 SABs"]
     LOINC["Direct LOINC files"]
-    PublicSources["Public source products<br/>PubMed/PMC, MedlinePlus, DailyMed,<br/>PubTator3, HPO/MONDO, posted trial outcomes"]
+    PublicSources["Core public source products<br/>PubMed/PMC, MedlinePlus, DailyMed,<br/>HPO/MONDO"]
+    AssociationSignals["Opt-in association signals<br/>CUI2Vec/BioConceptVec,<br/>curated relation candidates"]
     QueryPressure["Query pressure<br/>paragraph benchmark, reviewed failures,<br/>private log-derived review queues"]
     PriorExtensions["Prior NEW####### concepts"]
   end
@@ -43,7 +44,7 @@ flowchart TD
 
   CorpusDocs["Corpus documents<br/>source text with provenance"]
   LinkedEvidence["Linked evidence records<br/>CUI mentions and source refs"]
-  RelationshipEdges["Relationship edges<br/>PubTator3, curated, OHDSI/public aggregates"]
+  RelationshipEdges["Relationship edges<br/>curated, HPO/MONDO, OHDSI/public aggregates"]
   ExtensionRegistry["Promoted extension registry<br/>NEW####### concepts"]
   ConceptDocs["Concept documents<br/>one CUI/view with labels and evidence"]
   VectorPlan["Vector reuse plan<br/>text hashes and changed docs"]
@@ -59,6 +60,7 @@ flowchart TD
   UMLS --> Manifest
   LOINC --> Manifest
   PublicSources --> Manifest
+  AssociationSignals --> Manifest
   QueryPressure --> Manifest
   PriorExtensions --> Manifest
 
@@ -144,6 +146,8 @@ python3 scripts/run_search_quality_experiment.py \
 ```
 
 Pass `--query-limit 0` only when you intentionally want the full judged pool.
+Live API runs default to two worker threads and write `query_timings.tsv` in the
+run directory. Use `--workers 1` when you need a serial timing baseline.
 
 Run `--search-system umls-only` for the in-process UMLS baseline, or
 `--search-system both` to emit adjacent UMLS-only and current-search columns in
@@ -203,12 +207,8 @@ python3 scripts/check_source_rebuild_delta.py \
 ## Source Benchmarks
 
 In addition to the rotating smoke sample, source rebuilds must run the matching
-source-specific benchmark file from `config/source_specific_benchmarks.tsv`:
+core source-specific benchmark file from `config/source_specific_benchmarks.tsv`:
 
-- PubTator3: relationship correctness,
-  `config/source_benchmarks/pubtator3_relationship_correctness.tsv`.
-- ClinicalTrials.gov: posted outcome-result queries only,
-  `config/source_benchmarks/clinicaltrials_posted_outcomes.tsv`.
 - DailyMed: drug indication, warning, and adverse-reaction queries,
   `config/source_benchmarks/dailymed_drug_label_queries.tsv`.
 - MedlinePlus: lay-language condition queries,
@@ -216,7 +216,12 @@ source-specific benchmark file from `config/source_specific_benchmarks.tsv`:
 - PubMed/PMC: literature-backed disease, drug, and procedure queries,
   `config/source_benchmarks/pubmed_pmc_literature_queries.tsv`.
 
-These are source-focused gates, not replacements for the stable smoke set.
+ClinicalTrials.gov posted outcomes are opt-in only, and PubTator3 stays a
+sampled relation-candidate stub unless a measured gap requires validation
+against PubMed/PMC. Neither is a default release gate. CUI2Vec and BioConceptVec
+are kept in the loop through
+`config/search_quality_external_embedding_neighbor_probe.tsv` as bounded
+association-signal candidates with explicit drift guards.
 
 ### Locked PubMed Abstract Benchmark
 
@@ -358,8 +363,9 @@ An iteration can be released to the active search interface only when:
   beyond the configured small tolerance. For release promotion, also run the
   full judged pool with `--query-limit 0`.
 - Known false positives do not increase.
-- Evidence mode contains no protocol-only ClinicalTrials.gov text; only posted
-  outcome-result text can contribute trial evidence.
+- Default evidence mode does not depend on ClinicalTrials.gov. Any opt-in
+  trial-result lane must exclude protocol, recruitment, eligibility, and planned
+  endpoint text from treatment-effect evidence.
 - Public display payloads expose no restricted, private, licensed-only, or
   non-level-0 UMLS/source content.
 - No unexpected source-count collapse is present in the source-delta record or
@@ -371,7 +377,9 @@ An iteration can be released to the active search interface only when:
 - The manifest records source URL/version/date/hash, records fetched, records
   changed, CUIs gained/lost, relationship edges gained/lost, and benchmark query
   source changes for each rebuilt source.
-- Matching source-specific benchmark suites pass for rebuilt evidence sources.
+- Matching core source-specific benchmark suites pass for rebuilt evidence
+  sources; opt-in association probes must show measured benefit before default
+  promotion.
 - Candidate and relation review artifacts exist.
 - Tests covering changed code pass.
 

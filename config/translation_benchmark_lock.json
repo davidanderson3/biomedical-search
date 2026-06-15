@@ -1,6 +1,6 @@
 {
-  "id": "translation_benchmark_20260609",
-  "locked_at": "2026-06-09",
+  "id": "translation_benchmark_20260615",
+  "locked_at": "2026-06-15",
   "purpose": "Separate regression reporting for clinical smoke search, PubMed literature translation, exact/UMLS API comparison, and code mapping coverage.",
   "notes": [
     "The clinical smoke set is frozen as the fast regression benchmark; changes to its TSV should update this lock deliberately.",
@@ -30,9 +30,9 @@
       "group": "clinical",
       "split": "regression",
       "path": "config/search_quality_paragraph_queries.tsv",
-      "sha256": "d2f46f81e50839c5430b70417c6a7ad278df0cd5476484f99e8cecc9827330c7",
-      "rows": 167,
-      "expected_cuis": 866,
+      "sha256": "d0385b4a332493c6d93da6732a7385c07f9abcc57f717d33f4e9be57d9430fc3",
+      "rows": 168,
+      "expected_cuis": 874,
       "result_path": "build/search_quality_experiments/runs/20260609T_es_target_before_opioid_migraine_icu_cleanup_es-target-smoke-before-opioid-migraine-icu-cleanup-2026-06-09"
     },
     {

@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Search Quality Evidence Buckets</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #fff;
+      --ink: #17202a;
+      --muted: #5b6673;
+      --line: #d7dee8;
+      --blue: #2457c5;
+      --green: #166534;
+      --amber: #9a5b05;
+      --red: #b42318;
+      --code: #eef2f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+    }
+    main, .wrap {
+      width: min(1360px, calc(100vw - 32px));
+      margin: 0 auto;
+    }
+    main { padding: 18px 0 44px; }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 20px 0;
+    }
+    h1, h2, h3 {
+      margin: 0;
+      letter-spacing: 0;
+      font-weight: 760;
+    }
+    h1 { font-size: 25px; }
+    h2 { font-size: 17px; margin-bottom: 10px; }
+    h3 { font-size: 15px; margin-bottom: 5px; }
+    p { margin: 0; }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      background: var(--code);
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+    }
+    .muted { color: var(--muted); }
+    .small { font-size: 12px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin-bottom: 14px;
+      padding: 16px;
+    }
+    .report-nav {
+      align-self: flex-start;
+      display: grid;
+      gap: 6px;
+      min-width: 330px;
+    }
+    .report-nav-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-align: right;
+      text-transform: uppercase;
+    }
+    .nav-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .nav-links a {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 5px 9px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+    .nav-links a.primary {
+      border-color: #b8c8f6;
+      color: var(--blue);
+      background: #f4f7ff;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 13px;
+    }
+    .metric strong {
+      display: block;
+      font-size: 24px;
+      line-height: 1.05;
+    }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      margin-top: 6px;
+    }
+    .metric small {
+      color: var(--muted);
+      display: block;
+      margin-top: 4px;
+    }
+    .metric.good { background: #ecfdf3; border-color: #bbf7d0; color: var(--green); }
+    .metric.warn { background: #fffbeb; border-color: #fde68a; color: var(--amber); }
+    .metric.bad { background: #fef2f2; border-color: #fecaca; color: var(--red); }
+    .metric.neutral { background: #f8fafc; border-color: #dfe7f1; color: var(--muted); }
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 980px;
+      background: #fff;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      background: #f8fafc;
+    }
+    tr:last-child td { border-bottom: 0; }
+    td.bucket {
+      border-left: 4px solid #dfe7f1;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+    td.good { background: #ecfdf3; border-left-color: #16a34a; color: var(--green); }
+    td.warn { background: #fffbeb; border-left-color: #f59e0b; color: var(--amber); }
+    td.bad { background: #fef2f2; border-left-color: #ef4444; color: var(--red); }
+    td.neutral { background: #f8fafc; color: var(--muted); }
+    .open-list {
+      display: grid;
+      gap: 10px;
+    }
+    .open-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+    @media (max-width: 960px) {
+      .topbar { display: block; }
+      .report-nav { min-width: 0; margin-top: 12px; }
+      .report-nav-label { text-align: left; }
+      .nav-links { justify-content: flex-start; }
+      .summary-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap topbar">
+      <div>
+        <h1>Search Quality Evidence Buckets</h1>
+        <p class="muted">Approval and testing status for evidence sources, acquired shards, benchmark lanes, and diagnostic artifacts. Built artifacts are not automatically approved evidence.</p>
+      </div>
+      <div class="report-nav">
+        <div class="report-nav-label">Open</div>
+        <nav class="nav-links" aria-label="Useful search-quality pages">
+          <a class="primary" href="search_quality_progress_log.html">Progress Log</a>
+          <a href="source_evidence_dashboard.html">Source Dashboard</a>
+          <a href="search_quality_experiments.html">Detailed Run Data</a>
+          <a href="search_quality_iterations.html">Iteration Ledger</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>Current Bucket Counts</h2>
+      <div class="summary-grid">
+        <div class="metric good">
+          <strong>2</strong>
+          <span>accepted acquisition stages</span>
+          <small>Promoted by measured source-acquisition gates.</small>
+        </div>
+        <div class="metric warn">
+          <strong>3</strong>
+          <span>tested neutral candidates</span>
+          <small>Measured without enough benefit for broad promotion.</small>
+        </div>
+        <div class="metric bad">
+          <strong>2</strong>
+          <span>tested rejected paths</span>
+          <small>Kept as negative controls, not default evidence.</small>
+        </div>
+        <div class="metric good">
+          <strong>9</strong>
+          <span>live-tested core source rows</span>
+          <small>DailyMed, MedlinePlus, and PubMed/PMC core rows passed on 2026-06-15.</small>
+        </div>
+        <div class="metric neutral">
+          <strong>20</strong>
+          <span>source products inventoried</span>
+          <small>From the source evidence dashboard; build status is separate from approval.</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>How To Read The Buckets</h2>
+      <div class="open-list">
+        <div class="open-item">
+          <h3>Approved / Promoted</h3>
+          <p class="muted">Evidence that passed a measured gate and improved or preserved the target without unacceptable regression. This evidence can be used for the approved path named in the row.</p>
+        </div>
+        <div class="open-item">
+          <h3>Tested Neutral / Candidate</h3>
+          <p class="muted">Evidence that was evaluated and did not break the focused gate, but either did not improve enough or needs routing/filtering before broad promotion.</p>
+        </div>
+        <div class="open-item">
+          <h3>Tested Rejected</h3>
+          <p class="muted">Evidence or a build/linking path that failed a gate. The artifact may stay on disk for audit, but it should not be reused as default evidence without a new hypothesis.</p>
+        </div>
+        <div class="open-item">
+          <h3>Configured / Not Yet Live-Tested</h3>
+          <p class="muted">Benchmark rows or source-specific lanes that exist but still need a live API run and pass/fail record before they can become routine gates.</p>
+        </div>
+        <div class="open-item">
+          <h3>Inventory / Diagnostic Only</h3>
+          <p class="muted">Built bundles, external benchmarks, logs, or enrichment artifacts that are useful for review but not product-approved evidence by themselves.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Evidence Acquisition Decisions</h2>
+      <p class="muted small">Source: <code>config/source_acquisition_progression.tsv</code> and <code>build/source_acquisition/progression_report.md</code>.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Bucket</th>
+              <th>Evidence / Stage</th>
+              <th>What It Includes</th>
+              <th>Tested On</th>
+              <th>Result</th>
+              <th>Product Rule</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="bucket good">Approved / promoted</td>
+              <td>Broader biomedical linking</td>
+              <td>DailyMed top drugs, NCI reference pages, MedlinePlus Genetics genes, and PubMed association topics rebuilt or relinked with the biomedical label index.</td>
+              <td>Five-row focused source-acquisition gate.</td>
+              <td>5 good / 0 mixed / 0 poor; recall@20 1.000; no disallowed@10 increase.</td>
+              <td>Approved for the measured focused acquisition path.</td>
+            </tr>
+            <tr>
+              <td class="bucket good">Approved / promoted</td>
+              <td>Fixed-linker acquired bundle</td>
+              <td>Accepted broader biomedical artifacts, expanded PubMed topics, targeted severe-hypoglycemia PubMed slice, and default-ambiguity fixed DailyMed clopidogrel/osimertinib build.</td>
+              <td>Six-row source-acquisition gate.</td>
+              <td>6 good / 0 mixed / 0 poor; recall@20 1.000; no disallowed@10 increase.</td>
+              <td>Approved as the retained acquisition stage for that six-row gate.</td>
+            </tr>
+            <tr>
+              <td class="bucket warn">Tested neutral / candidate</td>
+              <td>Expanded association topics</td>
+              <td>Full live-bundle PubMed association topics and remaining DailyMed drugs.</td>
+              <td>Five-row focused gate after the accepted biomedical stage.</td>
+              <td>No regression, but no additional focused improvement.</td>
+              <td>Candidate evidence; not a standalone reason to raise product quality.</td>
+            </tr>
+            <tr>
+              <td class="bucket warn">Tested neutral / candidate</td>
+              <td>Targeted severe-hypoglycemia and corrected DailyMed</td>
+              <td>Severe-hypoglycemia PubMed slice plus corrected DailyMed clopidogrel/osimertinib source subset.</td>
+              <td>Five-row focused gate after round-two acquisition.</td>
+              <td>No regression; severe hypoglycemia remained a rank-11 crowding issue.</td>
+              <td>Candidate evidence until the ranking/crowding issue is separately solved.</td>
+            </tr>
+            <tr>
+              <td class="bucket warn">Tested neutral / candidate</td>
+              <td>OpenAlex missing high-citation candidate</td>
+              <td>Five-year highly cited OpenAlex article sweep excluding already present OpenAlex and recent PubMed corpora.</td>
+              <td>Six-row acquisition gate.</td>
+              <td>No regression on the six-row gate.</td>
+              <td>Candidate only; broad default promotion was separately rejected.</td>
+            </tr>
+            <tr>
+              <td class="bucket bad">Tested rejected</td>
+              <td>Narrow clinical linking</td>
+              <td>DailyMed top drugs, NCI pages, MedlinePlus Genetics genes, and six PubMed topics linked with the narrower clinical label index.</td>
+              <td>Five-row focused acquisition gate.</td>
+              <td>Rejected after recall@10 dropped by one expected concept.</td>
+              <td>Do not reuse this linking path without a new hypothesis.</td>
+            </tr>
+            <tr>
+              <td class="bucket bad">Tested rejected</td>
+              <td>OpenAlex broad default-path promotion</td>
+              <td>Default local server vector/doc set plus the missing high-citation OpenAlex candidate shard.</td>
+              <td>Current 161-row default benchmark.</td>
+              <td>Rejected: 143 good / 18 mixed versus 144 good / 17 mixed baseline; found@10 dropped by one.</td>
+              <td>Do not promote broadly until source-aware routing/filtering is implemented and retested.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Configured Source-Specific Lanes</h2>
+      <p class="muted small">Source: <code>config/source_specific_benchmarks.tsv</code> and <code>config/search_quality_source_specific_queries.tsv</code>. The default source-specific release lane is intentionally narrowed to three core source families. Opt-in association signals are tracked separately.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Bucket</th>
+              <th>Source</th>
+              <th>Configured Focus</th>
+              <th>Rows</th>
+              <th>Release Gate</th>
+              <th>Current Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="bucket good">Live-tested / passing</td>
+              <td>DailyMed</td>
+              <td>Drug indication, warning, and adverse-reaction queries.</td>
+              <td>3</td>
+              <td>Must preserve drug plus label-context concepts.</td>
+              <td>Core lane passed in <code>SQI-2026-06-15-003</code>. The warning-context row now returns <code>C1550014</code> Warning - Alert level at rank 3 while the bare <code>warning</code> query remains gated.</td>
+            </tr>
+            <tr>
+              <td class="bucket good">Live-tested / passing</td>
+              <td>MedlinePlus</td>
+              <td>Lay-language condition queries.</td>
+              <td>3</td>
+              <td>Must retrieve clinical concepts from patient wording.</td>
+              <td>Core lane passed in <code>SQI-2026-06-15-003</code>; source-specific suite result is 9/9 rows complete and 20/20 expected CUIs at top 10 across core sources.</td>
+            </tr>
+            <tr>
+              <td class="bucket good">Live-tested / passing</td>
+              <td>PubMed/PMC</td>
+              <td>Literature-backed disease, drug, and procedure queries.</td>
+              <td>3</td>
+              <td>Must keep literature evidence useful without crowding exact UMLS concepts.</td>
+              <td>Core lane passed in <code>SQI-2026-06-15-003</code>; broad screening over direct colonoscopy/colorectal targets remains protected by earlier regression work.</td>
+            </tr>
+            <tr>
+              <td class="bucket neutral">Opt-in probe</td>
+              <td>CUI2Vec / BioConceptVec</td>
+              <td>Bounded external CUI-neighbor association candidates.</td>
+              <td>5</td>
+              <td>Must show positive neighbor value without promoting configured drift cases into default answers.</td>
+              <td>Tracked in <code>config/search_quality_external_embedding_neighbor_probe.tsv</code>; not default source evidence.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Benchmarked But Not Product-Ready</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Bucket</th>
+              <th>Lane</th>
+              <th>Evidence Covered</th>
+              <th>Current Result</th>
+              <th>Why Not Approved Yet</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="bucket bad">Benchmarked / not ready</td>
+              <td>TREC Precision Medicine document-source retrieval</td>
+              <td>PubMed/PMC and ClinicalTrials.gov source-document retrieval from judged TREC topics and qrels.</td>
+              <td>40 topics, 31,312 judgments, 7,729 judged positives, 74 locally resolved positives; non-public API retrieval still found 0/74 expected source documents at rank 10.</td>
+              <td>Source-document identifiers are not exposed/retrieved well enough for document-source approval.</td>
+            </tr>
+            <tr>
+              <td class="bucket bad">Benchmarked / not ready</td>
+              <td>MedMentions ST21pv clinical-useful mention-only</td>
+              <td>External entity-linking mentions against UMLS concepts.</td>
+              <td>100-query eval: top10 accuracy 45%, top1 accuracy 40%, linked expected rate 48%.</td>
+              <td>Useful external stress test, but not release-quality parity.</td>
+            </tr>
+            <tr>
+              <td class="bucket bad">Benchmarked / stale weak signal</td>
+              <td>Approved PubMed long-abstract suite</td>
+              <td>Thirteen approved PubMed abstracts with 60 expected concepts.</td>
+              <td>Stale result: 3/13 fully found and 44/60 expected concepts at top 10.</td>
+              <td>Focused 7-row PubMed probe improved later, but this broader suite must be rerun before approval claims.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Source Inventory Buckets</h2>
+      <p class="muted small">Source: <a href="source_evidence_dashboard.html">source evidence dashboard</a>. These buckets describe current artifact/source role, not approval by themselves.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Bucket</th>
+              <th>Sources</th>
+              <th>Meaning</th>
+              <th>Use Safely As</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="bucket good">Base/reference evidence</td>
+              <td>UMLS, HPO, MONDO, PubMed systematic pilot, MedlinePlus systematic snapshot</td>
+              <td>Core reference or systematic/pilot sources already represented in the product inventory.</td>
+              <td>Trusted source families, still subject to benchmark gates and source-specific tests.</td>
+            </tr>
+            <tr>
+              <td class="bucket warn">Partial/subset evidence</td>
+              <td>PMC OA, Europe PMC, DailyMed, MedlinePlus Genetics, NCBI Bookshelf OA, NCI, FDA, CDC, NIDDK</td>
+              <td>Authoritative or useful sources with subset, topic-harvest, sample, or outcomes-only coverage.</td>
+              <td>Scoped evidence; do not claim systematic coverage unless a source-specific gate says so.</td>
+            </tr>
+            <tr>
+              <td class="bucket neutral">Association signal / opt-in</td>
+              <td>CUI2Vec, BioConceptVec, ClinicalTrials.gov posted outcomes, PubTator3 sampled relation candidates</td>
+              <td>Useful candidate signals that can introduce drift, require narrower evidence semantics, or need literature validation.</td>
+              <td>Use only in measured probes or explicit exploration modes; PubTator3 remains a stub until validated against PubMed/PMC for a measured gap.</td>
+            </tr>
+            <tr>
+              <td class="bucket warn">Enrichment / candidate only</td>
+              <td>OpenAlex</td>
+              <td>Enrichment source with tested crowding risk in default search.</td>
+              <td>Candidate or routed enrichment, not broad default evidence.</td>
+            </tr>
+            <tr>
+              <td class="bucket neutral">Diagnostic only</td>
+              <td>Local search logs, reviewed snippets</td>
+              <td>Useful for evaluation, triage, and examples, but not authoritative source evidence.</td>
+              <td>Test material or audit material, not source authority.</td>
+            </tr>
+            <tr>
+              <td class="bucket warn">Needs provenance decision</td>
+              <td>Local extension concepts / mixed public bundle</td>
+              <td>Generated or mixed artifacts that need source/provenance boundaries before source claims.</td>
+              <td>Only use with explicit provenance and public-output policy checks.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Maintenance Rule</h2>
+      <p class="muted">When a future iteration acquires, tests, promotes, rejects, or changes routing for evidence, update this page in the same iteration. A file existing under <code>build/</code> is not enough to move it out of candidate, diagnostic, or untested status.</p>
+    </section>
+  </main>
+</body>
+</html>

@@ -17,6 +17,7 @@ C0007642	C0343024	Cellulitis of leg	Cellulitis of leg is more specific and accep
 C0007642	C0745961	Cellulitis of lower leg	Cellulitis of lower leg is more specific and acceptable for a lower-leg cellulitis paragraph.
 C0000833	C0344096	Drainage of abscess	Drainage of abscess is acceptable when the paragraph has a fluctuant abscess and incision/drainage.
 C0005437	C0311468	Increased bilirubin level	Increased bilirubin level is clinically acceptable when the paragraph says elevated bilirubin.
+C0003507	C5395033	Severe aortic valve stenosis	Severe aortic valve stenosis is the more specific aortic-valve-stenosis concept explicitly stated in the echocardiography paragraph.
 C0373670	C0023764	Lipase	Base lipase concept is acceptable when the paragraph says elevated lipase.
 C0016169	C0267561	Perianal fistula	Perianal fistula is more specific and acceptable for Crohn disease with perianal fistula.
 C0018099	C0149896	Primary gout	Primary gout is clinically acceptable for gout flare wording.
@@ -36,6 +37,7 @@ C0041445	C0423502	Bulging tympanic membrane	Bulging tympanic membrane is accepta
 C0020461	C5979967	Hyperkalemia (disorder)	Alternate hyperkalemia disorder CUI is acceptable for hyperkalemia wording.
 C0030193	C0278140	Severe pain	Severe pain is acceptable for sickle-cell vaso-occlusive crisis pain wording.
 C0011991	C0401151	Chronic diarrhea	Chronic diarrhea is acceptable when the paragraph says chronic diarrhea.
+C0011991	C0578159	Antibiotic-associated diarrhea	Antibiotic-associated diarrhea is acceptable for the diarrhea symptom target when the paragraph explicitly links diarrhea to antibiotic exposure or C. difficile infection.
 C0202239	C0041981	Uric acid level above reference range	Elevated uric acid is clinically acceptable for uric acid measurement wording in the gout paragraph.
 C0039985	C0436503	Standard chest X-ray abnormal	Abnormal chest X-ray finding is clinically acceptable when the paragraph explicitly says abnormal chest X-ray.
 C0430888	C0234708	Raised intraocular pressure	Raised intraocular pressure is clinically acceptable when the paragraph says elevated intraocular pressure.
@@ -60,6 +62,7 @@ C0202178	C0031705	Phosphorus	The analyte phosphorus is clinically acceptable whe
 C1332828	C4545439	CYP2C19 poor metabolizer	CYP2C19 poor metabolizer is clinically acceptable for CYP2C19 pharmacogenomic search wording.
 C1332828	C0960580	CYP2C19 protein, human	CYP2C19 protein is clinically acceptable when the paragraph tests CYP2C19 pharmacogenomic retrieval and the gene CUI is lower ranked.
 C0019693	C0019699	HIV Seropositivity	HIV seropositivity is clinically acceptable for an HIV patient pharmacogenomic screening paragraph.
+C4058811	C4058829	osimertinib 80 MG	Dose-specific osimertinib product is clinically acceptable for the ingredient target when oncology wording explicitly names osimertinib.
 C0201179	C0427965	Antimicrobial susceptibility	Antimicrobial susceptibility is clinically acceptable for antimicrobial susceptibility test wording.
 C0024671	C0203028	Screening mammography	Screening mammography is clinically acceptable for mammography in preventive screening wording.
 C1654909	C0021344	Human papillomavirus	The HPV organism concept is clinically acceptable when the paragraph says human papillomavirus test and screening-test context is explicit.
@@ -78,6 +81,8 @@ C1414313	C3889117	EGFR exon 19 deletion	EGFR exon 19 deletion is clinically acce
 C3845231	C4545439	CYP2C19 poor metabolizer	CYP2C19 poor metabolizer is clinically acceptable for the poor-metabolizer pharmacogenomic result.
 C0079304	C0014245	Endoscopy (procedure)	Generic endoscopy is clinically acceptable when the GI bleeding paragraph says endoscopy rather than explicitly saying EGD.
 C0018801	C3839346	Heart failure with reduced ejection fraction	HFrEF is a stricter heart-failure concept and should satisfy the broad heart failure target in decompensated HFrEF paragraphs.
+C0154723	C3808875	Migraine, with or without aura	The exact aggregate concept is acceptable for the migraine-with-aura target when the paragraph explicitly says migraine with or without aura.
+C0338480	C3808875	Migraine, with or without aura	The exact aggregate concept is acceptable for the migraine-without-aura target when the paragraph explicitly says migraine with or without aura.
 C0009319	C4761223	Immune-mediated colitis	Immune-mediated colitis is the specific colitis concept explicitly named in checkpoint-inhibitor toxicity paragraphs.
 C0441510	C0852815	Laser photocoagulation to retina	Retinal laser photocoagulation is clinically acceptable when diabetic retinopathy wording says laser photocoagulation was performed.
 C0948008	C5392833	Acute ischemic stroke	Acute ischemic stroke is clinically acceptable for the ischemic stroke target when the paragraph explicitly says acute ischemic stroke.
@@ -92,3 +97,12 @@ C0085639	C0458990	Recurrent falls	Recurrent falls is clinically acceptable for t
 C0106132	C0428402	Human chorionic gonadotropin measurement	Human chorionic gonadotropin measurement is acceptable for the beta-hCG target when the ectopic-pregnancy paragraph says rising beta-human chorionic gonadotropin.
 C0038172	C1318973	Staphylococcus aureus infection	Staphylococcus aureus infection is acceptable for the Staphylococcus aureus target when the paragraph says blood cultures grew Staphylococcus aureus in an infection context.
 C0343401	C1265292	Methicillin-Resistant Staphylococcus aureus	MRSA organism wording is acceptable for the MRSA infection target when the paragraph also says sepsis, hypotension, blood culture, and vancomycin.
+C0011847	C0011849	Diabetes Mellitus	The common real query "diabetes" can reasonably resolve to the broader diabetes mellitus concept.
+C0011847	C0011860	Diabetes Mellitus, Non-Insulin-Dependent	The common real query "diabetes" can reasonably resolve to type 2 diabetes when that is the reviewed UMLS/local match.
+C0038454	C0948008	Stroke	The common real query "stroke" can reasonably resolve to a major stroke subtype concept.
+C0038454	C5234922	Stroke subtype	The common real query "stroke" can reasonably resolve to a major stroke subtype concept.
+C0004238	C2926591	Atrial fibrillation lexical variant	The common real query "atrial fibrillation" can reasonably resolve to a lexical-variant atrial fibrillation CUI.
+C0018801	C0018802	Heart failure variant	The common real query "heart failure" can reasonably resolve to a heart-failure variant CUI.
+C0041755	C0413696	Aspirin adverse reaction	A specific aspirin adverse-reaction concept is acceptable for a DailyMed adverse-reaction query that explicitly names aspirin.
+C0041755	C0559546	Adverse reactions	The plural adverse-reactions concept is acceptable for DailyMed label wording that asks for adverse reaction context.
+C0042313	C0360373	vancomycin Oral Product	Oral vancomycin product wording is acceptable for the vancomycin ingredient target when a PubMed abstract explicitly says oral vancomycin, but it does not satisfy the separate C. difficile infection target.

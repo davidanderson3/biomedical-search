@@ -15,10 +15,10 @@ from qe_evidence_vectors.public_output import PublicOutputMixin
 
 
 class DummyPublicOutput(PublicOutputMixin):
-    def __init__(self, code_index: CodeIndex) -> None:
+    def __init__(self, code_index: CodeIndex, public_sources: tuple[str, ...] = ("MSH", "NCI")) -> None:
         self.code_index = code_index
         self.public_output_only = True
-        self.public_output_sources = ("MSH", "NCI")
+        self.public_output_sources = public_sources
         self.public_label_cache = {}
 
     def best_record_for_cui(self, cui: str):  # pragma: no cover - only used for NEW concepts
@@ -170,6 +170,100 @@ def test_public_output_drops_hits_without_allowed_display_label(tmp_path: Path) 
     assert output.public_output_payload(payload)["hits"] == []
 
 
+def test_public_output_keeps_allowed_strict_source_code_rows(tmp_path: Path) -> None:
+    output = DummyPublicOutput(
+        write_code_index(tmp_path / "codes.sqlite"),
+        public_sources=("MSH", "NCI", "RXNORM"),
+    )
+    payload = {
+        "hits": [
+            {
+                "cui": "C0000001",
+                "name": "metformin",
+                "view": "source_code",
+                "sources": ["source_code", "RXNORM"],
+                "source_code_result": True,
+                "match_type": "source_code_label",
+                "score": 1.4,
+                "rank_score": 1.4,
+                "codes": [
+                    {
+                        "system": "RXNORM",
+                        "system_name": "RxNorm",
+                        "sab": "RXNORM",
+                        "code": "6809",
+                        "source_asserted_code": "6809",
+                        "source_cui": "6809",
+                        "source_dui": "",
+                        "scui": "6809",
+                        "sdui": "",
+                        "tty": "IN",
+                        "label": "metformin",
+                        "ispref": "Y",
+                    }
+                ],
+                "source_asserted_codes": [
+                    {
+                        "system": "RXNORM",
+                        "system_name": "RxNorm",
+                        "sab": "RXNORM",
+                        "code": "6809",
+                        "source_asserted_code": "6809",
+                        "label": "metformin",
+                        "tty": "IN",
+                    }
+                ],
+                "mappings": [{"sab": "RXNORM", "code": "6809", "label": "metformin"}],
+                "matched_label": "metformin",
+            }
+        ]
+    }
+
+    cleaned = output.public_output_payload(payload)
+
+    assert cleaned["hits"][0]["name"] == "metformin"
+    assert cleaned["hits"][0]["sources"] == ["source_code", "RXNORM"]
+    assert cleaned["hits"][0]["codes"] == cleaned["hits"][0]["source_asserted_codes"]
+    assert cleaned["hits"][0]["codes"][0]["system"] == "RXNORM"
+    assert cleaned["hits"][0]["codes"][0]["code"] == "6809"
+    assert cleaned["hits"][0]["source_code_result"] is True
+    assert "mappings" not in cleaned["hits"][0]
+    assert "matched_label" not in cleaned["hits"][0]
+
+
+def test_public_output_drops_disallowed_strict_source_code_rows(tmp_path: Path) -> None:
+    output = DummyPublicOutput(write_code_index(tmp_path / "codes.sqlite"))
+    payload = {
+        "hits": [
+            {
+                "cui": "C0000001",
+                "name": "Restricted synonym",
+                "view": "source_code",
+                "sources": ["source_code", "SNOMEDCT_US"],
+                "source_code_result": True,
+                "codes": [
+                    {
+                        "system": "SNOMEDCT_US",
+                        "code": "111",
+                        "label": "Restricted synonym",
+                        "tty": "PT",
+                    }
+                ],
+                "source_asserted_codes": [
+                    {
+                        "system": "SNOMEDCT_US",
+                        "code": "111",
+                        "label": "Restricted synonym",
+                        "tty": "PT",
+                    }
+                ],
+            }
+        ]
+    }
+
+    assert output.public_output_payload(payload)["hits"] == []
+
+
 def test_public_output_keeps_active_label_supplement_new_hit(tmp_path: Path) -> None:
     output = DummyPublicOutput(write_code_index(tmp_path / "codes.sqlite"))
     payload = {
@@ -287,3 +381,31 @@ def test_public_output_preserves_non_response_hits_counts(tmp_path: Path) -> Non
 
     assert cleaned["hits"][0]["name"] == "Safe display name"
     assert cleaned["source_contribution"]["items"][0]["hits"] == 1
+
+
+def test_public_output_preserves_scalar_relation_named_summary_counts(tmp_path: Path) -> None:
+    output = DummyPublicOutput(write_code_index(tmp_path / "codes.sqlite"))
+    payload = {
+        "hits": [
+            {
+                "cui": "C0000001",
+                "name": "Restricted preferred name",
+                "labels": ["Restricted preferred name"],
+            }
+        ],
+        "source_contribution": {
+            "items": [
+                {
+                    "source": "pubmed",
+                    "related_concepts": 2.0,
+                    "definitions": 1,
+                }
+            ]
+        },
+    }
+
+    cleaned = output.public_output_payload(payload)
+
+    summary = cleaned["source_contribution"]["items"][0]
+    assert summary["related_concepts"] == 2.0
+    assert summary["definitions"] == 1

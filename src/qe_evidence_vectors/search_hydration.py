@@ -169,6 +169,13 @@ def normalize_return_code_sabs(value: object = None) -> tuple[str, ...]:
     return tuple(normalized) if normalized else DEFAULT_RETURN_CODE_SABS
 
 
+def source_code_result_sabs(value: object = None) -> tuple[str, ...]:
+    sabs = normalize_return_code_sabs(value)
+    if not sabs or sabs in {DEFAULT_RETURN_CODE_SABS, ALL_RETURN_CODE_SABS}:
+        return ()
+    return sabs
+
+
 class SearchHydrationMixin:
     def concept_has_active_atoms(self, cui: str) -> bool:
         cui = str(cui or "").strip().upper()
@@ -336,6 +343,165 @@ class SearchHydrationMixin:
             "codes": codes,
             "source_asserted_codes": [dict(row) for row in codes],
         }
+
+    def source_code_hit_from_mapping(
+        self,
+        row: dict,
+        *,
+        query: str,
+        rank: int,
+    ) -> dict:
+        cui = str(row.get("cui") or "").strip().upper()
+        system = str(row.get("sab") or "").strip()
+        code = str(row.get("code") or "").strip()
+        label = str(row.get("label") or "").strip()
+        score = float(row.get("source_atom_score") or 0.0)
+        semantic_types = self.semantic_types_for_cui(cui) if cui else []
+        code_row = {
+            "system": system,
+            "system_name": SOURCE_CODE_SYSTEM_NAMES.get(system, system),
+            "sab": system,
+            "code": code,
+            "source_asserted_code": code,
+            "source_cui": row.get("scui") or "",
+            "source_dui": row.get("sdui") or "",
+            "scui": row.get("scui") or "",
+            "sdui": row.get("sdui") or "",
+            "tty": row.get("tty") or "",
+            "label": label,
+            "ispref": row.get("ispref") or "",
+        }
+        source_label = SOURCE_CODE_SYSTEM_NAMES.get(system, system) or "Source vocabulary"
+        return {
+            "doc_id": f"{system}:{code}:source_atom:{rank}" if system and code else f"{cui}:source_atom:{rank}",
+            "cui": cui,
+            "name": label or self.display_label_for_cui(cui, []),
+            "view": "source_code",
+            "score": score,
+            "rank_score": score,
+            "labels": [label] if label else [],
+            "sources": ["source_code", system] if system else ["source_code"],
+            "evidence_count": 0,
+            "source_bundle": "source_code",
+            "source_mix": source_mix_from_evidence_items(
+                [],
+                declared_sources=["source_code", system] if system else ["source_code"],
+                evidence_count=0,
+            ),
+            "semantic_types": semantic_types,
+            **semantic_group_metadata(semantic_types),
+            "definitions": self.definitions_for_cui(cui) if cui else [],
+            "images": self.images_for_cui(cui) if cui else [],
+            "codes": [dict(code_row)] if code else [],
+            "source_asserted_codes": [dict(code_row)] if code else [],
+            "mappings": [dict(row)],
+            "text": (
+                f"{source_label} source atom\n"
+                f"CUI: {cui}\n"
+                f"Code: {code}\n"
+                f"TTY: {row.get('tty') or ''}\n"
+                f"Label: {label}\n"
+                f"Matched query: {query}"
+            ),
+            "evidence_items": [],
+            "related_concepts": [],
+            "match_type": "source_code_label",
+            "matched_label": label,
+            "matched_query_span": " ".join(row.get("matched_query_tokens") or []),
+            "matched_sab": system,
+            "matched_tty": row.get("tty") or "",
+            "matched_ispref": row.get("ispref") or "",
+            "source_code_result": True,
+            "source_code_rank": rank,
+        }
+
+    def source_code_atom_hits(
+        self,
+        query: str,
+        *,
+        sabs: object,
+        limit: int,
+    ) -> list[dict]:
+        if not self.code_index:
+            return []
+        selected_sabs = source_code_result_sabs(sabs)
+        if not selected_sabs:
+            return []
+        rows = self.source_code_identifier_rows(query, sabs=selected_sabs, limit=limit)
+        if not rows:
+            rows = self.code_index.search_source_atoms(query, sabs=selected_sabs, limit=limit)
+        return [
+            self.source_code_hit_from_mapping(row, query=query, rank=index + 1)
+            for index, row in enumerate(rows)
+        ]
+
+    def source_code_identifier_rows(
+        self,
+        query: str,
+        *,
+        sabs: tuple[str, ...],
+        limit: int,
+    ) -> list[dict]:
+        text = str(query or "").strip()
+        if not text or not self.code_index:
+            return []
+        rows: list[dict] = []
+        parsed = parse_system_code(text)
+        if parsed:
+            system, code = parsed
+            if system == "CUI":
+                rows = self.code_index.lookup_cui(code, sabs=sabs, limit=limit)
+            elif system in CODE_IDENTIFIER_SYSTEMS:
+                seen = set()
+                for sab in sabs:
+                    for row in self.code_index.lookup_identifier(
+                        code,
+                        identifier_type=system,
+                        sab=sab,
+                        limit=limit,
+                    ):
+                        key = (
+                            str(row.get("cui") or ""),
+                            str(row.get("sab") or ""),
+                            str(row.get("code") or "").upper(),
+                        )
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        rows.append(row)
+                        if len(rows) >= limit:
+                            break
+                    if len(rows) >= limit:
+                        break
+            elif system in sabs:
+                rows = self.code_index.lookup_code(code, sab=system, limit=limit)
+        elif is_cui(text):
+            rows = self.code_index.lookup_cui(text, sabs=sabs, limit=limit)
+        elif looks_like_code(text):
+            seen = set()
+            for sab in sabs:
+                for row in self.code_index.lookup_code(text, sab=sab, limit=limit):
+                    key = (
+                        str(row.get("cui") or ""),
+                        str(row.get("sab") or ""),
+                        str(row.get("code") or "").upper(),
+                    )
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    rows.append(row)
+                    if len(rows) >= limit:
+                        break
+                if len(rows) >= limit:
+                    break
+        query_token = normalized_key(text)
+        hydrated_rows = []
+        for row in rows[:limit]:
+            item = dict(row)
+            item["source_atom_score"] = 1.4
+            item["matched_query_tokens"] = [query_token] if query_token else []
+            hydrated_rows.append(item)
+        return hydrated_rows
 
     def return_codes_for_cui(self, cui: str, *, sabs: object = None) -> list[dict]:
         rows = []
@@ -544,8 +710,15 @@ class SearchHydrationMixin:
             }
         else:
             return {"error": "missing doc_id or cui"}
-        hit["mappings"] = self.mappings_for_cui(str(hit.get("cui") or ""), limit=50)
         self.apply_source_code_selection([hit], sabs=return_code_sabs)
+        if source_code_result_sabs(return_code_sabs):
+            hit["mappings"] = self.return_code_mappings_for_cui(
+                str(hit.get("cui") or ""),
+                sabs=return_code_sabs,
+                limit_per_sab=50,
+            )
+        else:
+            hit["mappings"] = self.mappings_for_cui(str(hit.get("cui") or ""), limit=50)
         if include_related:
             self.attach_related_concepts([hit])
         if search_scope == "umls":
@@ -1299,6 +1472,8 @@ class SearchHydrationMixin:
             retrieval = "UMLS CUI/code/label lookup with evidence vector retrieval disabled"
         elif backend == "elasticsearch":
             retrieval = "Elasticsearch kNN over concept-document embeddings"
+        elif backend == "source_code":
+            retrieval = "source vocabulary label lookup returning source-asserted code rows"
         elif backend == "generic_query_filter":
             retrieval = "audited generic query suppression"
         else:

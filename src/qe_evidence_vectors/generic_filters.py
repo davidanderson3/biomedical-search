@@ -14,8 +14,6 @@ BLOCKED_GENERIC_LABELS = {
     "code system type internal",
     "control aspects",
     "control veterinary product",
-    "developing countries",
-    "developing country",
     "degree or extent",
     "disease management",
     "domestic",
@@ -29,15 +27,15 @@ BLOCKED_GENERIC_LABELS = {
     "greater",
     "greater than",
     "greater than or equal to",
-    "hormones",
+    "grade three rank",
     "increase in pressure medical device problem",
     "identified",
+    "improved",
     "intact",
     "intake",
     "intake treatment",
     "intimate",
     "intent",
-    "irregular",
     "inconsistent",
     "less than",
     "less than or equal to",
@@ -56,8 +54,6 @@ BLOCKED_GENERIC_LABELS = {
     "other than",
     "pain pressure",
     "partial",
-    "partial thickness",
-    "pigmented",
     "placement",
     "placement action",
     "present",
@@ -84,6 +80,7 @@ BLOCKED_GENERIC_LABELS = {
     "settings",
     "settings qualitative",
     "show",
+    "school grade",
     "still",
     "sterile",
     "sterile qualifier value",
@@ -94,6 +91,7 @@ BLOCKED_GENERIC_LABELS = {
     "take",
     "thick",
     "too little",
+    "too much",
     "tests",
     "tests and testing",
     "therapeutic procedure",
@@ -157,6 +155,7 @@ BLOCKED_GENERIC_CUIS = {
     "C0205217",  # Increased
     "C0205250",  # Higher
     "C0205396",  # Identified
+    "C0184511",  # Improved
     "C0849355",  # Removed
     "C1280412",  # Thick
     "C1264633",  # Fraction of
@@ -180,6 +179,8 @@ BLOCKED_GENERIC_CUIS = {
     "C1881187",  # Increase in Pressure Medical Device Problem
     "C3647129",  # pain pressure
     "C3843661",  # Too little
+    "C3843660",  # Too much
+    "C0450094",  # Grade three rank - rank concept leaking from grade >=3 adverse event text
     "C3844332",  # Not sure
     "C3840725",  # Do not
     "C3845350",  # At least daily
@@ -192,12 +193,11 @@ BLOCKED_GENERIC_CUIS = {
     "C1410088",  # Still
     "C1547282",  # Show
     "C2825142",  # Experimental Result / Result
+    "C3244287",  # School Grade - educational/rank concept leaking from clinical grade phrases
     "C3263700",  # Instructions
     "C0747608",  # PLACEMENT PROBLEM
     "C3870121",  # Long advance-directive survey narrative
     "C5777012",  # Lower risk
-    "C0011750",  # Developing Countries
-    "C0019932",  # Hormones
 }
 
 

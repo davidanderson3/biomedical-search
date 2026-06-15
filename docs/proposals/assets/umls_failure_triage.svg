@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Failure triage between code fixes and evidence integration</title>
+  <desc id="desc">A decision diagram showing how a real-world search weakness becomes either a coding fix or an authoritative evidence integration task.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#334155"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-20%" width="120%" height="150%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#102033" flood-opacity="0.14"/>
+    </filter>
+    <style>
+      .bg { fill: #f6f8fb; }
+      .panel { fill: #ffffff; stroke: #d7dee8; stroke-width: 2; filter: url(#shadow); }
+      .box { stroke-width: 2; rx: 18; }
+      .problem { fill: #fff7ed; stroke: #c2410c; }
+      .decision { fill: #eef2ff; stroke: #2457c5; }
+      .code { fill: #e8f7ef; stroke: #15803d; }
+      .evidence { fill: #e4f7f4; stroke: #0f766e; }
+      .gate { fill: #f8fafc; stroke: #64748b; }
+      .title { fill: #17202a; font: 700 30px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .label { fill: #17202a; font: 700 21px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .body { fill: #334155; font: 16px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .small { fill: #5b6673; font: 14px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .arrow { fill: none; stroke: #334155; stroke-width: 4; marker-end: url(#arrow); }
+      .lane { fill: none; stroke: #cbd5e1; stroke-width: 2; stroke-dasharray: 8 8; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1200" height="720"/>
+  <rect class="panel" x="38" y="34" width="1124" height="650" rx="28"/>
+  <text class="title" x="86" y="92">Failure Triage: Fix Code or Add Evidence</text>
+  <text class="small" x="86" y="122">The first question is what kind of weakness the real search example exposed.</text>
+
+  <rect class="box problem" x="76" y="194" width="260" height="154"/>
+  <text class="label" x="106" y="235">Observed weakness</text>
+  <text class="body" x="106" y="270">A real query returns the</text>
+  <text class="body" x="106" y="294">wrong identity, misses a</text>
+  <text class="body" x="106" y="318">source code, or elevates</text>
+  <text class="body" x="106" y="342">generic prose.</text>
+
+  <path class="arrow" d="M336 271 H448"/>
+
+  <rect class="box decision" x="448" y="170" width="304" height="202"/>
+  <text class="label" x="480" y="213">Diagnose root cause</text>
+  <text class="body" x="480" y="249">Is the knowledge present but</text>
+  <text class="body" x="480" y="273">ranked, filtered, parsed, or</text>
+  <text class="body" x="480" y="297">displayed incorrectly?</text>
+  <text class="body" x="480" y="331">Or is trusted evidence missing</text>
+  <text class="body" x="480" y="355">from the knowledge base?</text>
+
+  <path class="arrow" d="M752 232 C814 190 846 162 894 162"/>
+  <path class="arrow" d="M752 310 C814 352 846 382 894 382"/>
+
+  <rect class="box code" x="894" y="98" width="232" height="174"/>
+  <text class="label" x="924" y="139">Coding fix</text>
+  <text class="body" x="924" y="174">Adjust parser, ranking,</text>
+  <text class="body" x="924" y="198">assertion handling, source</text>
+  <text class="body" x="924" y="222">filters, or UI output.</text>
+  <text class="small" x="924" y="252">Example: negation bucket.</text>
+
+  <rect class="box evidence" x="894" y="326" width="232" height="194"/>
+  <text class="label" x="924" y="367">Evidence task</text>
+  <text class="body" x="924" y="402">Acquire an authoritative,</text>
+  <text class="body" x="924" y="426">license-compatible source.</text>
+  <text class="body" x="924" y="450">Integrate labels, relations,</text>
+  <text class="body" x="924" y="474">codes, or evidence text.</text>
+  <text class="small" x="924" y="504">Example: LOINC-backed result.</text>
+
+  <path class="arrow" d="M1010 273 V304"/>
+  <path class="arrow" d="M1010 520 C1008 590 920 608 814 608"/>
+  <path class="arrow" d="M894 185 C812 228 794 430 814 608"/>
+
+  <rect class="box gate" x="470" y="548" width="344" height="108"/>
+  <text class="label" x="502" y="588">Same gate for both paths</text>
+  <text class="body" x="502" y="623">Before/after benchmark, leakage check,</text>
+  <text class="body" x="502" y="647">source policy, and reviewer rationale.</text>
+
+  <path class="lane" d="M76 430 H1126"/>
+  <text class="small" x="86" y="458">Code fixes and evidence integrations are different implementation paths, but they share one promotion standard.</text>
+</svg>

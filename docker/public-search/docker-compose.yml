@@ -9,6 +9,12 @@ services:
       - "${ELASTIC_PORT:-9200}:9200"
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
 
   elastic-loader:
     build:
@@ -23,7 +29,8 @@ services:
     volumes:
       - ../..:/workspace
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
     profiles:
       - load
     command: ["sh", "docker/public-search/load_sapbert_elastic.sh"]
@@ -40,13 +47,15 @@ services:
       HF_HUB_OFFLINE: "1"
       PUBLIC_OUTPUT_ONLY: ${PUBLIC_OUTPUT_ONLY:-1}
       PUBLIC_OUTPUT_SOURCE_ALLOWLIST: ${PUBLIC_OUTPUT_SOURCE_ALLOWLIST:-}
+      ELASTIC_STARTUP_TIMEOUT: ${ELASTIC_STARTUP_TIMEOUT:-180}
     ports:
       - "${APP_PORT:-8766}:8766"
     volumes:
       - ../..:/workspace
       - ${HOME}/.cache/huggingface:/home/app/.cache/huggingface:ro
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
     command: ["sh", "-lc", "scripts/start_search_quality_server.sh --host 0.0.0.0"]
 
   app-local-scan:
@@ -59,6 +68,8 @@ services:
       HF_HUB_OFFLINE: "1"
       PUBLIC_OUTPUT_ONLY: ${PUBLIC_OUTPUT_ONLY:-1}
       PUBLIC_OUTPUT_SOURCE_ALLOWLIST: ${PUBLIC_OUTPUT_SOURCE_ALLOWLIST:-}
+      LOCAL_SCAN_PROFILE: ${LOCAL_SCAN_PROFILE:-full}
+      MAX_SEQ_LENGTH: ${MAX_SEQ_LENGTH:-128}
     ports:
       - "${APP_PORT:-8766}:8766"
     volumes:

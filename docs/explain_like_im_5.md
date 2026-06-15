@@ -1,6 +1,6 @@
 # Explain It Like I Am 5
 
-Last updated: 2026-05-27
+Last updated: 2026-06-10
 
 We are building a smarter way to search medical ideas.
 
@@ -71,9 +71,12 @@ language.
 8. Search with vectors.
 9. Show evidence for each result.
 10. Let a person mark results as relevant, partial, or wrong.
-11. Use those judgments to decide whether the search is improving.
-12. When a new UMLS release arrives, compare which concept cards changed.
-13. Reuse old SapBERT vectors for concept cards whose searchable text did not
+11. Save those judgments in one label file so future checks use the same
+    answers.
+12. Try new ranking ideas in shadow mode before changing the real search.
+13. Use those judgments to decide whether the search is improving.
+14. When a new UMLS release arrives, compare which concept cards changed.
+15. Reuse old SapBERT vectors for concept cards whose searchable text did not
     change, and rebuild only the rest.
 
 ## What The Label Fallback Does
@@ -104,8 +107,14 @@ The current local system has:
 - a relationship-edge database path for mined public aggregate relationships
 - compact vector files for the current SapBERT vectors
 - a local search testing web page
-- saved search-quality judgments
+- a canonical search-quality judgment file
+- a feature extractor that turns saved search payloads into training rows
+- a shadow reranker report that compares current rank with machine-learned rank
 - a progress page
+- one repeatable-process report that lists the main build, serve, test, audit,
+  benchmark, source-acquisition, and reporting workflows
+- one script map that groups the helper commands while keeping their old command
+  paths working
 
 Current scale:
 
@@ -118,18 +127,34 @@ Current scale:
 
 Last reviewed quality check:
 
-- 8 test searches
-- 40 judged results
-- 8 of 8 searches have a fully relevant first result
-- mean weighted P@5 is 0.750
-- mean MRR is 1.0
+- live Elasticsearch-backed 50-query rotating smoke run on 2026-06-10
+- gates passed
+- 45 of 50 searches found every expected idea in the first 10 results
+- 49 of 50 searches found every expected idea in the first 20 results
+- 261 of 270 expected ideas appeared in the first 10 results
+- no known false positives appeared in the first 10 or first 20 results
+- 45 good rows, 5 mixed rows, and 0 poor rows
 
-All eight loaded PubMed bulk pilots have now passed the small quality check.
-The latest reviewed 1321/1320 sample matches the previous 1323/1322 sample:
-8 of 8 searches have a fully relevant first result, mean weighted P@5 is 0.750,
-and mean MRR is 1.0. I also ran a harder 10-query mixed clinical smoke check:
-all 10 searches had a relevant first result, but the lower ranks still had more
-generic or denied-positive noise, so mean weighted P@5 was 0.570.
+The quick standing clinical API smoke also ran against the live server. It found
+the configured expected CUI for all 10 short clinical queries in the first 5
+results, but two rows had the expected answer at rank 2 instead of rank 1. That
+is acceptable as a quick check, but the 50-query rotating smoke is the stronger
+regression signal.
+
+Going forward, every search-quality iteration should record the smoke-test
+decision. Runtime search changes should run the standing clinical API smoke, and
+broad ranking or release-quality changes should also run the 50-query rotating
+smoke with gates.
+
+There is now one command that helps do this after an iteration. It looks at the
+iteration type, runs the right checks, and writes a short verification report.
+
+The repeatable-process report is `docs/repeatable_processes.md`. It is the
+table of contents for the repo's recurring work: what command starts each job,
+what files it needs, what it writes, and what check proves it finished.
+
+The script map is `scripts/README.md`. It groups the helper commands by job, but
+the old paths like `scripts/run_search_quality_experiment.py` still work.
 
 The testing page used to take about 134 seconds to start because it loaded
 evidence references directly from many files. Now it uses a smaller lookup
@@ -159,9 +184,25 @@ larger public mining pipeline is expanded.
 For procedure concepts, the builder can use SNOMED CT anchors by default while
 still blocking CPT codes and CPT descriptors from public outputs.
 
-The next step is to keep the same careful chunking for much more PubMed data.
-The review results also say we should improve the benchmark and reduce
-lower-rank noisy procedure, anatomy, follow-up, and broad disease matches.
+The search-quality work now has one canonical label file:
+`config/search_quality_judgments.tsv`. It gathers the ideas that should be found,
+useful extra ideas that should not be treated as mistakes, true false positives,
+patient-portal active-versus-old-history labels, and the focused PubMed
+long-document slice.
+
+There is also a shadow reranker. It is like trying a new sorting rule on a copy
+of the results before changing the real search. The report asks: if we used the
+learned sorter, would the right ideas move up and the wrong ideas move down? The
+latest shadow run used 1,345 judgment rows and 3,894 feature rows. It found 355
+wins, 425 regressions, and 288 rows that did not improve. Because this is shadow
+mode, it is evidence for review, not a production ranking change.
+
+The next step is targeted PubMed work, not more arbitrary PubMed chunks. Start
+with the known long-document misses, fix reranking or section/chunk linking
+where the right concept is already nearby, and add PubMed evidence only when a
+judged query still lacks local evidence. The review results also say we should
+reduce lower-rank noisy procedure, anatomy, follow-up, and broad disease matches
+without hiding useful secondary concepts.
 
 ## What Good Looks Like
 
@@ -172,18 +213,24 @@ The system is good when:
 - it tracks where the evidence came from
 - it improves when we add more real-world text
 - it does not blindly add noisy data
+- it keeps human labels in one place so we know what counts as right, useful, or
+  wrong
+- it tests learned ranking changes in shadow mode before they affect users
 - it can represent a truly missing medical idea without pretending it is an
   official UMLS CUI
 - every release has search-quality checks
 
 ## What We Need To Keep Updating
 
-Whenever the pipeline changes, update this file and the technical document.
+Whenever the pipeline changes, update this file and the technical document. If
+we add a new search-quality lane, label source, report, or ranking experiment,
+update this file in the same change.
 
 Update:
 
 - what data sources we are using
 - what step we are on
 - the current quality numbers
+- the current judgment and shadow-reranker numbers
 - what the next step is
 - any important problems or limitations

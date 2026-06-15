@@ -99,6 +99,10 @@ def step_effort_weight(step: dict[str, Any]) -> float:
     label = str(step.get("label", "")).lower()
     key = f"{step_id} {label}"
 
+    if "targeted_pubmed" in key:
+        return 12.0
+    if "targeted_semantic" in key:
+        return 8.0
     if "full_pubmed" in key:
         return 40.0
     if "semantic_embeddings" in key:
@@ -144,6 +148,10 @@ def step_phase(step: dict[str, Any]) -> str:
     label = str(step.get("label", "")).lower()
     key = f"{step_id} {label}"
 
+    if "targeted_pubmed" in key:
+        return "Evidence acquisition"
+    if "targeted_semantic" in key:
+        return "Embedding"
     if "full_pubmed" in key:
         return "Evidence acquisition"
     if "fetch" in key or "harvest" in key or "download" in key or "corpus" in key:
@@ -177,6 +185,10 @@ def step_why(step: dict[str, Any]) -> str:
         return "Creates the UMLS label/profile lookup backbone used to resolve text spans and rescue exact concept-name searches."
     if "dashboard" in key or "_ui" in step_id:
         return "Gives reviewers a usable surface for search testing, progress tracking, and relevance judgments."
+    if "targeted_pubmed" in key:
+        return "Adds PubMed evidence only for benchmarked query weaknesses instead of expanding arbitrary recent shards."
+    if "targeted_semantic" in key:
+        return "Embeds only documents promoted from targeted weakness work so ranking fixes are measured before broader ingest."
     if "download" in key and "pubmed" in key:
         return "Moves evidence acquisition toward reproducible PubMed bulk files instead of small API topic samples."
     if "fetch" in key or "harvest" in key:
@@ -202,7 +214,7 @@ def step_why(step: dict[str, Any]) -> str:
     if "provenance" in key or "compact" in key:
         return "Keeps the server and release artifacts small enough to scale while preserving inspectable evidence sources."
     if "full_pubmed" in key:
-        return "Expands from pilots to broad PubMed coverage, which is required before calling the literature side product-like."
+        return "Deferred broad coverage milestone; use targeted weakness acquisition first unless broad coverage is explicitly needed."
     return "Tracks a concrete pipeline artifact so progress reflects reproducible outputs, not just manual notes."
 
 
@@ -224,6 +236,7 @@ def count_lines(path: Path) -> int:
 def count_csv_rows(
     path: Path,
     *,
+    delimiter: str = ",",
     required_columns: list[str] | None = None,
     allowed_values: dict[str, set[str]] | None = None,
 ) -> int:
@@ -231,7 +244,7 @@ def count_csv_rows(
     allowed = allowed_values or {}
     count = 0
     with path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
+        reader = csv.DictReader(handle, delimiter=delimiter)
         for row in reader:
             if required and not all(str(row.get(column) or "").strip() for column in required):
                 continue
@@ -292,9 +305,10 @@ def artifact_status(spec: dict[str, Any]) -> ArtifactStatus:
         status.latest_mtime = max(status.latest_mtime or 0, stat.st_mtime)
         if kind == "jsonl":
             status.rows += count_lines(path)
-        elif kind == "csv":
+        elif kind in {"csv", "tsv"}:
             status.rows += count_csv_rows(
                 path,
+                delimiter="\t" if kind == "tsv" else ",",
                 required_columns=required_columns,
                 allowed_values=allowed_values,
             )
@@ -747,7 +761,7 @@ def human_summary(status: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "headline": (
-            "Usable pilot search is built for CUI/code/text inputs; broad PubMed coverage, "
+            "Usable pilot search is built for CUI/code/text inputs; targeted PubMed weakness acquisition, "
             "restricted clinical ingest, and incremental update mechanics remain."
         ),
         "progress_sentence": (

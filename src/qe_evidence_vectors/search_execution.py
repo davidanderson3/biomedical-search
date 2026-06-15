@@ -5,10 +5,12 @@ from array import array
 from copy import deepcopy
 from urllib.error import URLError
 
+from qe_evidence_vectors.code_index import looks_like_code, parse_system_code
 from qe_evidence_vectors.generic_filters import is_blocked_generic_query
 from qe_evidence_vectors.search_hit_features import semantic_type_names
-from qe_evidence_vectors.search_hydration import normalize_return_code_sabs
+from qe_evidence_vectors.search_hydration import normalize_return_code_sabs, source_code_result_sabs
 from qe_evidence_vectors.search_long_documents import LongDocumentChunk, plan_long_document_chunks
+from qe_evidence_vectors.search_ranking import promote_long_document_first_page_recall
 from qe_evidence_vectors.search_semantics import semantic_group_metadata
 from qe_evidence_vectors.search_semantic_buckets import (
     hit_relevance_score,
@@ -52,6 +54,9 @@ MIN_RESULT_RELEVANCE_PROTECTED_MATCH_TYPES = {
 MIN_RESULT_RELEVANCE_PROTECTED_SINGLE_TOKEN_LABEL_SPANS = {
     "homelessness",
 }
+MIN_RESULT_RELEVANCE_PROTECTED_EVIDENCE_LABEL_SCORE = 1.20
+MIN_RESULT_RELEVANCE_PROTECTED_ACTIVE_LABEL_SCORE = 0.70
+SEARCH_TIMING_ROUND_DIGITS = 3
 TEMPORAL_WORD_CHEMICAL_SPANS = {
     "today",
     "tomorrow",
@@ -62,6 +67,15 @@ TEMPORAL_WORD_CHEMICAL_SEMANTIC_TYPES = {
     "inorganic chemical",
     "organic chemical",
 }
+
+
+def source_code_identifier_query(query: object) -> bool:
+    text = str(query or "").strip()
+    if not text:
+        return False
+    if parse_system_code(text):
+        return True
+    return looks_like_code(text)
 
 
 def temporal_word_chemical_false_positive(hit: dict, *, query: object = None) -> bool:
@@ -101,7 +115,12 @@ def exact_label_hit_protected_from_min_result_relevance(hit: dict) -> bool:
     if label_score < 1.05:
         return False
     sources = {str(source) for source in hit.get("sources") or []}
-    if "active_label_supplement" not in sources and int(hit.get("evidence_count") or 0) <= 0:
+    evidence_count = int(hit.get("evidence_count") or 0)
+    if "active_label_supplement" in sources and label_score >= MIN_RESULT_RELEVANCE_PROTECTED_ACTIVE_LABEL_SCORE:
+        return True
+    if evidence_count > 0 and label_score >= MIN_RESULT_RELEVANCE_PROTECTED_EVIDENCE_LABEL_SCORE:
+        return True
+    if "active_label_supplement" not in sources and evidence_count <= 0:
         return False
     span_tokens = [token for token in span.replace("-", " ").split() if token]
     if len(span_tokens) == 1 and span_tokens[0] not in MIN_RESULT_RELEVANCE_PROTECTED_SINGLE_TOKEN_LABEL_SPANS:
@@ -176,6 +195,72 @@ class SearchExecutionMixin:
         "vector_row",
     }
 
+    def new_search_timing(self) -> dict:
+        return {"stages": [], "by_stage": {}, "counts": {}}
+
+    def add_search_timing(
+        self,
+        timing: dict | None,
+        name: str,
+        started: float,
+        **metadata: object,
+    ) -> None:
+        if timing is None:
+            return
+        elapsed_ms = max(0.0, (time.time() - started) * 1000)
+        row = {
+            "name": str(name),
+            "elapsed_ms": round(elapsed_ms, SEARCH_TIMING_ROUND_DIGITS),
+        }
+        for key, value in metadata.items():
+            if value is not None:
+                row[str(key)] = value
+        timing.setdefault("stages", []).append(row)
+        by_stage = timing.setdefault("by_stage", {})
+        by_stage[str(name)] = round(
+            float(by_stage.get(str(name), 0.0) or 0.0) + elapsed_ms,
+            SEARCH_TIMING_ROUND_DIGITS,
+        )
+
+    def set_search_timing_count(self, timing: dict | None, name: str, value: object) -> None:
+        if timing is None:
+            return
+        timing.setdefault("counts", {})[str(name)] = value
+
+    def finalized_search_timing(self, timing: dict | None, *, started: float) -> dict:
+        timing = timing or self.new_search_timing()
+        return {
+            "total_ms": round(max(0.0, (time.time() - started) * 1000), SEARCH_TIMING_ROUND_DIGITS),
+            "by_stage": dict(timing.get("by_stage") or {}),
+            "stages": list(timing.get("stages") or []),
+            "counts": dict(timing.get("counts") or {}),
+        }
+
+    def compact_search_response_with_timing(
+        self,
+        result: dict,
+        *,
+        started: float,
+        timing: dict | None,
+        include_debug: bool = False,
+        include_evidence_items: bool = True,
+    ) -> dict:
+        compact_started = time.time()
+        output = self.compact_search_response(
+            result,
+            include_debug=include_debug,
+            include_evidence_items=include_evidence_items,
+        )
+        self.add_search_timing(
+            timing,
+            "response_compaction",
+            compact_started,
+            hit_count=len(result.get("hits") or []),
+        )
+        output["elapsed_ms"] = round((time.time() - started) * 1000, 1)
+        output["server_timing"] = self.finalized_search_timing(timing, started=started)
+        return output
+
     def search_cache_key(
         self,
         query: str,
@@ -184,6 +269,7 @@ class SearchExecutionMixin:
         include_related: bool,
         include_linked_concepts: bool,
         include_evidence_items: bool,
+        include_molecular_associations: bool = False,
         semantic_bucket_keys: object = None,
         search_mode: object = None,
         search_scope: object = None,
@@ -200,6 +286,7 @@ class SearchExecutionMixin:
             bool(include_related),
             bool(include_linked_concepts),
             bool(include_evidence_items),
+            bool(include_molecular_associations),
             bool(debug),
             mode,
             scope,
@@ -216,6 +303,286 @@ class SearchExecutionMixin:
             str(getattr(self, "elastic_index", "") or ""),
             int(getattr(self, "elastic_num_candidates", 0) or 0),
         )
+
+    def search_source_code_atoms(
+        self,
+        query: str,
+        *,
+        top_k: int,
+        started: float,
+        include_related: bool = True,
+        include_linked_concepts: bool = True,
+        semantic_bucket_keys: object = None,
+        search_mode: object = None,
+        search_scope: object = None,
+        return_code_sabs: object = None,
+        debug: bool = False,
+    ) -> dict:
+        search_mode = normalize_search_mode(search_mode)
+        search_scope = normalize_search_scope(search_scope)
+        semantic_bucket_keys = normalize_semantic_bucket_filter(semantic_bucket_keys)
+        selected_sabs = source_code_result_sabs(return_code_sabs)
+        rank_top_k = self.semantic_filter_rank_limit(
+            top_k,
+            semantic_bucket_keys,
+            search_mode=search_mode,
+        )
+        literal_hits = self.source_code_atom_hits(
+            query,
+            sabs=selected_sabs,
+            limit=max(rank_top_k * 4, 40),
+        )
+        seen_source_codes = self.source_code_hit_keys(literal_hits)
+        candidate_hits = []
+        if len(literal_hits) < rank_top_k and not source_code_identifier_query(query):
+            candidate_hits = self.source_code_hits_from_concept_candidates(
+                query,
+                sabs=selected_sabs,
+                limit=max(rank_top_k * 4, 40) - len(literal_hits),
+                start_rank=len(literal_hits),
+                seen_source_codes=seen_source_codes,
+                semantic_bucket_keys=semantic_bucket_keys,
+                search_mode=search_mode,
+                search_scope=search_scope,
+            )
+        hits = literal_hits + candidate_hits
+        pre_filter_count = len(hits)
+        hits = self.filter_hits_by_semantic_buckets(
+            hits,
+            semantic_bucket_keys,
+            search_mode=search_mode,
+        )
+        score_filter_metadata = self.result_score_filter_metadata(
+            search_mode=search_mode,
+            semantic_bucket_keys=semantic_bucket_keys,
+            before_count=pre_filter_count,
+            after_count=len(hits),
+        )
+        hits = hits[:top_k]
+        if include_related and search_scope != SEARCH_SCOPE_UMLS:
+            self.attach_related_concepts(hits)
+        for hit in hits:
+            retrieval_kind = str(hit.get("retrieval_kind") or hit.get("match_type") or "source_code_label")
+            hit["score"] = round(float(hit.get("score") or 0.0), 6)
+            hit["rank_score"] = round(float(hit.get("rank_score") or hit.get("score") or 0.0), 6)
+            hit["score_breakdown"] = {
+                "rank_score": hit["rank_score"],
+                "retrieval_score": hit["rank_score"],
+                "lexical_component": hit["rank_score"],
+                "vector_component": 0.0,
+                "label_fallback_component": 0.0,
+                "exact_label_component": 0.0,
+                "exact_primary_name_component": 0.0,
+                "exact_code_component": 0.0,
+                "evidence_component": 0.0,
+                "primary_name_component": 0.0,
+                "negated_finding_component": 0.0,
+                "denied_positive_finding_penalty": 0.0,
+                "denied_context_mismatch_penalty": 0.0,
+                "semantic_component": 0.0,
+                "evidence_context_component": 0.0,
+                "definition_component": 0.0,
+                "definition_matched_tokens": [],
+                "mrrel_component": 0.0,
+                "mrrel_matched_tokens": [],
+                "mrrel_signal_reasons": [],
+                "long_document_support_component": 0.0,
+                "composite_intent_component": 0.0,
+                "specificity_component": 0.0,
+                "generic_penalty": 0.0,
+                "broad_label_penalty": 0.0,
+                "relative_specificity_penalty": 0.0,
+                "clinical_context_sense_penalty": 0.0,
+                "role_mismatch_penalty": 0.0,
+                "numeric_specificity_penalty": 0.0,
+                "numeric_context_fragment_penalty": 0.0,
+                "action_observation_penalty": 0.0,
+                "composite_component_penalty": 0.0,
+                "sepsis_subtype_penalty": 0.0,
+                "semantic_fragment_penalty": 0.0,
+                "generic_fragment_penalty": 0.0,
+                "assertion_context_penalty": 0.0,
+                "assertion": {"status": "current"},
+                "normal_exam_fragment_penalty": 0.0,
+                "lexical_fallback_used": False,
+                "retrieval_kind": retrieval_kind,
+            }
+            hit["assertion"] = {"status": "current"}
+        # Source-code row mode is intentionally strict: do not mix CUI mention
+        # panels into a source vocabulary result set.
+        mentions = []
+        return self.compact_search_response({
+            "query": query,
+            "top_k": top_k,
+            "search_mode": search_mode,
+            "search_scope": search_scope,
+            "backend": "source_code",
+            "code_result_mode": "source_atoms",
+            "source_code_sabs": list(selected_sabs),
+            "scoring": self.scoring_summary(
+                "source_code",
+                search_mode=search_mode,
+                search_scope=search_scope,
+            ),
+            "semantic_bucket_filter": list(semantic_bucket_keys),
+            "hits": hits,
+            "linked_concepts": [],
+            "linked_concepts_enabled": False,
+            "mentions": mentions,
+            "mentions_enabled": False,
+            "mention_count": len(mentions),
+            "source_code_literal_hit_count": len(literal_hits),
+            "source_code_candidate_hit_count": len(candidate_hits),
+            "source_code_no_hits": not bool(hits),
+            "source_code_fallback_suppressed": True,
+            **score_filter_metadata,
+            **self.source_contribution_metadata(hits, include_debug=debug),
+            **self.semantic_response_metadata(
+                hits,
+                include_related=include_related and search_scope != SEARCH_SCOPE_UMLS,
+                semantic_bucket_keys=semantic_bucket_keys,
+            ),
+            "elapsed_ms": round((time.time() - started) * 1000, 1),
+        }, include_debug=debug, include_evidence_items=False)
+
+    def source_code_hit_keys(self, hits: list[dict]) -> set[tuple[str, str]]:
+        keys = set()
+        for hit in hits:
+            for row in hit.get("codes") or []:
+                system = str(row.get("system") or row.get("sab") or "").strip()
+                code = str(row.get("code") or row.get("source_asserted_code") or "").strip()
+                if system and code:
+                    keys.add((system, code.upper()))
+        return keys
+
+    def source_code_hits_from_concept_candidates(
+        self,
+        query: str,
+        *,
+        sabs: tuple[str, ...],
+        limit: int,
+        start_rank: int = 0,
+        seen_source_codes: set[tuple[str, str]] | None = None,
+        semantic_bucket_keys: object = None,
+        search_mode: object = None,
+        search_scope: object = None,
+    ) -> list[dict]:
+        if limit <= 0 or not sabs:
+            return []
+        candidate_queries = [query]
+        query_tokens = content_tokens(query)
+        compact_query = " ".join(query_tokens)
+        if compact_query and compact_query != query:
+            candidate_queries.append(compact_query)
+        seen = seen_source_codes if seen_source_codes is not None else set()
+        hits: list[dict] = []
+        seen_candidate_cuis: set[str] = set()
+        candidate_rank = 0
+        for candidate_query in candidate_queries:
+            candidate_result = self.search(
+                candidate_query,
+                top_k=max(limit, 40),
+                include_related=False,
+                include_linked_concepts=False,
+                include_evidence_items=False,
+                semantic_bucket_keys=semantic_bucket_keys,
+                search_mode=search_mode,
+                search_scope=search_scope,
+                return_code_sabs=["none"],
+                debug=False,
+            )
+            for candidate in candidate_result.get("hits") or []:
+                cui = str(candidate.get("cui") or "").strip().upper()
+                if not cui or cui in seen_candidate_cuis:
+                    continue
+                seen_candidate_cuis.add(cui)
+                candidate_rank += 1
+                candidate_score = float(candidate.get("rank_score") or candidate.get("score") or 0.0)
+                candidate_name = str(candidate.get("name") or self.display_label_for_cui(cui, []))
+                matched_span = str(
+                    candidate.get("matched_query_span")
+                    or candidate.get("matched_label")
+                    or candidate.get("matched_input")
+                    or ""
+                )
+                matched_tokens = content_tokens(matched_span or candidate_query)[:12] or query_tokens[:12]
+                hits.extend(
+                    self.source_code_hits_from_mapped_cui(
+                        cui,
+                        query=query,
+                        sabs=sabs,
+                        limit=limit - len(hits),
+                        start_rank=start_rank + len(hits),
+                        seen_source_codes=seen,
+                        candidate_rank=candidate_rank,
+                        candidate_score=candidate_score,
+                        candidate_name=candidate_name,
+                        candidate_backend=str(candidate_result.get("backend") or ""),
+                        candidate_query=candidate_query,
+                        matched_tokens=matched_tokens,
+                        match_type="source_code_candidate_mapping",
+                    )
+                )
+                if len(hits) >= limit:
+                    return hits
+        return hits
+
+    def source_code_hits_from_mapped_cui(
+        self,
+        cui: str,
+        *,
+        query: str,
+        sabs: tuple[str, ...],
+        limit: int,
+        start_rank: int,
+        seen_source_codes: set[tuple[str, str]],
+        candidate_rank: int,
+        candidate_score: float,
+        candidate_name: str,
+        candidate_backend: str,
+        candidate_query: str,
+        matched_tokens: list[str],
+        match_type: str,
+    ) -> list[dict]:
+        if limit <= 0:
+            return []
+        mappings = self.return_code_mappings_for_cui(cui, sabs=sabs, limit_per_sab=6)
+        hits: list[dict] = []
+        for mapping_rank, row in enumerate(mappings, start=1):
+            system = str(row.get("sab") or "").strip()
+            code = str(row.get("code") or "").strip()
+            if not system or not code:
+                continue
+            source_key = (system, code.upper())
+            if source_key in seen_source_codes:
+                continue
+            seen_source_codes.add(source_key)
+            hydrated_row = dict(row)
+            hydrated_row["source_atom_score"] = round(
+                max(candidate_score, 0.01)
+                - (candidate_rank * 0.001)
+                - (mapping_rank * 0.0001),
+                6,
+            )
+            hydrated_row["matched_query_tokens"] = matched_tokens
+            hit = self.source_code_hit_from_mapping(
+                hydrated_row,
+                query=query,
+                rank=start_rank + len(hits) + 1,
+            )
+            hit["match_type"] = match_type
+            hit["retrieval_kind"] = match_type
+            hit["source_code_candidate_generation"] = True
+            hit["source_candidate_cui"] = cui
+            hit["source_candidate_rank"] = candidate_rank
+            hit["source_candidate_name"] = candidate_name
+            hit["source_candidate_score"] = round(candidate_score, 6)
+            hit["source_candidate_backend"] = candidate_backend
+            hit["source_candidate_query"] = candidate_query
+            hits.append(hit)
+            if len(hits) >= limit:
+                return hits
+        return hits
 
     def strip_evidence_from_umls_hit(self, hit: dict) -> dict:
         cui = str(hit.get("cui") or "").strip().upper()
@@ -349,8 +716,6 @@ class SearchExecutionMixin:
             search_mode=search_mode,
             semantic_bucket_keys=semantic_bucket_keys,
         )
-        if search_scope == SEARCH_SCOPE_UMLS_EVIDENCE:
-            hits = self.promote_rankable_linked_label_results(query, hits, top_k=rank_top_k)
         score_filter_metadata = self.result_score_filter_metadata(
             search_mode=search_mode,
             semantic_bucket_keys=semantic_bucket_keys,
@@ -501,6 +866,19 @@ class SearchExecutionMixin:
                 semantic_bucket_keys=semantic_bucket_keys,
             )
         ]
+
+    def preserve_long_document_first_page_recall(
+        self,
+        query: object,
+        hits: list[dict],
+    ) -> list[dict]:
+        if len(hits) <= 10 or not any(hit.get("long_document_support") for hit in hits[10:]):
+            return hits
+        return promote_long_document_first_page_recall(
+            hits,
+            query_tokens=content_tokens(str(query or "")),
+            max_promotions=3,
+        )
 
     def result_score_filter_metadata(
         self,
@@ -919,6 +1297,7 @@ class SearchExecutionMixin:
         include_related: bool = True,
         include_linked_concepts: bool = True,
         include_evidence_items: bool = True,
+        include_molecular_associations: bool = False,
         semantic_bucket_keys: object = None,
         search_mode: object = None,
         search_scope: object = None,
@@ -926,6 +1305,7 @@ class SearchExecutionMixin:
         debug: bool = False,
     ) -> dict:
         started = time.time()
+        timing = self.new_search_timing()
         search_mode = normalize_search_mode(search_mode)
         search_scope = normalize_search_scope(search_scope)
         semantic_bucket_keys = normalize_semantic_bucket_filter(semantic_bucket_keys)
@@ -938,16 +1318,23 @@ class SearchExecutionMixin:
             include_related=include_related,
             include_linked_concepts=include_linked_concepts,
             include_evidence_items=include_evidence_items,
+            include_molecular_associations=include_molecular_associations,
             semantic_bucket_keys=semantic_bucket_keys,
             search_mode=search_mode,
             search_scope=search_scope,
             return_code_sabs=return_code_sabs,
             debug=debug,
         )
+        cache_started = time.time()
         cached = self.cached_search_result(cache_key, started=started)
+        self.add_search_timing(timing, "cache_lookup", cache_started)
         if cached is not None:
+            cached["uncached_server_timing"] = cached.get("server_timing")
+            cached["server_timing"] = self.finalized_search_timing(timing, started=started)
             return cached
+        self.set_search_timing_count(timing, "top_k", int(top_k or 0))
         if is_blocked_generic_query(query):
+            self.add_search_timing(timing, "generic_query_filter", started)
             result = {
                 "query": query,
                 "top_k": top_k,
@@ -960,6 +1347,7 @@ class SearchExecutionMixin:
                     search_scope=search_scope,
                 ),
                 "semantic_bucket_filter": list(semantic_bucket_keys),
+                "molecular_associations_enabled": bool(include_molecular_associations),
                 "hits": [],
                 **self.source_contribution_metadata([], include_debug=debug),
                 **self.semantic_response_metadata(
@@ -969,8 +1357,28 @@ class SearchExecutionMixin:
                 ),
                 "elapsed_ms": round((time.time() - started) * 1000, 1),
             }
+            result["server_timing"] = self.finalized_search_timing(timing, started=started)
             return self.store_search_result_cache(cache_key, result)
+        if source_code_result_sabs(return_code_sabs):
+            source_code_started = time.time()
+            source_code_result = self.search_source_code_atoms(
+                query,
+                top_k=top_k,
+                started=started,
+                include_related=include_related,
+                include_linked_concepts=include_linked_concepts,
+                semantic_bucket_keys=semantic_bucket_keys,
+                search_mode=search_mode,
+                search_scope=search_scope,
+                return_code_sabs=return_code_sabs,
+                debug=debug,
+            )
+            self.add_search_timing(timing, "source_code_search", source_code_started)
+            source_code_result["server_timing"] = self.finalized_search_timing(timing, started=started)
+            return self.store_search_result_cache(cache_key, source_code_result)
+        resolve_started = time.time()
         resolution = self.resolve(query, limit=max(top_k * 2, 10))
+        self.add_search_timing(timing, "resolve", resolve_started)
         if search_scope == "umls":
             result = self.search_umls_scope(
                 query,
@@ -982,6 +1390,7 @@ class SearchExecutionMixin:
                 return_code_sabs=return_code_sabs,
                 debug=debug,
             )
+            result["server_timing"] = self.finalized_search_timing(timing, started=started)
             return self.store_search_result_cache(cache_key, result)
         if resolution.get("input_type") in {
             "cui",
@@ -1003,12 +1412,15 @@ class SearchExecutionMixin:
                 return_code_sabs=return_code_sabs,
                 debug=debug,
             )
+            result["server_timing"] = self.finalized_search_timing(timing, started=started)
             return self.store_search_result_cache(cache_key, result)
+        embedded_code_started = time.time()
         embedded_code_resolution = (
             self.resolve_embedded_code_lookup(query, limit=max(top_k * 2, 10))
             if search_mode == "exact"
             else None
         )
+        self.add_search_timing(timing, "embedded_code_resolution", embedded_code_started)
         if embedded_code_resolution and embedded_code_resolution.get("candidates"):
             result = self.direct_search(
                 embedded_code_resolution,
@@ -1022,10 +1434,26 @@ class SearchExecutionMixin:
                 return_code_sabs=return_code_sabs,
                 debug=debug,
             )
+            result["server_timing"] = self.finalized_search_timing(timing, started=started)
             return self.store_search_result_cache(cache_key, result)
+        chunk_planning_started = time.time()
         long_document_chunks = plan_long_document_chunks(query)
+        self.add_search_timing(
+            timing,
+            "long_document_chunk_planning",
+            chunk_planning_started,
+            chunk_count=len(long_document_chunks),
+        )
+        self.set_search_timing_count(timing, "long_document_chunks", len(long_document_chunks))
         embed_inputs = [query, *[chunk.text for chunk in long_document_chunks]]
+        embedding_started = time.time()
         embedded_vectors = self.embedder.embed(embed_inputs)
+        self.add_search_timing(
+            timing,
+            "embedding",
+            embedding_started,
+            input_count=len(embed_inputs),
+        )
         query_vector = array("f", embedded_vectors[0])
         long_document_chunk_vectors = [
             array("f", vector) for vector in embedded_vectors[1:]
@@ -1047,6 +1475,7 @@ class SearchExecutionMixin:
                     include_related=include_related,
                     include_linked_concepts=include_linked_concepts,
                     include_evidence_items=include_evidence_items,
+                    include_molecular_associations=include_molecular_associations,
                     backend="local_fallback",
                     fallback_reason=self.elastic_failure_reason or "elasticsearch temporarily disabled",
                     semantic_bucket_keys=semantic_bucket_keys,
@@ -1056,6 +1485,7 @@ class SearchExecutionMixin:
                     debug=debug,
                     long_document_chunks=long_document_chunks,
                     long_document_chunk_vectors=long_document_chunk_vectors,
+                    timing=timing,
                 )
                 return self.store_search_result_cache(cache_key, result)
             try:
@@ -1067,6 +1497,7 @@ class SearchExecutionMixin:
                     include_related=include_related,
                     include_linked_concepts=include_linked_concepts,
                     include_evidence_items=include_evidence_items,
+                    include_molecular_associations=include_molecular_associations,
                     semantic_bucket_keys=semantic_bucket_keys,
                     search_mode=search_mode,
                     search_scope=search_scope,
@@ -1074,6 +1505,7 @@ class SearchExecutionMixin:
                     debug=debug,
                     long_document_chunks=long_document_chunks,
                     long_document_chunk_vectors=long_document_chunk_vectors,
+                    timing=timing,
                 )
                 self.elastic_disabled_until = 0.0
                 self.elastic_failure_reason = ""
@@ -1089,6 +1521,7 @@ class SearchExecutionMixin:
                     include_related=include_related,
                     include_linked_concepts=include_linked_concepts,
                     include_evidence_items=include_evidence_items,
+                    include_molecular_associations=include_molecular_associations,
                     backend="local_fallback",
                     fallback_reason=fallback_reason,
                     semantic_bucket_keys=semantic_bucket_keys,
@@ -1098,6 +1531,7 @@ class SearchExecutionMixin:
                     debug=debug,
                     long_document_chunks=long_document_chunks,
                     long_document_chunk_vectors=long_document_chunk_vectors,
+                    timing=timing,
                 )
                 return self.store_search_result_cache(cache_key, result)
         self.require_elasticsearch_or_raise("missing --elastic-url or --elastic-index")
@@ -1109,6 +1543,7 @@ class SearchExecutionMixin:
             include_related=include_related,
             include_linked_concepts=include_linked_concepts,
             include_evidence_items=include_evidence_items,
+            include_molecular_associations=include_molecular_associations,
             semantic_bucket_keys=semantic_bucket_keys,
             search_mode=search_mode,
             search_scope=search_scope,
@@ -1116,6 +1551,7 @@ class SearchExecutionMixin:
             debug=debug,
             long_document_chunks=long_document_chunks,
             long_document_chunk_vectors=long_document_chunk_vectors,
+            timing=timing,
         )
         return self.store_search_result_cache(cache_key, result)
 
@@ -1265,6 +1701,7 @@ class SearchExecutionMixin:
         include_related: bool = True,
         include_linked_concepts: bool = True,
         include_evidence_items: bool = True,
+        include_molecular_associations: bool = False,
         backend: str = "local",
         fallback_reason: str = "",
         semantic_bucket_keys: object = None,
@@ -1274,13 +1711,24 @@ class SearchExecutionMixin:
         debug: bool = False,
         long_document_chunks: list[LongDocumentChunk] | None = None,
         long_document_chunk_vectors: list[array] | None = None,
+        timing: dict | None = None,
     ) -> dict:
         search_mode = normalize_search_mode(search_mode)
         search_scope = normalize_search_scope(search_scope)
         rank_top_k = self.semantic_filter_rank_limit(top_k, semantic_bucket_keys, search_mode=search_mode)
         candidate_pool_k = self.rerank_candidate_pool_size(rank_top_k, search_mode=search_mode)
+        base_vector_started = time.time()
         candidates = self.local_vector_candidates(query_vector, candidate_pool_k=candidate_pool_k)
+        self.add_search_timing(
+            timing,
+            "base_vector_search",
+            base_vector_started,
+            candidate_pool_k=candidate_pool_k,
+            raw_hit_count=len(candidates),
+            backend=backend,
+        )
         hits = []
+        hydration_started = time.time()
         for candidate_rank, item in enumerate(candidates, start=1):
             hit = self.hit_from_record(
                 item["record"],
@@ -1296,18 +1744,55 @@ class SearchExecutionMixin:
                 "vector_backend": getattr(self, "vector_matrix_backend", "python"),
             }
             hits.append(hit)
-        hits = self.merge_label_fallback(query, hits, top_k=rank_top_k)
+        self.add_search_timing(
+            timing,
+            "base_hit_hydration",
+            hydration_started,
+            hit_count=len(hits),
+        )
+        label_ranking_started = time.time()
+        hits = self.merge_label_fallback(
+            query,
+            hits,
+            top_k=rank_top_k,
+            include_molecular_associations=include_molecular_associations,
+        )
+        self.add_search_timing(
+            timing,
+            "label_fallback_and_ranking",
+            label_ranking_started,
+            hit_count=len(hits),
+        )
+        chunk_vector_started = time.time()
+        chunk_hits = self.long_document_local_vector_hits(
+            chunks=list(long_document_chunks or []),
+            chunk_vectors=list(long_document_chunk_vectors or []),
+            candidate_pool_k=candidate_pool_k,
+        )
+        self.add_search_timing(
+            timing,
+            "long_document_chunk_vector_search",
+            chunk_vector_started,
+            chunk_count=len(long_document_chunks or []),
+            raw_hit_count=len(chunk_hits),
+            backend=backend,
+        )
+        long_document_merge_started = time.time()
         hits = self.merge_long_document_candidates(
             query,
             hits,
             chunks=list(long_document_chunks or []),
-            chunk_hits=self.long_document_local_vector_hits(
-                chunks=list(long_document_chunks or []),
-                chunk_vectors=list(long_document_chunk_vectors or []),
-                candidate_pool_k=candidate_pool_k,
-            ),
+            chunk_hits=chunk_hits,
             top_k=rank_top_k,
+            timing=timing,
         )
+        self.add_search_timing(
+            timing,
+            "long_document_merge_and_ranking",
+            long_document_merge_started,
+            hit_count=len(hits),
+        )
+        filtering_started = time.time()
         hits = self.filter_hits_by_search_mode(hits, search_mode=search_mode)
         hits = self.filter_hits_by_semantic_buckets(
             hits,
@@ -1323,6 +1808,13 @@ class SearchExecutionMixin:
         )
         if search_scope == SEARCH_SCOPE_UMLS_EVIDENCE:
             hits = self.promote_rankable_linked_label_results(query, hits, top_k=rank_top_k)
+        hits = self.preserve_long_document_first_page_recall(query, hits)
+        self.add_search_timing(
+            timing,
+            "filtering_and_promotion",
+            filtering_started,
+            hit_count=len(hits),
+        )
         score_filter_metadata = self.result_score_filter_metadata(
             search_mode=search_mode,
             semantic_bucket_keys=semantic_bucket_keys,
@@ -1331,10 +1823,15 @@ class SearchExecutionMixin:
         )
         hits = hits[:top_k]
         if include_related:
+            related_started = time.time()
             self.attach_related_concepts(hits)
+            self.add_search_timing(timing, "related_concepts", related_started, hit_count=len(hits))
+        source_code_started = time.time()
         hits = self.apply_source_code_selection(hits, sabs=return_code_sabs)
+        self.add_search_timing(timing, "source_code_selection", source_code_started)
         for hit in hits:
             hit["score"] = round(float(hit["score"]), 6)
+        mentions_started = time.time()
         mentions = (
             self.query_entity_mentions(
                 query,
@@ -1344,6 +1841,35 @@ class SearchExecutionMixin:
             if include_linked_concepts
             else []
         )
+        self.add_search_timing(
+            timing,
+            "mention_extraction",
+            mentions_started,
+            enabled=bool(include_linked_concepts),
+            mention_count=len(mentions),
+        )
+        linked_started = time.time()
+        linked_concepts = (
+            self.query_linked_concept_hits(query, limit=max(top_k * 3, 60))
+            if include_linked_concepts
+            else []
+        )
+        self.add_search_timing(
+            timing,
+            "linked_concept_extraction",
+            linked_started,
+            enabled=bool(include_linked_concepts),
+            linked_count=len(linked_concepts),
+        )
+        metadata_started = time.time()
+        long_document_metadata = self.long_document_response_metadata(long_document_chunks or [])
+        source_metadata = self.source_contribution_metadata(hits, include_debug=debug)
+        semantic_metadata = self.semantic_response_metadata(
+            hits,
+            include_related=include_related,
+            semantic_bucket_keys=semantic_bucket_keys,
+        )
+        self.add_search_timing(timing, "response_metadata", metadata_started, hit_count=len(hits))
         result = {
             "query": query,
             "top_k": top_k,
@@ -1356,17 +1882,14 @@ class SearchExecutionMixin:
                 search_scope=search_scope,
             ),
             "semantic_bucket_filter": list(normalize_semantic_bucket_filter(semantic_bucket_keys)),
+            "molecular_associations_enabled": bool(include_molecular_associations),
             "hits": hits,
-            "linked_concepts": (
-                self.query_linked_concept_hits(query, limit=max(top_k * 3, 60))
-                if include_linked_concepts
-                else []
-            ),
+            "linked_concepts": linked_concepts,
             "linked_concepts_enabled": bool(include_linked_concepts),
             "mentions": mentions,
             "mentions_enabled": bool(include_linked_concepts),
             "mention_count": len(mentions),
-            **self.long_document_response_metadata(long_document_chunks or []),
+            **long_document_metadata,
             **(
                 {
                     "rankable_linked_label_promotions": list(
@@ -1377,19 +1900,17 @@ class SearchExecutionMixin:
                 else {}
             ),
             **score_filter_metadata,
-            **self.source_contribution_metadata(hits, include_debug=debug),
-            **self.semantic_response_metadata(
-                hits,
-                include_related=include_related,
-                semantic_bucket_keys=semantic_bucket_keys,
-            ),
+            **source_metadata,
+            **semantic_metadata,
             "elapsed_ms": round((time.time() - started) * 1000, 1),
         }
         if fallback_reason:
             result["fallback_reason"] = fallback_reason
             result["requested_backend"] = "elasticsearch"
-        return self.compact_search_response(
+        return self.compact_search_response_with_timing(
             result,
+            started=started,
+            timing=timing,
             include_debug=debug,
             include_evidence_items=include_evidence_items,
         )
@@ -1404,6 +1925,7 @@ class SearchExecutionMixin:
         include_related: bool = True,
         include_linked_concepts: bool = True,
         include_evidence_items: bool = True,
+        include_molecular_associations: bool = False,
         semantic_bucket_keys: object = None,
         search_mode: object = None,
         search_scope: object = None,
@@ -1411,12 +1933,14 @@ class SearchExecutionMixin:
         debug: bool = False,
         long_document_chunks: list[LongDocumentChunk] | None = None,
         long_document_chunk_vectors: list[array] | None = None,
+        timing: dict | None = None,
     ) -> dict:
         search_mode = normalize_search_mode(search_mode)
         search_scope = normalize_search_scope(search_scope)
         rank_top_k = self.semantic_filter_rank_limit(top_k, semantic_bucket_keys, search_mode=search_mode)
         candidate_pool_k = self.rerank_candidate_pool_size(rank_top_k, search_mode=search_mode)
         elastic_k = candidate_pool_k
+        base_vector_started = time.time()
         raw_hits = self.search_knn(
             base_url=self.elastic_url or "",
             index=self.elastic_index or "",
@@ -1425,7 +1949,16 @@ class SearchExecutionMixin:
             num_candidates=max(self.elastic_num_candidates, elastic_k),
             exclude_source_prefixes=getattr(self, "elastic_exclude_source_prefixes", ()),
         )
+        self.add_search_timing(
+            timing,
+            "base_vector_search",
+            base_vector_started,
+            candidate_pool_k=candidate_pool_k,
+            raw_hit_count=len(raw_hits),
+            backend="elasticsearch",
+        )
         best_by_cui: dict[str, dict] = {}
+        hydration_started = time.time()
         for hit in raw_hits:
             source = hit.get("_source", {}) or {}
             doc_id = str(source.get("doc_id") or hit.get("_id") or "")
@@ -1491,18 +2024,55 @@ class SearchExecutionMixin:
             if current is None or result["score"] > current["score"]:
                 best_by_cui[cui] = result
         hits = sorted(best_by_cui.values(), key=lambda item: item["score"], reverse=True)[:candidate_pool_k]
-        hits = self.merge_label_fallback(query, hits, top_k=rank_top_k)
+        self.add_search_timing(
+            timing,
+            "base_hit_hydration",
+            hydration_started,
+            hit_count=len(hits),
+        )
+        label_ranking_started = time.time()
+        hits = self.merge_label_fallback(
+            query,
+            hits,
+            top_k=rank_top_k,
+            include_molecular_associations=include_molecular_associations,
+        )
+        self.add_search_timing(
+            timing,
+            "label_fallback_and_ranking",
+            label_ranking_started,
+            hit_count=len(hits),
+        )
+        chunk_vector_started = time.time()
+        chunk_hits = self.long_document_elastic_vector_hits(
+            chunks=list(long_document_chunks or []),
+            chunk_vectors=list(long_document_chunk_vectors or []),
+            candidate_pool_k=candidate_pool_k,
+        )
+        self.add_search_timing(
+            timing,
+            "long_document_chunk_vector_search",
+            chunk_vector_started,
+            chunk_count=len(long_document_chunks or []),
+            raw_hit_count=len(chunk_hits),
+            backend="elasticsearch",
+        )
+        long_document_merge_started = time.time()
         hits = self.merge_long_document_candidates(
             query,
             hits,
             chunks=list(long_document_chunks or []),
-            chunk_hits=self.long_document_elastic_vector_hits(
-                chunks=list(long_document_chunks or []),
-                chunk_vectors=list(long_document_chunk_vectors or []),
-                candidate_pool_k=candidate_pool_k,
-            ),
+            chunk_hits=chunk_hits,
             top_k=rank_top_k,
+            timing=timing,
         )
+        self.add_search_timing(
+            timing,
+            "long_document_merge_and_ranking",
+            long_document_merge_started,
+            hit_count=len(hits),
+        )
+        filtering_started = time.time()
         hits = self.filter_hits_by_search_mode(hits, search_mode=search_mode)
         hits = self.filter_hits_by_semantic_buckets(
             hits,
@@ -1518,6 +2088,13 @@ class SearchExecutionMixin:
         )
         if search_scope == SEARCH_SCOPE_UMLS_EVIDENCE:
             hits = self.promote_rankable_linked_label_results(query, hits, top_k=rank_top_k)
+        hits = self.preserve_long_document_first_page_recall(query, hits)
+        self.add_search_timing(
+            timing,
+            "filtering_and_promotion",
+            filtering_started,
+            hit_count=len(hits),
+        )
         score_filter_metadata = self.result_score_filter_metadata(
             search_mode=search_mode,
             semantic_bucket_keys=semantic_bucket_keys,
@@ -1526,10 +2103,15 @@ class SearchExecutionMixin:
         )
         hits = hits[:top_k]
         if include_related:
+            related_started = time.time()
             self.attach_related_concepts(hits)
+            self.add_search_timing(timing, "related_concepts", related_started, hit_count=len(hits))
+        source_code_started = time.time()
         hits = self.apply_source_code_selection(hits, sabs=return_code_sabs)
+        self.add_search_timing(timing, "source_code_selection", source_code_started)
         for hit in hits:
             hit["score"] = round(float(hit["score"]), 6)
+        mentions_started = time.time()
         mentions = (
             self.query_entity_mentions(
                 query,
@@ -1539,7 +2121,36 @@ class SearchExecutionMixin:
             if include_linked_concepts
             else []
         )
-        return self.compact_search_response({
+        self.add_search_timing(
+            timing,
+            "mention_extraction",
+            mentions_started,
+            enabled=bool(include_linked_concepts),
+            mention_count=len(mentions),
+        )
+        linked_started = time.time()
+        linked_concepts = (
+            self.query_linked_concept_hits(query, limit=max(top_k * 3, 60))
+            if include_linked_concepts
+            else []
+        )
+        self.add_search_timing(
+            timing,
+            "linked_concept_extraction",
+            linked_started,
+            enabled=bool(include_linked_concepts),
+            linked_count=len(linked_concepts),
+        )
+        metadata_started = time.time()
+        long_document_metadata = self.long_document_response_metadata(long_document_chunks or [])
+        source_metadata = self.source_contribution_metadata(hits, include_debug=debug)
+        semantic_metadata = self.semantic_response_metadata(
+            hits,
+            include_related=include_related,
+            semantic_bucket_keys=semantic_bucket_keys,
+        )
+        self.add_search_timing(timing, "response_metadata", metadata_started, hit_count=len(hits))
+        result = {
             "query": query,
             "top_k": top_k,
             "search_mode": search_mode,
@@ -1551,17 +2162,14 @@ class SearchExecutionMixin:
                 search_scope=search_scope,
             ),
             "semantic_bucket_filter": list(normalize_semantic_bucket_filter(semantic_bucket_keys)),
+            "molecular_associations_enabled": bool(include_molecular_associations),
             "hits": hits,
-            "linked_concepts": (
-                self.query_linked_concept_hits(query, limit=max(top_k * 3, 60))
-                if include_linked_concepts
-                else []
-            ),
+            "linked_concepts": linked_concepts,
             "linked_concepts_enabled": bool(include_linked_concepts),
             "mentions": mentions,
             "mentions_enabled": bool(include_linked_concepts),
             "mention_count": len(mentions),
-            **self.long_document_response_metadata(long_document_chunks or []),
+            **long_document_metadata,
             **(
                 {
                     "rankable_linked_label_promotions": list(
@@ -1572,11 +2180,14 @@ class SearchExecutionMixin:
                 else {}
             ),
             **score_filter_metadata,
-            **self.source_contribution_metadata(hits, include_debug=debug),
-            **self.semantic_response_metadata(
-                hits,
-                include_related=include_related,
-                semantic_bucket_keys=semantic_bucket_keys,
-            ),
+            **source_metadata,
+            **semantic_metadata,
             "elapsed_ms": round((time.time() - started) * 1000, 1),
-        }, include_debug=debug, include_evidence_items=include_evidence_items)
+        }
+        return self.compact_search_response_with_timing(
+            result,
+            started=started,
+            timing=timing,
+            include_debug=debug,
+            include_evidence_items=include_evidence_items,
+        )

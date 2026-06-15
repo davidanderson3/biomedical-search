@@ -14,13 +14,18 @@
       includeRelated: true,
       searchMode: "balanced",
       searchScope: "umls_evidence",
-      sourceCodeSabs: "default",
+      sourceCodeSabs: "none",
       selectedSemanticBucketKeys: [],
       searchRequestSeq: 0,
       searchAbortController: null,
       setRows: [],
       detailCache: new Map(),
-      judgments: loadJudgments()
+      judgments: {},
+      judgmentsLoaded: false,
+      judgmentsPath: "",
+      judgmentSaveSeq: 0,
+      judgmentSaveState: "idle",
+      judgmentSaveError: ""
     };
 
     const API_BASE = (() => {
@@ -312,6 +317,7 @@
     ];
     let clinicalNoteSuggestions = [];
     let paragraphTests = [];
+    let realShortQueries = [];
     let longQueries = [];
     let semanticResultBucketDefs = DEFAULT_SEMANTIC_RESULT_BUCKETS;
     let semanticResultBucketsReady = Promise.resolve();
@@ -345,6 +351,19 @@
       if (!paragraphTests.length) paragraphTests = DEFAULT_PARAGRAPH_TESTS;
       longQueries = paragraphTests.filter(isLongSampleQuery);
       updateSampleStatus();
+    }
+
+    async function loadRealShortQueries() {
+      try {
+        const response = await fetch(`${API_BASE}/search_quality_real_short_queries.json`);
+        if (!response.ok) throw new Error(`real short queries ${response.status}`);
+        const payload = await response.json();
+        realShortQueries = Array.isArray(payload)
+          ? payload.map((item) => String(item || "").trim()).filter(Boolean)
+          : [];
+      } catch (err) {
+        realShortQueries = [];
+      }
     }
 
     async function loadSemanticResultBuckets() {
@@ -414,31 +433,53 @@
     }
 
     function selectedSourceCodeSabs() {
-      if (publicOutputOnly()) return "none";
-      const value = String(els.sourceCodes?.value || "default").trim();
-      return value || "default";
+      const value = String(els.sourceCodes?.value || "none").trim();
+      if (publicOutputOnly() && !sourceCodeOptionAllowed(value)) return "none";
+      return value || "none";
     }
 
     function sourceCodeQueryParam(value = selectedSourceCodeSabs()) {
-      return `&codes=${encodeURIComponent(value || "default")}`;
+      return `&codes=${encodeURIComponent(value || "none")}`;
     }
 
     function publicOutputOnly() {
       return Boolean(state.status?.public_output_only);
     }
 
+    function publicOutputSources() {
+      return new Set(
+        Array.isArray(state.status?.public_output_sources)
+          ? state.status.public_output_sources.map((source) => String(source || "").trim().toUpperCase()).filter(Boolean)
+          : []
+      );
+    }
+
+    function sourceCodeOptionAllowed(value) {
+      const optionValue = String(value || "none").trim();
+      if (!publicOutputOnly()) return true;
+      if (!optionValue || optionValue === "none") return true;
+      if (["default", "all"].includes(optionValue)) return false;
+      return publicOutputSources().has(optionValue.toUpperCase());
+    }
+
     function updateSourceCodeControl() {
       if (!els.sourceCodes) return;
-      const hiddenByPublicMode = publicOutputOnly();
-      els.sourceCodes.disabled = hiddenByPublicMode;
-      if (hiddenByPublicMode) {
+      const publicMode = publicOutputOnly();
+      els.sourceCodes.disabled = false;
+      for (const option of Array.from(els.sourceCodes.options || [])) {
+        const value = String(option.value || "").trim();
+        option.disabled = publicMode && !sourceCodeOptionAllowed(value);
+      }
+      if (!sourceCodeOptionAllowed(els.sourceCodes.value)) {
         els.sourceCodes.value = "none";
         state.sourceCodeSabs = "none";
       }
       if (els.sourceCodesHint) {
-        els.sourceCodesHint.hidden = hiddenByPublicMode;
-        els.sourceCodesHint.classList.toggle("is-warning", hiddenByPublicMode);
-        els.sourceCodesHint.textContent = hiddenByPublicMode ? "" : "Choose which source-asserted code mappings to show.";
+        els.sourceCodesHint.hidden = false;
+        els.sourceCodesHint.classList.toggle("is-warning", publicMode);
+        els.sourceCodesHint.textContent = publicMode
+          ? "UMLS concepts returns CUIs only. RxNorm/LOINC code search returns source rows; public mode does not expose mapping bundles on concept results."
+          : "UMLS concepts returns CUIs. Code search returns rows from one vocabulary. Mapping-bundle options add code mappings to concept results.";
       }
     }
 
@@ -522,7 +563,7 @@
 
     const els = {};
     for (const id of [
-      "status", "query", "topK", "searchMode", "searchScope", "semanticGroupFilter", "sourceCodes", "searchBtn", "randomQueryBtn", "longQueryBtn", "sampleStatus", "querySet", "runSetBtn",
+      "status", "query", "topK", "searchMode", "searchScope", "semanticGroupFilter", "sourceCodes", "searchBtn", "randomQueryBtn", "shortQueryBtn", "longQueryBtn", "sampleStatus", "querySet", "runSetBtn",
       "sourceCodesHint", "saveJudgmentsBtn", "clearJudgmentsBtn", "exportBtn", "metrics", "results", "setResults",
       "searchProgress", "searchFeedback", "querySetFeedback",
       "snomedLicenseDialog", "snomedLicenseCheckbox", "snomedLicenseAcceptBtn"
@@ -545,6 +586,33 @@
       els.searchFeedback.textContent = text;
       els.searchFeedback.hidden = !text;
       els.searchFeedback.classList.toggle("is-error", kind === "error");
+    }
+
+    function setResultsPlaceholder(message) {
+      if (!els.results) return;
+      els.results.innerHTML = `<span class="muted">${esc(message)}</span>`;
+    }
+
+    function clearResultsForPendingSearch(query, options = {}) {
+      state.lastQuery = query;
+      state.lastResults = [];
+      state.lastMentions = [];
+      state.lastMentionCount = 0;
+      state.lastLinkedConcepts = [];
+      state.lastSemanticViews = [];
+      state.lastSemanticViewSources = [];
+      state.lastSemanticGroupViews = [];
+      state.lastSemanticResultBuckets = [];
+      state.lastRelatedResultBuckets = [];
+      state.lastScoring = null;
+      state.includeRelated = options.includeRelated === "1";
+      state.searchMode = options.searchMode || state.searchMode;
+      state.searchScope = options.searchScope || state.searchScope;
+      state.sourceCodeSabs = options.sourceCodes || state.sourceCodeSabs;
+      state.selectedSemanticBucketKeys = options.semanticBucketKeys || [];
+      state.detailCache.clear();
+      setResultsPlaceholder("Searching...");
+      renderMetrics();
     }
 
     function setQuerySetFeedback(message = "", kind = "") {
@@ -583,7 +651,7 @@
 
     function combinedSuggestionQueries() {
       const seen = new Set();
-      return [...clinicalNoteSuggestions, ...paragraphTests]
+      return [...realShortQueries, ...clinicalNoteSuggestions, ...paragraphTests]
         .map((query) => String(query || "").trim())
         .filter((query) => {
           const key = normalizedPhrase(query);
@@ -591,6 +659,10 @@
           seen.add(key);
           return true;
         });
+    }
+
+    function shortSuggestionQueries() {
+      return realShortQueries;
     }
 
     function longSuggestionQueries() {
@@ -601,15 +673,17 @@
     function updateSampleStatus() {
       if (!els.sampleStatus) return;
       const total = combinedSuggestionQueries().length;
+      const shortCount = shortSuggestionQueries().length;
       const longCount = longSuggestionQueries().length;
       els.sampleStatus.textContent = total
-        ? `${fmtNum(total)} samples loaded · ${fmtNum(longCount)} long`
+        ? `${fmtNum(total)} samples loaded · ${fmtNum(shortCount)} short · ${fmtNum(longCount)} long`
         : "No samples loaded";
     }
 
     function updateRandomQueryButton() {
       if (!els.randomQueryBtn) return;
       els.randomQueryBtn.disabled = !combinedSuggestionQueries().length;
+      if (els.shortQueryBtn) els.shortQueryBtn.disabled = !shortSuggestionQueries().length;
       if (els.longQueryBtn) els.longQueryBtn.disabled = !longSuggestionQueries().length;
       updateSampleStatus();
     }
@@ -634,20 +708,20 @@
       selectQueryFromPool(combinedSuggestionQueries());
     }
 
+    function selectShortQuery() {
+      selectQueryFromPool(shortSuggestionQueries());
+    }
+
     function selectLongQuery() {
       selectQueryFromPool(longSuggestionQueries());
     }
 
-    function loadJudgments() {
+    function clearLegacyJudgmentCache() {
       try {
-        return JSON.parse(localStorage.getItem("qe_search_server_judgments") || "{}");
+        localStorage.removeItem("qe_search_server_judgments");
       } catch (err) {
-        return {};
+        // Judgment storage is server-backed; stale browser caches are ignored.
       }
-    }
-
-    function saveJudgments() {
-      localStorage.setItem("qe_search_server_judgments", JSON.stringify(state.judgments));
     }
 
     function hasSnomedLicenseAcknowledgement() {
@@ -744,26 +818,48 @@
       renderMetrics();
     }
 
+    function judgmentRowsToMap(rows) {
+      const mapped = {};
+      for (const row of rows || []) {
+        const key = judgmentKey(row.query, row.doc_id);
+        if (!row.query || !row.doc_id || !row.grade) continue;
+        mapped[key] = row;
+      }
+      return mapped;
+    }
+
+    function applyServerJudgments(payload) {
+      state.judgments = judgmentRowsToMap(payload?.judgments || []);
+      state.judgmentsLoaded = true;
+      state.judgmentsPath = String(payload?.path || "");
+      state.judgmentSaveState = "saved";
+      state.judgmentSaveError = "";
+      clearLegacyJudgmentCache();
+    }
+
     async function loadServerJudgments() {
       try {
         const payload = await api("/api/judgments");
-        for (const row of payload.judgments || []) {
-          state.judgments[judgmentKey(row.query, row.doc_id)] = row;
-        }
-        saveJudgments();
+        applyServerJudgments(payload);
         renderMetrics();
       } catch (err) {
+        state.judgmentsLoaded = false;
+        state.judgmentSaveState = "error";
+        state.judgmentSaveError = err?.message || "Could not load server judgments";
+        setSearchFeedback(`Could not load server judgments: ${state.judgmentSaveError}`, "error");
         setBrandStatus();
       }
     }
 
-    async function persistJudgmentsToServer() {
+    async function persistJudgmentsToServer(body = { judgments: Object.values(state.judgments) }) {
       const payload = await api("/api/judgments", {
         method: "POST",
-        body: { judgments: Object.values(state.judgments) }
+        body
       });
+      applyServerJudgments(payload);
       setBrandStatus();
       renderMetrics();
+      return payload;
     }
 
     async function runSearch() {
@@ -789,6 +885,13 @@
       setSearchInFlight(true);
       setSearchFeedback();
       setBrandStatus();
+      clearResultsForPendingSearch(query, {
+        includeRelated,
+        searchMode,
+        searchScope,
+        sourceCodes,
+        semanticBucketKeys
+      });
       try {
         const payload = await api(
           `/api/search?q=${encodeURIComponent(query)}&k=${searchK}&related=${includeRelated}&linked=${includeRelated}&evidence_items=0&mode=${encodeURIComponent(searchMode)}${searchScopeQueryParam(searchScope)}${semanticBucketFilterQueryParam(semanticBucketKeys)}${sourceCodeQueryParam(sourceCodes)}`,
@@ -821,6 +924,7 @@
         if (err?.name === "AbortError") return;
         if (searchId !== state.searchRequestSeq) return;
         setSearchFeedback(err?.message || "Search failed.", "error");
+        setResultsPlaceholder("Search failed.");
         setBrandStatus();
       } finally {
         if (searchId === state.searchRequestSeq) {
@@ -832,7 +936,14 @@
     }
 
     function setJudgment(hit, grade) {
+      if (!state.judgmentsLoaded) {
+        setSearchFeedback("Judgments have not loaded from the server yet. Try again after the server responds.", "error");
+        return;
+      }
       const key = judgmentKey(state.lastQuery, hit.doc_id);
+      const previousJudgments = { ...state.judgments };
+      const saveSeq = state.judgmentSaveSeq + 1;
+      state.judgmentSaveSeq = saveSeq;
       if (grade) {
         state.judgments[key] = {
           query: state.lastQuery,
@@ -846,10 +957,25 @@
       } else {
         delete state.judgments[key];
       }
-      saveJudgments();
+      state.judgmentSaveState = "saving";
+      state.judgmentSaveError = "";
+      setSearchFeedback("");
       renderResults();
       renderMetrics();
-      persistJudgmentsToServer().catch((err) => {
+      const body = grade
+        ? { judgment: state.judgments[key] }
+        : { delete: { query: state.lastQuery, doc_id: hit.doc_id } };
+      persistJudgmentsToServer(body).then(() => {
+        if (saveSeq !== state.judgmentSaveSeq) return;
+        renderResults();
+      }).catch((err) => {
+        if (saveSeq !== state.judgmentSaveSeq) return;
+        state.judgments = previousJudgments;
+        state.judgmentSaveState = "error";
+        state.judgmentSaveError = err?.message || "Could not save judgment";
+        setSearchFeedback(`Could not save judgment: ${state.judgmentSaveError}`, "error");
+        renderResults();
+        renderMetrics();
         setBrandStatus();
       });
     }
@@ -879,6 +1005,7 @@
           aria-pressed="${active ? "true" : "false"}"
           aria-label="${esc(label)}"
           title="${esc(label)}"
+          ${(!state.judgmentsLoaded || state.judgmentSaveState === "saving") ? "disabled" : ""}
         >X</button>`;
     }
 
@@ -1182,6 +1309,31 @@
       const labels = hit.labels || [];
       if (isClinicalAttributeHit(hit)) return clinicalAttributeDisplayName(hit, labels);
       return hit.name || labels[0] || "Unnamed concept";
+    }
+
+    function primarySourceCodeForHit(hit) {
+      const rows = [
+        ...(Array.isArray(hit?.source_asserted_codes) ? hit.source_asserted_codes : []),
+        ...(Array.isArray(hit?.codes) ? hit.codes : [])
+      ];
+      return rows.find((row) => {
+        const system = String(row?.system || row?.sab || "").trim();
+        const code = String(row?.code || row?.source_asserted_code || "").trim();
+        return system && code && code.toUpperCase() !== "NOCODE";
+      }) || null;
+    }
+
+    function utsSourceCodeUrl(row) {
+      const system = String(row?.system || row?.sab || "").trim();
+      const code = String(row?.code || row?.source_asserted_code || "").trim();
+      if (!system || !code) return "";
+      return `https://uts.nlm.nih.gov/uts/umls/source/${encodeURIComponent(system)}/${encodeURIComponent(code)}`;
+    }
+
+    function resultBrowserUrl(hit) {
+      const sourceCode = primarySourceCodeForHit(hit);
+      const sourceUrl = sourceCode ? utsSourceCodeUrl(sourceCode) : "";
+      return sourceUrl || utsConceptUrl(hit.cui);
     }
 
     function imageSourceLabel(image) {
@@ -1644,6 +1796,71 @@
     const CONCATENATION_GROUPS = new Set([
       "ANAT", "DISO", "FIND", "GENE", "LIVB", "PHEN", "PHYS", "PROC"
     ]);
+    const CLINICAL_CONTEXT_BUCKETS = [
+      {
+        key: "chief_concern",
+        label: "Chief Concern",
+        code: "CC",
+        description: "Why the patient is seeking care now.",
+        patterns: [/\bchief concern\s*:/i, /\bchief complaint\s*:/i, /\bcame in with\b/i, /\bpresented with\b/i]
+      },
+      {
+        key: "active_assessment",
+        label: "Active Assessment",
+        code: "DX",
+        description: "Current diagnosis or working assessment.",
+        patterns: [/\bactive assessment\s+is\b/i, /\bassessment\s*:/i, /\bdiagnosed\b/i, /\bdiagnosis\b/i]
+      },
+      {
+        key: "exam_findings",
+        label: "Exam & Findings",
+        code: "EXAM",
+        description: "Observed signs and bedside findings.",
+        patterns: [/\bon exam\b/i, /\bbedside review\b/i, /\bclinician documented\b/i, /\bphysical exam\b/i]
+      },
+      {
+        key: "objective_data",
+        label: "Tests & Objective Data",
+        code: "DATA",
+        description: "Imaging, labs, procedures, and measured findings.",
+        patterns: [/\bobjective data\s*:/i, /\bbrain MRI\b/i, /\bCT\b/i, /\bMRI\b/i, /\btesting\b/i, /\btest\b/i, /\bshowed\b/i, /\bdemonstrated\b/i]
+      },
+      {
+        key: "care_plan",
+        label: "Plan & Treatment",
+        code: "PLAN",
+        description: "Treatment, workup, and management decisions.",
+        patterns: [/\bplan\s*:/i, /\bcare plan\b/i, /\bstarted\b/i, /\bprescribed\b/i, /\bdocuments?\b/i, /\bthrombolysis evaluation\b/i]
+      },
+      {
+        key: "watch_for",
+        label: "Watch For",
+        code: "WATCH",
+        description: "Warning signs, return precautions, and safety checks.",
+        patterns: [/\bwarning signs\b/i, /\blook for\b/i, /\bcall urgently\b/i, /\breturn precautions\b/i, /\bsigns concerning for\b/i]
+      },
+      {
+        key: "older_history",
+        label: "Older History / Not Active",
+        code: "OLD",
+        description: "Older or explicitly inactive history.",
+        patterns: [/\bolder history\s*:/i, /\bprior problem list\b/i, /\bold\b/i, /\bprior\b/i, /\bno active issue\b/i, /\bnot making a new care decision\b/i]
+      },
+      {
+        key: "handoff_context",
+        label: "Handoff & Documentation",
+        code: "DOC",
+        description: "Repeated chart text, handoffs, and routine note language.",
+        patterns: [/\brepeated\b/i, /\bemergency department note\b/i, /\bconsultant note\b/i, /\bdischarge summary\b/i, /\bmedication list\b/i, /\bnursing handoff\b/i, /\bpatient instructions\b/i, /\broutine chart language\b/i, /\bfollow-up reminders\b/i]
+      },
+      {
+        key: "follow_up",
+        label: "Follow-Up",
+        code: "F/U",
+        description: "Next review, monitoring, and unresolved decisions.",
+        patterns: [/\bfollow-up\b/i, /\bfollow up\b/i, /\barranged\b/i, /\bstill needed\b/i, /\bnext step\b/i]
+      }
+    ];
 
     function predicateTextForMatch(query, pattern, match) {
       let text = pattern.label || String(match[pattern.labelGroup || 0] || match[0] || "").toLowerCase();
@@ -2080,6 +2297,112 @@
         }
       }
       return false;
+    }
+
+    function cleanClinicalContextSnippet(value) {
+      return String(value || "").replace(/\s+/g, " ").trim();
+    }
+
+    function clippedClinicalContextSnippet(value) {
+      const cleaned = cleanClinicalContextSnippet(value);
+      if (cleaned.length <= 260) return cleaned;
+      return `${cleaned.slice(0, 257).replace(/\s+\S*$/, "")}...`;
+    }
+
+    function clinicalBucketMatchesText(bucket, text) {
+      return (bucket.patterns || []).some((pattern) => pattern.test(text));
+    }
+
+    function conceptOverlapsSpan(concept, start, end) {
+      return Number(concept?.start ?? -1) < end && Number(concept?.end ?? -1) > start;
+    }
+
+    function contextConceptsForSpan(linkedConcepts, start, end) {
+      const seen = new Set();
+      return (linkedConcepts || [])
+        .filter((concept) => conceptOverlapsSpan(concept, start, end))
+        .filter((concept) => {
+          const key = `${concept.cui || ""}|${normalizedPhrase(concept.matchedText || concept.name || "")}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 6);
+    }
+
+    function clinicalContextItems(statement) {
+      const query = String(statement?.query || "");
+      if (!query.trim()) return [];
+      const linkedConcepts = statement?.linkedConcepts || [];
+      const sentences = sentenceSpans(query).map((span) => ({
+        ...span,
+        text: query.slice(span.start, span.end)
+      }));
+      return CLINICAL_CONTEXT_BUCKETS.map((bucket) => {
+        const matchingSentences = sentences.filter((sentence) =>
+          clinicalBucketMatchesText(bucket, sentence.text)
+        );
+        const items = matchingSentences.slice(0, 2).map((sentence) => ({
+          text: clippedClinicalContextSnippet(sentence.text),
+          concepts: contextConceptsForSpan(linkedConcepts, sentence.start, sentence.end)
+        }));
+        return { ...bucket, items };
+      }).filter((bucket) => bucket.items.length);
+    }
+
+    function renderClinicalContextConcept(concept) {
+      const label = concept.matchedText || concept.name || concept.cui || "concept";
+      const titleParts = [concept.name, concept.cui, concept.semanticType]
+        .filter(Boolean)
+        .join(" · ");
+      return `
+        <a class="context-concept-chip" href="${esc(utsConceptUrl(concept.cui))}" target="_blank" rel="noreferrer" title="${esc(titleParts || label)}">
+          <span>${esc(label)}</span>
+          <span class="mono">${esc(concept.cui || "")}</span>
+        </a>`;
+    }
+
+    function renderClinicalContextBucket(bucket) {
+      return `
+        <article class="context-bucket context-bucket-${esc(bucket.key)}">
+          <div class="context-bucket-head">
+            <div>
+              <div class="context-bucket-title">${esc(bucket.label)}</div>
+              <div class="context-bucket-description">${esc(bucket.description)}</div>
+            </div>
+            <span class="context-bucket-code">${esc(bucket.code)}</span>
+          </div>
+          <div class="context-bucket-items">
+            ${bucket.items.map((item) => `
+              <div class="context-bucket-item">
+                <p>${esc(item.text)}</p>
+                ${item.concepts.length ? `
+                  <div class="context-concepts">
+                    ${item.concepts.map(renderClinicalContextConcept).join("")}
+                  </div>` : ""}
+              </div>
+            `).join("")}
+          </div>
+        </article>`;
+    }
+
+    function renderClinicalContextPanel(statement) {
+      const buckets = clinicalContextItems(statement);
+      if (!buckets.length) return "";
+      const conceptTotal = buckets.reduce((total, bucket) =>
+        total + bucket.items.reduce((itemTotal, item) => itemTotal + item.concepts.length, 0),
+        0
+      );
+      return `
+        <div class="clinical-context-panel" aria-label="Structured clinical context buckets">
+          <div class="result-layer-head">
+            <h3>Clinical Context</h3>
+            <div class="result-layer-count">${fmtNum(buckets.length)} buckets · ${fmtNum(conceptTotal)} linked concepts</div>
+          </div>
+          <div class="clinical-context-grid">
+            ${buckets.map(renderClinicalContextBucket).join("")}
+          </div>
+        </div>`;
     }
 
     function renderStructuredStatementPanel(statement) {
@@ -2592,10 +2915,6 @@
         ...sources.map((source) => `<span class="chip">${esc(source)}</span>`)
       ];
       const codeChips = renderCodeChips(hit.source_asserted_codes || hit.codes || []);
-      const confidence = hit.confidence || {};
-      const confidenceLabel = confidence.level
-        ? `${String(confidence.level).replaceAll("_", " ")} confidence`
-        : "";
       return `
         <div class="detail-section result-metadata-section">
           <div class="detail-title">Result Metadata</div>
@@ -2603,7 +2922,6 @@
             <span class="chip">rank ${fmtNum(rankNumber)}</span>
             <span class="chip mono">${esc(hit.cui)}</span>
             <span class="chip">relevance ${esc(scoreValue)}</span>
-            ${confidenceLabel ? `<span class="chip">${esc(confidenceLabel)}</span>` : ""}
             <span class="chip">${fmtNum(hit.evidence_count || 0)} evidence</span>
             <span class="chip">${esc(matchTypeLabel(hit.match_type || hit.view || ""))}</span>
             ${sourceMixText ? `<span class="chip" title="${esc(sourceMixText)}">${esc(sourceMixText)}</span>` : ""}
@@ -2611,15 +2929,6 @@
           ${codeChips ? `<div class="chips detail-chip-row">${codeChips}</div>` : ""}
           ${labelAndSourceChips.length ? `<div class="chips detail-chip-row">${labelAndSourceChips.join("")}</div>` : ""}
         </div>`;
-    }
-
-    function confidenceBadge(hit) {
-      const confidence = hit?.confidence || {};
-      const level = String(confidence.level || "").trim().toLowerCase();
-      if (!level) return "";
-      const reasons = Array.isArray(confidence.reasons) ? confidence.reasons.join("; ") : "";
-      const label = confidence.abstain ? "low confidence" : `${level} confidence`;
-      return `<span class="confidence-badge confidence-${esc(level)}" title="${esc(reasons || label)}">${esc(label)}</span>`;
     }
 
     function renderCompactResultCard(hit, rankNumber) {
@@ -2631,11 +2940,10 @@
         <div class="result result-compact">
           <details class="result-details compact-card-details" data-lazy-detail="result" data-doc-id="${esc(hit.doc_id || "")}" data-cui="${esc(hit.cui || "")}" data-rank="${esc(rankNumber || "")}">
             <summary class="compact-result-summary">
-              <a class="concept-link compact-result-title" href="${esc(utsConceptUrl(hit.cui))}" target="_blank" rel="noreferrer">
+              <a class="concept-link compact-result-title" href="${esc(resultBrowserUrl(hit))}" target="_blank" rel="noreferrer">
                 ${esc(name)}
               </a>
               <span class="result-semantic-type">${esc(semanticTypeLabel)}</span>
-              ${confidenceBadge(hit)}
               <span class="compact-result-score" title="0-100 query relevance">${esc(scoreValue)}</span>
               ${badResultButton(hit, grade)}
               <span class="compact-details-label">Details</span>
@@ -2692,7 +3000,7 @@
     }
 
     function detailCacheKey(docId, cui) {
-      return `${docId || ""}|${cui || ""}|related:${state.includeRelated ? "1" : "0"}|scope:${state.searchScope || "umls_evidence"}|codes:${state.sourceCodeSabs || "default"}`;
+      return `${docId || ""}|${cui || ""}|related:${state.includeRelated ? "1" : "0"}|scope:${state.searchScope || "umls_evidence"}|codes:${state.sourceCodeSabs || "none"}`;
     }
 
     function mergeDetailHit(baseHit, detailHit) {
@@ -2741,7 +3049,7 @@
           if (state.lastQuery) params.set("q", state.lastQuery);
           params.set("related", state.includeRelated ? "1" : "0");
           params.set("scope", state.searchScope || "umls_evidence");
-          params.set("codes", state.sourceCodeSabs || "default");
+          params.set("codes", state.sourceCodeSabs || "none");
           const payload = await api(`/api/detail?${params.toString()}`);
           detailHit = payload.hit || {};
           state.detailCache.set(cacheKey, detailHit);
@@ -2771,7 +3079,7 @@
       return `
         <div class="result">
           <div class="result-visible">
-            <a class="concept-link cui-main" href="${esc(utsConceptUrl(hit.cui))}" target="_blank" rel="noreferrer">
+            <a class="concept-link cui-main" href="${esc(resultBrowserUrl(hit))}" target="_blank" rel="noreferrer">
               ${esc(name)}
             </a>
             <div class="result-semantic-type">${esc(semanticTypeLabel)}</div>
@@ -3036,6 +3344,7 @@
         [...state.lastResults, ...relatedHits, ...state.lastLinkedConcepts]
       );
       const statementHtml = renderStructuredStatementPanel(statement);
+      const contextHtml = renderClinicalContextPanel(statement);
       els.results.innerHTML = `
         ${statementHtml ? `
           <section class="result-layer linked-sentence-layer" aria-label="Linked statement">
@@ -3063,6 +3372,10 @@
             </section>
           </div>
         </section>
+        ${contextHtml ? `
+          <section class="result-layer clinical-context-layer" aria-label="Clinical context">
+            ${contextHtml}
+          </section>` : ""}
       `;
 
       bindResultInteractions(els.results);
@@ -3420,7 +3733,8 @@
 
     function judgmentButton(docId, grade, label, current) {
       const active = current === grade ? " active" : "";
-      return `<button class="${active}" data-grade="${grade}" data-doc="${esc(docId)}">${label}</button>`;
+      const disabled = !state.judgmentsLoaded || state.judgmentSaveState === "saving";
+      return `<button class="${active}" data-grade="${grade}" data-doc="${esc(docId)}"${disabled ? " disabled" : ""}>${label}</button>`;
     }
 
     function renderEvidenceItems(hit) {
@@ -3943,6 +4257,12 @@
       const definitionRows = state.status?.definition_rows || 0;
       const codeMappings = state.status?.code_mappings || 0;
       const scoring = state.lastScoring || {};
+      const judgmentStoreValue = state.judgmentsLoaded
+        ? (state.judgmentSaveState === "saving" ? "saving" : "server CSV")
+        : "not loaded";
+      const judgmentStoreDetail = state.judgmentSaveError
+        ? state.judgmentSaveError
+        : (state.judgmentsPath || state.status?.judgments_path || "Server-backed judgment store");
       els.metrics.innerHTML = [
         metric("Vectors", fmtNum(state.status?.records || 0), `${fmtNum(state.status?.docs || 0)} docs, ${fmtNum(state.status?.evidence_sources || 0)} source refs${provenanceMode}`),
         metric("Backend", state.status?.search_backend || "n/a", state.status?.elastic_index || "local vector scan"),
@@ -3954,6 +4274,7 @@
         metric("Evidence links", fmtNum(state.status?.records || 0), "Nearest CUI/view vectors on result concepts"),
         metric("MRREL support", fmtNum(relatedLinks), relatedLinks ? `${fmtNum(state.status?.related_concept_sources || 0)} CUIs with links` : "No relation index loaded"),
         metric("Research links", fmtNum(researchLinks), researchLinks ? `${fmtNum(state.status?.research_relation_sources || 0)} CUIs with cross-type links` : "No research relation index loaded"),
+        metric("Judgment store", judgmentStoreValue, judgmentStoreDetail),
         metric("Judged results", fmtNum(judged.length), `${relevant} relevant, ${partial} partial, ${wrong} wrong`),
         metric("Current P@5", current.p5, "Relevant=1, partial=0.5")
       ].join("");
@@ -4165,6 +4486,7 @@
     }
     if (!hasSnomedLicenseAcknowledgement()) showSnomedLicenseDialog();
     if (els.randomQueryBtn) els.randomQueryBtn.addEventListener("click", selectRandomQuery);
+    if (els.shortQueryBtn) els.shortQueryBtn.addEventListener("click", selectShortQuery);
     if (els.longQueryBtn) els.longQueryBtn.addEventListener("click", selectLongQuery);
     if (els.semanticGroupFilter) {
       els.semanticGroupFilter.addEventListener("change", () => {
@@ -4186,25 +4508,45 @@
     }
     els.runSetBtn.addEventListener("click", runQuerySet);
     els.saveJudgmentsBtn.addEventListener("click", () => {
+      state.judgmentSaveState = "saving";
+      state.judgmentSaveError = "";
+      renderMetrics();
       persistJudgmentsToServer().catch((err) => {
+        state.judgmentSaveState = "error";
+        state.judgmentSaveError = err?.message || "Could not save judgments";
+        setSearchFeedback(`Could not save judgments: ${state.judgmentSaveError}`, "error");
+        renderMetrics();
         setBrandStatus();
       });
     });
     els.clearJudgmentsBtn.addEventListener("click", () => {
+      const previousJudgments = { ...state.judgments };
       state.judgments = {};
-      saveJudgments();
+      state.judgmentSaveState = "saving";
+      state.judgmentSaveError = "";
+      setSearchFeedback("");
       renderResults();
       renderMetrics();
-      persistJudgmentsToServer().catch((err) => {
+      persistJudgmentsToServer({ judgments: [] }).then(() => {
+        renderResults();
+      }).catch((err) => {
+        state.judgments = previousJudgments;
+        state.judgmentSaveState = "error";
+        state.judgmentSaveError = err?.message || "Could not clear judgments";
+        setSearchFeedback(`Could not clear judgments: ${state.judgmentSaveError}`, "error");
+        renderResults();
+        renderMetrics();
         setBrandStatus();
       });
     });
     els.exportBtn.addEventListener("click", exportJudgments);
 
     updateRandomQueryButton();
+    loadRealShortQueries().then(updateRandomQueryButton);
     loadClinicalNoteSuggestions().then(updateRandomQueryButton);
     loadParagraphTests().then(updateRandomQueryButton);
     semanticResultBucketsReady = loadSemanticResultBuckets().then(renderSemanticGroupFilter);
     semanticExpansionProfilesReady = loadSemanticExpansionProfiles();
     renderMetrics();
+    clearLegacyJudgmentCache();
     loadStatus().then(loadServerJudgments);

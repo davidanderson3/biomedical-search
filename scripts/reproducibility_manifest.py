@@ -73,6 +73,16 @@ LOINC_RELATIVE_FILES = [
 ]
 
 
+def default_loinc_dir() -> Path | None:
+    preferred = ROOT / "data" / "local_sources" / "loinc" / "Loinc_2.82"
+    legacy = ROOT / "Loinc_2.82"
+    if preferred.exists():
+        return preferred
+    if legacy.exists():
+        return legacy
+    return None
+
+
 def sha256_file(path: Path, *, max_bytes: int | None) -> str:
     hasher = hashlib.sha256()
     remaining = max_bytes
@@ -251,8 +261,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--loinc-dir",
         type=Path,
-        default=ROOT / "Loinc_2.82" if (ROOT / "Loinc_2.82").exists() else None,
-        help="Optional local LOINC release directory. Defaults to ./Loinc_2.82 when present.",
+        default=default_loinc_dir(),
+        help=(
+            "Optional local LOINC release directory. Defaults to "
+            "data/local_sources/loinc/Loinc_2.82 when present, with a legacy "
+            "./Loinc_2.82 fallback."
+        ),
     )
     parser.add_argument(
         "--snomed-zip",

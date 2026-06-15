@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from qe_evidence_vectors.search_semantics import semantic_group_from_types, semantic_type_name_set
+from qe_evidence_vectors.text import normalized_key
 
 
 DEFAULT_BUCKET_CONFIG = (
@@ -152,6 +153,7 @@ GENERIC_MORTALITY_RELATION_TOKENS = {
     "fatalities",
     "mortality",
 }
+YES_NO_RELATED_LABELS = {"no", "yes"}
 GENERIC_MORTALITY_RELATION_FILLER_TOKENS = {
     "event",
     "events",
@@ -654,7 +656,14 @@ def is_noisy_symptom_to_organism_relation(relation: dict, bucket: dict) -> bool:
     return not relation_has_source_label_overlap(relation)
 
 
+def is_yes_no_related_value(relation: dict) -> bool:
+    label = relation.get("label") or relation.get("target_label") or relation.get("name") or ""
+    return normalized_key(str(label)) in YES_NO_RELATED_LABELS
+
+
 def relation_visible_in_semantic_bucket(relation: dict, bucket: dict, group_code: str) -> bool:
+    if is_yes_no_related_value(relation):
+        return False
     if not relation_matches_semantic_bucket(relation, bucket, group_code):
         return False
     if is_contraindication_relation(relation):

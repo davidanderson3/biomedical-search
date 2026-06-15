@@ -24,6 +24,8 @@ __all__ = [
     "parse_bounded_int_param",
     "api_error",
     "read_judgments",
+    "delete_judgment",
+    "upsert_judgment",
     "write_judgments",
     "make_handler",
 ]
@@ -74,6 +76,18 @@ OPENAPI_SPEC = {
                 "summary": "Search free text for biomedical concepts",
                 "parameters": [
                     {"name": "q", "in": "query", "required": True, "schema": {"type": "string"}},
+                    {
+                        "name": "profile",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": ["product", "review", "benchmark", "umls_only"],
+                        },
+                        "description": (
+                            "Preset API defaults for UI surfaces and benchmarks. Explicit legacy "
+                            "query parameters still override the preset."
+                        ),
+                    },
                     {"name": "k", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100}},
                     {
                         "name": "mode",
@@ -87,6 +101,16 @@ OPENAPI_SPEC = {
                         "description": "Use UMLS-only label/code lookup or UMLS plus evidence-backed retrieval.",
                     },
                     {"name": "include_related", "in": "query", "schema": {"type": "boolean"}},
+                    {
+                        "name": "molecular_associations",
+                        "in": "query",
+                        "schema": {"type": "boolean"},
+                        "description": (
+                            "Opt in to relation-derived gene/protein association candidates "
+                            "in the main ranked results. Directly matched molecular concepts "
+                            "can still appear when this is false."
+                        ),
+                    },
                     {
                         "name": "linked",
                         "in": "query",
@@ -119,8 +143,10 @@ OPENAPI_SPEC = {
                         "in": "query",
                         "schema": {"type": "string"},
                         "description": (
-                            "Source asserted code systems to return: default, none, all, "
-                            "or comma-separated SABs such as SNOMEDCT_US,RXNORM,ICD10CM,LNC."
+                            "Source asserted code systems to return. default/none/all control "
+                            "code mappings on concept hits; a specific SAB such as RXNORM, "
+                            "SNOMEDCT_US, ICD10CM, or LNC returns source vocabulary rows for "
+                            "ordinary text searches and never falls back to concept hits."
                         ),
                     },
                 ],
@@ -146,6 +172,15 @@ OPENAPI_SPEC = {
                 "parameters": [
                     {"name": "doc_id", "in": "query", "schema": {"type": "string"}},
                     {"name": "cui", "in": "query", "schema": {"type": "string", "pattern": "^C[0-9]{7}$"}},
+                    {
+                        "name": "profile",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": ["product", "review", "benchmark", "umls_only"],
+                        },
+                        "description": "Preset defaults matching /api/search profiles.",
+                    },
                     {"name": "q", "in": "query", "schema": {"type": "string"}},
                     {"name": "include_related", "in": "query", "schema": {"type": "boolean"}},
                     {
@@ -176,7 +211,7 @@ OPENAPI_SPEC = {
         },
         "/api/judgments": {
             "get": {"summary": "Read local search quality judgments", "responses": {"200": {"description": "Judgment rows."}}},
-            "post": {"summary": "Replace local search quality judgments", "responses": {"200": {"description": "Persisted judgment count."}}},
+            "post": {"summary": "Upsert, delete, or replace local search quality judgments", "responses": {"200": {"description": "Persisted judgment rows."}}},
         },
         "/api/openapi.json": {
             "get": {"summary": "Machine-readable API contract", "responses": {"200": {"description": "OpenAPI 3.1 document."}}},
@@ -200,6 +235,49 @@ OPENAPI_SPEC = {
                 },
             }
         }
+    },
+}
+
+SEARCH_PROFILE_DEFAULTS = {
+    "product": {
+        "k": 60,
+        "mode": "balanced",
+        "scope": "umls_evidence",
+        "include_related": True,
+        "include_linked": True,
+        "include_evidence_items": False,
+        "include_molecular_associations": False,
+        "debug": False,
+    },
+    "review": {
+        "k": 60,
+        "mode": "balanced",
+        "scope": "umls_evidence",
+        "include_related": True,
+        "include_linked": True,
+        "include_evidence_items": False,
+        "include_molecular_associations": False,
+        "debug": False,
+    },
+    "benchmark": {
+        "k": 60,
+        "mode": "balanced",
+        "scope": "umls_evidence",
+        "include_related": True,
+        "include_linked": True,
+        "include_evidence_items": False,
+        "include_molecular_associations": False,
+        "debug": False,
+    },
+    "umls_only": {
+        "k": 60,
+        "mode": "balanced",
+        "scope": "umls",
+        "include_related": True,
+        "include_linked": True,
+        "include_evidence_items": False,
+        "include_molecular_associations": False,
+        "debug": False,
     },
 }
 
@@ -245,6 +323,19 @@ def parse_bounded_int_param(
     return max(minimum, min(default, maximum)), None
 
 
+def parse_search_profile(params: dict) -> tuple[str, dict, str | None]:
+    profile = (params.get("profile") or [""])[0].strip().lower()
+    if not profile:
+        return "", {}, None
+    defaults = SEARCH_PROFILE_DEFAULTS.get(profile)
+    if defaults is None:
+        return profile, {}, (
+            "profile must be one of "
+            + ", ".join(sorted(SEARCH_PROFILE_DEFAULTS))
+        )
+    return profile, defaults, None
+
+
 def judgment_key(row: dict) -> str:
     return f"{row.get('query', '')}\t{row.get('doc_id', '')}"
 
@@ -265,6 +356,10 @@ def normalize_judgment(row: dict) -> dict:
     }
 
 
+def valid_judgment(row: dict) -> bool:
+    return bool(row.get("query") and row.get("doc_id") and row.get("grade") in VALID_JUDGMENT_GRADES)
+
+
 def read_judgments(path: Path) -> list[dict]:
     if not path.exists():
         return []
@@ -273,9 +368,7 @@ def read_judgments(path: Path) -> list[dict]:
         reader = csv.DictReader(handle)
         for row in reader:
             normalized = normalize_judgment(row)
-            if not normalized["query"] or not normalized["doc_id"]:
-                continue
-            if normalized["grade"] not in VALID_JUDGMENT_GRADES:
+            if not valid_judgment(normalized):
                 continue
             rows.append(normalized)
     return rows
@@ -287,7 +380,7 @@ def write_judgments(path: Path, judgments: list[dict]) -> int:
     normalized = [
         row
         for row in normalized
-        if row["query"] and row["doc_id"] and row["grade"] in VALID_JUDGMENT_GRADES
+        if valid_judgment(row)
     ]
     normalized.sort(key=lambda row: (row["query"], row["doc_id"]))
     with path.open("w", encoding="utf-8", newline="") as handle:
@@ -300,6 +393,26 @@ def write_judgments(path: Path, judgments: list[dict]) -> int:
     return len(normalized)
 
 
+def upsert_judgment(path: Path, judgment: dict) -> list[dict]:
+    normalized = normalize_judgment(judgment)
+    if not valid_judgment(normalized):
+        raise ValueError("judgment requires query, doc_id, and grade relevant/partial/wrong")
+    rows = {judgment_key(row): row for row in read_judgments(path)}
+    rows[judgment_key(normalized)] = normalized
+    write_judgments(path, list(rows.values()))
+    return read_judgments(path)
+
+
+def delete_judgment(path: Path, judgment: dict) -> list[dict]:
+    normalized = normalize_judgment(judgment)
+    if not normalized["query"] or not normalized["doc_id"]:
+        raise ValueError("delete requires query and doc_id")
+    rows = {judgment_key(row): row for row in read_judgments(path)}
+    rows.pop(judgment_key(normalized), None)
+    write_judgments(path, list(rows.values()))
+    return read_judgments(path)
+
+
 def make_handler(
     index: SearchIndex,
     html_path: Path,
@@ -308,11 +421,13 @@ def make_handler(
     progress_plan_path: Path,
     full_progress_plan_path: Path,
     judgments_path: Path,
+    product_html_path: Path | None = None,
     *,
     plan_status_func: Callable[[dict], dict],
     resolve_path_func: Callable[[str], Path],
 ):
     search_quality_dir = html_path.parent / "search_quality"
+    root_html_path = product_html_path or html_path
     static_assets = {
         "/search_quality_server.css": (search_quality_dir / "server.css", "text/css; charset=utf-8"),
         "/search_quality_app.js": (search_quality_dir / "app.js", "application/javascript; charset=utf-8"),
@@ -322,6 +437,10 @@ def make_handler(
         ),
         "/search_quality_paragraphs.json": (
             search_quality_dir / "paragraphs.json",
+            "application/json; charset=utf-8",
+        ),
+        "/search_quality_real_short_queries.json": (
+            search_quality_dir / "real_short_queries.json",
             "application/json; charset=utf-8",
         ),
         "/search_quality_expansion_profiles.json": (
@@ -345,6 +464,9 @@ def make_handler(
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
             if parsed.path in {"/", "/index.html"}:
+                self.send_html(root_html_path.read_text(encoding="utf-8"))
+                return
+            if parsed.path in {"/review", "/review/", "/review.html"}:
                 self.send_html(html_path.read_text(encoding="utf-8"))
                 return
             if parsed.path == "/api/health":
@@ -453,6 +575,10 @@ def make_handler(
                 return
             if parsed.path == "/api/detail":
                 params = parse_qs(parsed.query)
+                _, profile_defaults, profile_error = parse_search_profile(params)
+                if profile_error:
+                    self.send_error_json("invalid_parameter", profile_error, status=400)
+                    return
                 doc_id = (params.get("doc_id") or [""])[0].strip()
                 cui = (params.get("cui") or [""])[0].strip()
                 query = (params.get("q") or params.get("query") or [""])[0].strip()
@@ -470,11 +596,15 @@ def make_handler(
                     params,
                     "related",
                     "include_related",
-                    default=True,
+                    default=bool(profile_defaults.get("include_related", True)),
                 )
                 try:
                     search_scope = normalize_search_scope(
-                        (params.get("scope") or params.get("search_scope") or ["umls_evidence"])[0]
+                        (
+                            params.get("scope")
+                            or params.get("search_scope")
+                            or [profile_defaults.get("scope", "umls_evidence")]
+                        )[0]
                     )
                 except ValueError as exc:
                     self.send_error_json("invalid_parameter", str(exc), status=400)
@@ -506,13 +636,17 @@ def make_handler(
                 return
             if parsed.path == "/api/search":
                 params = parse_qs(parsed.query)
+                _, profile_defaults, profile_error = parse_search_profile(params)
+                if profile_error:
+                    self.send_error_json("invalid_parameter", profile_error, status=400)
+                    return
                 query = (params.get("q") or [""])[0].strip()
                 top_k, error = parse_bounded_int_param(
                     params,
                     "k",
                     "top_k",
                     "limit",
-                    default=10,
+                    default=int(profile_defaults.get("k", 10)),
                     minimum=1,
                     maximum=100,
                 )
@@ -526,23 +660,29 @@ def make_handler(
                     params,
                     "related",
                     "include_related",
-                    default=True,
+                    default=bool(profile_defaults.get("include_related", True)),
                 )
                 include_linked = parse_bool_param(
                     params,
                     "linked",
                     "include_linked",
                     "linked_concepts",
-                    default=include_related,
+                    default=bool(profile_defaults.get("include_linked", include_related)),
                 )
                 include_evidence_items = parse_bool_param(
                     params,
                     "evidence_items",
                     "include_evidence_items",
                     "evidence_snippets",
-                    default=True,
+                    default=bool(profile_defaults.get("include_evidence_items", True)),
                 )
-                debug = parse_bool_param(params, "debug", default=False)
+                include_molecular_associations = parse_bool_param(
+                    params,
+                    "molecular_associations",
+                    "include_molecular_associations",
+                    default=bool(profile_defaults.get("include_molecular_associations", False)),
+                )
+                debug = parse_bool_param(params, "debug", default=bool(profile_defaults.get("debug", False)))
                 semantic_bucket_keys = parse_multi_param(
                     params,
                     "semantic_bucket",
@@ -563,12 +703,20 @@ def make_handler(
                     "code_sabs",
                 )
                 search_mode = (
-                    (params.get("mode") or params.get("search_mode") or ["balanced"])[0]
+                    (
+                        params.get("mode")
+                        or params.get("search_mode")
+                        or [profile_defaults.get("mode", "balanced")]
+                    )[0]
                     .strip()
                     .lower()
                 )
                 search_scope = (
-                    (params.get("scope") or params.get("search_scope") or ["umls_evidence"])[0]
+                    (
+                        params.get("scope")
+                        or params.get("search_scope")
+                        or [profile_defaults.get("scope", "umls_evidence")]
+                    )[0]
                     .strip()
                     .lower()
                 )
@@ -581,6 +729,7 @@ def make_handler(
                                 include_related=include_related,
                                 include_linked_concepts=include_linked,
                                 include_evidence_items=include_evidence_items,
+                                include_molecular_associations=include_molecular_associations,
                                 semantic_bucket_keys=semantic_bucket_keys,
                                 search_mode=search_mode,
                                 search_scope=search_scope,
@@ -605,12 +754,30 @@ def make_handler(
                 length = int(self.headers.get("Content-Length") or "0")
                 body = self.rfile.read(length).decode("utf-8")
                 payload = json.loads(body or "{}")
-                rows = payload.get("judgments")
-                if not isinstance(rows, list):
-                    self.send_error_json("invalid_payload", "expected judgments array", status=400)
-                    return
-                count = write_judgments(judgments_path, rows)
-                self.send_json({"path": str(judgments_path), "count": count})
+                if isinstance(payload.get("judgment"), dict):
+                    rows = upsert_judgment(judgments_path, payload["judgment"])
+                elif isinstance(payload.get("delete"), dict):
+                    rows = delete_judgment(judgments_path, payload["delete"])
+                else:
+                    payload_rows = payload.get("judgments")
+                    if not isinstance(payload_rows, list):
+                        self.send_error_json(
+                            "invalid_payload",
+                            "expected judgments array, judgment object, or delete object",
+                            status=400,
+                        )
+                        return
+                    write_judgments(judgments_path, payload_rows)
+                    rows = read_judgments(judgments_path)
+                self.send_json(
+                    {
+                        "path": str(judgments_path),
+                        "count": len(rows),
+                        "judgments": rows,
+                    }
+                )
+            except ValueError as exc:
+                self.send_error_json("invalid_payload", str(exc), status=400)
             except Exception as exc:
                 self.send_error_json("invalid_payload", str(exc), status=400)
 

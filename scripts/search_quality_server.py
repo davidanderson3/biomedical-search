@@ -24,6 +24,8 @@ from qe_evidence_vectors.search_quality_http import (
     make_handler,
     parse_bounded_int_param,
     read_judgments,
+    delete_judgment,
+    upsert_judgment,
     write_judgments,
 )
 from qe_evidence_vectors.search_ranking import (
@@ -65,6 +67,8 @@ __all__ = [
     "parse_document_evidence",
     "rank_hits",
     "read_judgments",
+    "delete_judgment",
+    "upsert_judgment",
     "related_anchor_candidate_matches_query",
     "semantic_group_from_types",
     "should_suppress_label_fallback_hit",
@@ -121,6 +125,7 @@ DEFAULT_PERMITTED_SOURCE_VECTORS = (
     ROOT / "build" / "public" / "permitted_sources_concept_vectors.hashing.jsonl"
 )
 DEFAULT_HTML = ROOT / "docs" / "search_quality_server.html"
+DEFAULT_PRODUCT_HTML = ROOT / "docs" / "search_quality_product.html"
 DEFAULT_PROGRESS_HTML = ROOT / "docs" / "scaling_progress.html"
 DEFAULT_SOURCE_DASHBOARD_HTML = ROOT / "docs" / "source_evidence_dashboard.html"
 DEFAULT_PROGRESS_PLAN = ROOT / "config" / "scaling_chunk_001_gap_topics.plan.json"
@@ -224,7 +229,18 @@ def parse_args() -> argparse.Namespace:
             "When supplied, evidence sources are looked up on demand instead of loaded from JSONL."
         ),
     )
-    parser.add_argument("--html", type=Path, default=DEFAULT_HTML)
+    parser.add_argument(
+        "--html",
+        type=Path,
+        default=DEFAULT_HTML,
+        help="Review workbench HTML served at /review.",
+    )
+    parser.add_argument(
+        "--product-html",
+        type=Path,
+        default=DEFAULT_PRODUCT_HTML,
+        help="Product search HTML served at /.",
+    )
     parser.add_argument("--progress-html", type=Path, default=DEFAULT_PROGRESS_HTML)
     parser.add_argument("--source-dashboard-html", type=Path, default=DEFAULT_SOURCE_DASHBOARD_HTML)
     parser.add_argument("--progress-plan", type=Path, default=DEFAULT_PROGRESS_PLAN)
@@ -377,11 +393,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--external-cui-vector-index",
         type=Path,
-        default=DEFAULT_EXTERNAL_CUI_VECTOR_INDEX if DEFAULT_EXTERNAL_CUI_VECTOR_INDEX.exists() else None,
         help=(
-            "Optional SQLite BioConceptVec/cui2vec neighbor index built with "
-            "evidence_vectors.py build-external-cui-vector-index. Defaults to "
-            "build/external_cui_vector_neighbors.sqlite when that file exists."
+            "Opt-in SQLite BioConceptVec/cui2vec neighbor index built with "
+            "evidence_vectors.py build-external-cui-vector-index. These external "
+            "embedding neighbors are association signals, not source evidence, and "
+            "are not loaded by default."
         ),
     )
     parser.add_argument(
@@ -533,6 +549,8 @@ def main() -> None:
             raise SystemExit(f"missing hashing IDF file: {args.idf_path}")
     if not args.html.exists():
         raise SystemExit(f"missing HTML file: {args.html}")
+    if not args.product_html.exists():
+        raise SystemExit(f"missing product HTML file: {args.product_html}")
     if not args.progress_html.exists():
         raise SystemExit(f"missing progress HTML file: {args.progress_html}")
     if not args.progress_plan.exists():
@@ -607,11 +625,13 @@ def main() -> None:
             args.progress_plan,
             args.full_progress_plan,
             judgments_path,
+            product_html_path=args.product_html,
             plan_status_func=plan_status,
             resolve_path_func=resolve_path,
         ),
     )
     print(f"Open http://{args.host}:{args.port}/")
+    print(f"Review workbench http://{args.host}:{args.port}/review")
     print(f"Progress dashboard http://{args.host}:{args.port}/progress")
     if args.source_dashboard_html.exists():
         print(f"Evidence dashboard http://{args.host}:{args.port}/source-dashboard")

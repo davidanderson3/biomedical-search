@@ -6,10 +6,13 @@ import csv
 import hashlib
 import html
 import json
+import os
 import re
+import shlex
 import statistics
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode
@@ -48,10 +51,27 @@ DEFAULT_UMLS_API_COMPARISON_SUMMARY = ROOT / "build" / "umls_api_comparison_runs
 DEFAULT_UMLS_API_COMPARISON_SUMMARY_MD = ROOT / "build" / "umls_api_comparison_runs_20260609" / "summary.md"
 DEFAULT_TRANSLATION_BENCHMARK_REPORT_JSON = ROOT / "build" / "translation_benchmark_report.json"
 DEFAULT_TRANSLATION_BENCHMARK_REPORT_HTML = ROOT / "docs" / "translation_benchmark_report.html"
-DEFAULT_GOLD_STANDARD_COMPARISON_JSON = ROOT / "build" / "gold_standard_comparison" / "latest.json"
-DEFAULT_GOLD_STANDARD_COMPARISON_MD = ROOT / "build" / "gold_standard_comparison" / "latest.md"
 DEFAULT_QUERY_LIMIT = 50
+DEFAULT_API_WORKERS = 2
+SERVER_TIMING_STAGE_COLUMNS = {
+    "embedding": ("embedding",),
+    "base_vector_search": ("base_vector_search",),
+    "long_document_chunk_vector_search": ("long_document_chunk_vector_search",),
+    "mention_extraction": (
+        "mention_extraction",
+        "long_document_mention_extraction",
+    ),
+    "ranking": (
+        "label_fallback_and_ranking",
+        "active_label_context_search",
+        "long_document_support_signals",
+        "long_document_merge_ranking",
+        "filtering_and_promotion",
+    ),
+    "response_compaction": ("response_compaction",),
+}
 MANIFEST_NAME = "runs.json"
+ITERATION_SMOKE_MANIFEST_NAME = "iteration_smoke_gates.json"
 SEARCH_SYSTEM_API = "api"
 SEARCH_SYSTEM_UMLS_ONLY = "umls-only"
 SEARCH_SYSTEM_BOTH = "both"
@@ -114,6 +134,33 @@ CLINICALTRIALS_RESULT_MARKERS = (
     "results_first_posted",
     "has_results",
 )
+ITERATION_TYPE_CHOICES = (
+    "benchmark",
+    "ranking",
+    "source-code",
+    "long-document",
+    "audit",
+    "ui",
+    "process",
+    "data",
+)
+STANDING_SMOKE_ITERATION_TYPES = {
+    "audit",
+    "benchmark",
+    "data",
+    "long-document",
+    "ranking",
+    "source-code",
+}
+ROTATING_SMOKE_ITERATION_TYPES = {
+    "benchmark",
+    "long-document",
+    "ranking",
+}
+PATIENT_PORTAL_SMOKE_ITERATION_TYPES = {
+    "benchmark",
+    "ranking",
+}
 
 METRIC_DEFINITIONS = [
     (
@@ -264,6 +311,11 @@ RUN_FAMILY_DEFINITIONS = {
         "description": "Search ranking or candidate-generation experiment.",
         "class": "ranking",
     },
+    "patient_portal": {
+        "label": "Patient portal lane",
+        "description": "Current-visit versus old-history ranking checks for long patient portal messages.",
+        "class": "benchmark",
+    },
     "release": {
         "label": "Release candidate",
         "description": "Candidate run intended to be held against fail gates.",
@@ -275,7 +327,7 @@ RUN_FAMILY_DEFINITIONS = {
         "class": "custom",
     },
 }
-RUN_FAMILY_ORDER = ("smoke", "scope", "probe", "baseline", "ranking", "release", "custom")
+RUN_FAMILY_ORDER = ("smoke", "scope", "probe", "baseline", "ranking", "patient_portal", "release", "custom")
 RUN_FAMILY_INTERPRETATIONS = {
     "smoke": (
         "Repeatable rotating 50-query regression checks sampled from the judged paragraph pool. "
@@ -297,6 +349,10 @@ RUN_FAMILY_INTERPRETATIONS = {
     "ranking": (
         "Focused ranking or candidate-generation experiments. Use these to compare targeted search "
         "changes before promoting them into repeatable smoke runs."
+    ),
+    "patient_portal": (
+        "Long patient-message benchmark runs. Use these to gate active/current visit concepts above "
+        "copied-forward history while keeping old medications and diagnoses available lower in the results."
     ),
     "release": (
         "Candidate runs intended to be held against gates before promotion. Treat failures in this "
@@ -1000,6 +1056,26 @@ def run_matches_current_evaluation(run: dict, *, queries: Path, current_signatur
     return same_query_file(run.get("queries"), queries)
 
 
+def current_payload_shape(args: argparse.Namespace) -> dict[str, object]:
+    return {
+        "top_k": getattr(args, "top_k", None),
+        "include_related": bool(getattr(args, "include_related", False)),
+        "include_linked_concepts": bool(getattr(args, "include_linked_concepts", False)),
+        "include_search_evidence_items": bool(getattr(args, "include_search_evidence_items", False)),
+    }
+
+
+def run_matches_current_payload_shape(run: dict, payload_shape: dict[str, object] | None) -> bool:
+    if not payload_shape:
+        return True
+    if "top_k" in run and run.get("top_k") not in {None, "", payload_shape.get("top_k")}:
+        return False
+    for field in ("include_related", "include_linked_concepts", "include_search_evidence_items"):
+        if field in run and bool(run.get(field)) != bool(payload_shape.get(field)):
+            return False
+    return True
+
+
 def find_previous_gate_baseline(
     manifest: dict,
     *,
@@ -1007,6 +1083,7 @@ def find_previous_gate_baseline(
     queries: Path,
     api_scope: str,
     current_signature: str = "",
+    payload_shape: dict[str, object] | None = None,
 ) -> dict | None:
     candidates = []
     for run in manifest.get("runs") or []:
@@ -1018,6 +1095,8 @@ def find_previous_gate_baseline(
         elif not same_query_file(run.get("queries"), queries):
             continue
         if search_system == SEARCH_SYSTEM_API and run.get("api_scope") not in {None, "", api_scope}:
+            continue
+        if not run_matches_current_payload_shape(run, payload_shape):
             continue
         candidates.append(run)
     candidates.sort(key=lambda item: str(item.get("created_at") or ""))
@@ -1513,6 +1592,201 @@ def search_umls_only_response(args: argparse.Namespace, index: SearchIndex, spec
     return response
 
 
+def effective_query_worker_count(args: argparse.Namespace, *, search_system: str, query_count: int) -> int:
+    try:
+        requested = int(getattr(args, "workers", DEFAULT_API_WORKERS) or 1)
+    except (TypeError, ValueError):
+        requested = 1
+    requested = max(requested, 1)
+    if search_system != SEARCH_SYSTEM_API:
+        return 1
+    return min(requested, max(int(query_count or 0), 1))
+
+
+def numeric_response_value(response: dict, key: str) -> float | None:
+    try:
+        value = response.get(key)
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def selected_server_timing(response: dict) -> dict:
+    if bool(response.get("cache_hit") or response.get("cached")):
+        timing = response.get("uncached_server_timing")
+        if isinstance(timing, dict):
+            return timing
+    timing = response.get("server_timing")
+    return timing if isinstance(timing, dict) else {}
+
+
+def server_timing_by_stage(response: dict) -> dict[str, float]:
+    timing = selected_server_timing(response)
+    by_stage = timing.get("by_stage") if isinstance(timing, dict) else {}
+    if not isinstance(by_stage, dict):
+        return {}
+    values: dict[str, float] = {}
+    for key, value in by_stage.items():
+        try:
+            values[str(key)] = float(value or 0.0)
+        except (TypeError, ValueError):
+            continue
+    return values
+
+
+def server_timing_column_ms(response: dict, column: str) -> float | None:
+    by_stage = server_timing_by_stage(response)
+    stages = SERVER_TIMING_STAGE_COLUMNS.get(column, ())
+    if not stages:
+        return None
+    total = sum(float(by_stage.get(stage, 0.0) or 0.0) for stage in stages)
+    return total if total > 0.0 else None
+
+
+def query_timing_row(
+    spec: QuerySpec,
+    response: dict,
+    *,
+    hit_count: int,
+    elapsed_seconds: float,
+) -> dict:
+    elapsed_ms = numeric_response_value(response, "elapsed_ms")
+    uncached_elapsed_ms = numeric_response_value(response, "uncached_elapsed_ms")
+    cache_hit = bool(response.get("cache_hit") or response.get("cached"))
+    server_timing = selected_server_timing(response)
+    server_total_ms = None
+    if isinstance(server_timing, dict):
+        try:
+            server_total_ms = float(server_timing.get("total_ms") or 0.0)
+        except (TypeError, ValueError):
+            server_total_ms = None
+    row = {
+        "id": spec.query_id,
+        "elapsed_seconds": round(float(elapsed_seconds or 0.0), 3),
+        "response_elapsed_ms": round(elapsed_ms, 3) if elapsed_ms is not None else "",
+        "response_uncached_elapsed_ms": (
+            round(uncached_elapsed_ms, 3) if uncached_elapsed_ms is not None else ""
+        ),
+        "server_total_ms": round(server_total_ms, 3) if server_total_ms is not None else "",
+        "cache_hit": "1" if cache_hit else "0",
+        "backend": str(response.get("backend") or ""),
+        "hit_count": int(hit_count or 0),
+    }
+    for column in SERVER_TIMING_STAGE_COLUMNS:
+        value = server_timing_column_ms(response, column)
+        row[f"server_{column}_ms"] = round(value, 3) if value is not None else ""
+    return row
+
+
+def query_timing_summary(
+    timings: list[dict],
+    *,
+    workers: int,
+    wall_elapsed_seconds: float,
+) -> dict:
+    elapsed_values = [float(row.get("elapsed_seconds") or 0.0) for row in timings]
+    response_ms_values = [
+        float(row.get("response_elapsed_ms") or 0.0)
+        for row in timings
+        if row.get("response_elapsed_ms") not in ("", None)
+    ]
+    response_seconds = [value / 1000.0 for value in response_ms_values]
+    server_total_seconds = [
+        float(row.get("server_total_ms") or 0.0) / 1000.0
+        for row in timings
+        if row.get("server_total_ms") not in ("", None)
+    ]
+    server_stage_seconds: dict[str, list[float]] = {}
+    for column in SERVER_TIMING_STAGE_COLUMNS:
+        key = f"server_{column}_ms"
+        values = [
+            float(row.get(key) or 0.0) / 1000.0
+            for row in timings
+            if row.get(key) not in ("", None)
+        ]
+        if values:
+            server_stage_seconds[column] = values
+    elapsed_sum = sum(elapsed_values)
+    response_sum = sum(response_seconds)
+    wall_elapsed = float(wall_elapsed_seconds or 0.0)
+    summary = {
+        "workers": int(workers or 1),
+        "query_execution_wall_seconds": round(wall_elapsed, 3),
+        "query_elapsed_sum_seconds": round(elapsed_sum, 3),
+        "query_elapsed_mean_seconds": round(elapsed_sum / len(elapsed_values), 3) if elapsed_values else 0.0,
+        "query_elapsed_max_seconds": round(max(elapsed_values), 3) if elapsed_values else 0.0,
+        "api_response_elapsed_sum_seconds": round(response_sum, 3),
+        "api_response_elapsed_mean_seconds": (
+            round(response_sum / len(response_seconds), 3) if response_seconds else 0.0
+        ),
+        "server_timing_total_sum_seconds": round(sum(server_total_seconds), 3),
+        "server_timing_total_mean_seconds": (
+            round(sum(server_total_seconds) / len(server_total_seconds), 3)
+            if server_total_seconds
+            else 0.0
+        ),
+        "query_client_overhead_sum_seconds": round(max(elapsed_sum - response_sum, 0.0), 3),
+        "query_parallelism_saved_seconds": round(max(elapsed_sum - wall_elapsed, 0.0), 3),
+        "query_cache_hit_count": sum(1 for row in timings if str(row.get("cache_hit") or "") == "1"),
+    }
+    for column, values in server_stage_seconds.items():
+        total = sum(values)
+        summary[f"server_{column}_sum_seconds"] = round(total, 3)
+        summary[f"server_{column}_mean_seconds"] = round(total / len(values), 3)
+    return summary
+
+
+def write_query_timings_tsv(path: Path, timings: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fields = [
+        "id",
+        "elapsed_seconds",
+        "response_elapsed_ms",
+        "response_uncached_elapsed_ms",
+        "server_total_ms",
+        *[f"server_{column}_ms" for column in SERVER_TIMING_STAGE_COLUMNS],
+        "cache_hit",
+        "backend",
+        "hit_count",
+    ]
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t", lineterminator="\n")
+        writer.writeheader()
+        for row in timings:
+            writer.writerow({field: row.get(field, "") for field in fields})
+
+
+def evaluate_query_spec_for_run(
+    args: argparse.Namespace,
+    *,
+    search_system: str,
+    umls_index: SearchIndex | None,
+    spec: QuerySpec,
+    alternatives: dict[str, set[str]],
+) -> dict:
+    started = datetime.now(timezone.utc)
+    if search_system == SEARCH_SYSTEM_UMLS_ONLY:
+        if umls_index is None:
+            raise RuntimeError("UMLS-only search requested without an initialized index")
+        response = search_umls_only_response(args, umls_index, spec)
+    else:
+        response = search_api_response(args, spec)
+    elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+    hits = list(response.get("hits") or [])
+    row = judge_quality(spec, hits, acceptable_alternatives=alternatives)
+    augmented = augment_row(row, spec, hits, alternatives)
+    payload = {"id": spec.query_id, "query": spec.query, "response": response}
+    return {
+        "spec": spec,
+        "row": augmented,
+        "payload": payload,
+        "response": response,
+        "timing": query_timing_row(spec, response, hit_count=len(hits), elapsed_seconds=elapsed),
+    }
+
+
 def run_experiment(
     args: argparse.Namespace,
     *,
@@ -1535,28 +1809,73 @@ def run_experiment(
     payload_dir.mkdir(parents=True, exist_ok=True)
     umls_index = build_umls_only_index(args) if search_system == SEARCH_SYSTEM_UMLS_ONLY else None
 
-    rows = []
-    payloads = []
-    for index, spec in enumerate(specs, start=1):
+    worker_count = effective_query_worker_count(args, search_system=search_system, query_count=len(specs))
+    result_slots: list[dict | None] = [None] * len(specs)
+    query_execution_started = datetime.now(timezone.utc)
+    if worker_count > 1:
         if args.verbose:
-            print(f"[{index}/{len(specs)}] {search_system} {spec.query_id}", file=sys.stderr)
-        if search_system == SEARCH_SYSTEM_UMLS_ONLY:
-            response = search_umls_only_response(args, umls_index, spec)
-        else:
-            response = search_api_response(args, spec)
-        hits = list(response.get("hits") or [])
-        row = judge_quality(spec, hits, acceptable_alternatives=alternatives)
-        rows.append(augment_row(row, spec, hits, alternatives))
-        payload = {"id": spec.query_id, "query": spec.query, "response": response}
-        payloads.append(payload)
-        (payload_dir / f"{spec.query_id}.json").write_text(
-            json.dumps(response, indent=2, sort_keys=True) + "\n",
+            print(
+                f"running {len(specs)} {search_system} queries with {worker_count} workers",
+                file=sys.stderr,
+            )
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            future_to_index = {}
+            for index, spec in enumerate(specs, start=1):
+                if args.verbose:
+                    print(f"[{index}/{len(specs)}] queued {search_system} {spec.query_id}", file=sys.stderr)
+                future = executor.submit(
+                    evaluate_query_spec_for_run,
+                    args,
+                    search_system=search_system,
+                    umls_index=umls_index,
+                    spec=spec,
+                    alternatives=alternatives,
+                )
+                future_to_index[future] = index
+            for completed, future in enumerate(as_completed(future_to_index), start=1):
+                index = future_to_index[future]
+                result = future.result()
+                result_slots[index - 1] = result
+                if args.verbose:
+                    timing = result.get("timing") or {}
+                    print(
+                        f"[done {completed}/{len(specs)}] {search_system} "
+                        f"{result['spec'].query_id} {timing.get('elapsed_seconds')}s",
+                        file=sys.stderr,
+                    )
+    else:
+        for index, spec in enumerate(specs, start=1):
+            if args.verbose:
+                print(f"[{index}/{len(specs)}] {search_system} {spec.query_id}", file=sys.stderr)
+            result_slots[index - 1] = evaluate_query_spec_for_run(
+                args,
+                search_system=search_system,
+                umls_index=umls_index,
+                spec=spec,
+                alternatives=alternatives,
+            )
+
+    query_execution_elapsed = (datetime.now(timezone.utc) - query_execution_started).total_seconds()
+    results = [result for result in result_slots if result is not None]
+    rows = [result["row"] for result in results]
+    payloads = [result["payload"] for result in results]
+    query_timings = [result["timing"] for result in results]
+    for result in results:
+        (payload_dir / f"{result['spec'].query_id}.json").write_text(
+            json.dumps(result["response"], indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
 
     elapsed = (datetime.now(timezone.utc) - started).total_seconds()
     evaluation_signature = evaluation_signature_from_rows(rows)
     summary = add_derived_metrics(summarize(rows), rows, elapsed_seconds=elapsed)
+    summary.update(
+        query_timing_summary(
+            query_timings,
+            workers=worker_count,
+            wall_elapsed_seconds=query_execution_elapsed,
+        )
+    )
     summary["search_system"] = search_system
     summary["search_system_label"] = search_system_label(search_system)
     summary["query_pool_count"] = query_selection["query_pool_count"]
@@ -1596,8 +1915,11 @@ def run_experiment(
         "metrics_path": str(run_dir / "metrics.json"),
         "rows_path": str(run_dir / "rows.tsv"),
         "payloads_path": str(run_dir / "payloads.jsonl"),
+        "query_timings_path": str(run_dir / "query_timings.tsv"),
         "source_quality_path": str(run_dir / "source_quality_at_10.tsv"),
         "source_quality_json_path": str(run_dir / "source_quality_at_10.json"),
+        "requested_workers": int(getattr(args, "workers", DEFAULT_API_WORKERS) or 1),
+        "workers": worker_count,
         "git_commit": git_value(["rev-parse", "--short", "HEAD"]),
         "git_dirty": bool(git_value(["status", "--porcelain"])),
         "summary": summary,
@@ -1616,6 +1938,7 @@ def run_experiment(
     write_rows_tsv(run_dir / "rows.tsv", rows)
     write_rows_tsv(run_dir / "paragraph_quality_summary.tsv", rows)
     write_jsonl(run_dir / "payloads.jsonl", payloads)
+    write_query_timings_tsv(run_dir / "query_timings.tsv", query_timings)
     write_source_quality_tsv(run_dir / "source_quality_at_10.tsv", source_quality["ranked_sources"])
     (run_dir / "source_quality_at_10.json").write_text(
         json.dumps(source_quality, indent=2, sort_keys=True) + "\n",
@@ -1647,6 +1970,410 @@ def update_manifest(output_root: Path, run: dict) -> dict:
     manifest = {"runs": runs}
     write_manifest(manifest_path, manifest)
     return manifest
+
+
+def read_iteration_smoke_manifest(output_root: Path = DEFAULT_OUTPUT_ROOT) -> dict:
+    return read_manifest(output_root / ITERATION_SMOKE_MANIFEST_NAME)
+
+
+def write_iteration_smoke_manifest(output_root: Path, manifest: dict) -> None:
+    write_manifest(output_root / ITERATION_SMOKE_MANIFEST_NAME, manifest)
+
+
+def update_iteration_smoke_manifest(output_root: Path, entry: dict) -> dict:
+    manifest = read_iteration_smoke_manifest(output_root)
+    entries = [
+        item
+        for item in manifest.get("runs", [])
+        if item.get("verification_id") != entry.get("verification_id")
+    ]
+    entries.append(entry)
+    entries.sort(key=lambda item: str(item.get("created_at") or ""))
+    manifest = {"runs": entries}
+    write_iteration_smoke_manifest(output_root, manifest)
+    return manifest
+
+
+def normalize_iteration_types(values: list[str] | None) -> list[str]:
+    raw = []
+    for value in values or []:
+        raw.extend(part.strip().lower() for part in str(value).split(","))
+    normalized = []
+    unknown = []
+    for value in raw:
+        if not value:
+            continue
+        if value not in ITERATION_TYPE_CHOICES:
+            unknown.append(value)
+            continue
+        if value not in normalized:
+            normalized.append(value)
+    if unknown:
+        allowed = ", ".join(ITERATION_TYPE_CHOICES)
+        raise SystemExit(f"unknown --iteration-type value(s): {', '.join(unknown)}; allowed: {allowed}")
+    return normalized or ["process"]
+
+
+def safe_verification_id(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip()).strip("-._")
+    return cleaned or "iteration-smoke-gates"
+
+
+def helper_command_env() -> dict[str, str]:
+    env = dict(os.environ)
+    prefix = f"{SRC}:{SCRIPTS}"
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = prefix if not existing else f"{prefix}:{existing}"
+    return env
+
+
+def command_text(command: str | list[str]) -> str:
+    if isinstance(command, str):
+        return command
+    return shlex.join(str(part) for part in command)
+
+
+def repo_display_path(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(ROOT))
+    except Exception:
+        return str(path)
+
+
+def smoke_tier_decision(args: argparse.Namespace, iteration_types: list[str]) -> dict:
+    docs_only = bool(getattr(args, "docs_only_change", False))
+    ui_report_only = bool(getattr(args, "ui_report_only_change", False))
+    live_disabled_by_scope = docs_only or ui_report_only
+    standing = bool(set(iteration_types) & STANDING_SMOKE_ITERATION_TYPES)
+    rotating = bool(set(iteration_types) & ROTATING_SMOKE_ITERATION_TYPES)
+    patient_portal = bool(set(iteration_types) & PATIENT_PORTAL_SMOKE_ITERATION_TYPES)
+    if live_disabled_by_scope:
+        standing = False
+        rotating = False
+        patient_portal = False
+    if getattr(args, "broad_change", False) or getattr(args, "release_quality", False):
+        standing = True
+        rotating = True
+        patient_portal = True
+    if getattr(args, "force_standing_smoke", False):
+        standing = True
+    if getattr(args, "force_rotating_smoke", False):
+        rotating = True
+        standing = True
+    if getattr(args, "force_patient_portal_smoke", False):
+        patient_portal = True
+    if getattr(args, "skip_standing_smoke", False):
+        standing = False
+    if getattr(args, "skip_rotating_smoke", False):
+        rotating = False
+    if getattr(args, "skip_patient_portal_smoke", False):
+        patient_portal = False
+
+    reasons = []
+    if docs_only:
+        reasons.append("docs-only/local-layout flag suppresses live smoke unless forced")
+    if ui_report_only:
+        reasons.append("UI/report-only flag suppresses live smoke unless forced")
+    if set(iteration_types) & STANDING_SMOKE_ITERATION_TYPES:
+        reasons.append("iteration type requires standing clinical API smoke")
+    if set(iteration_types) & ROTATING_SMOKE_ITERATION_TYPES:
+        reasons.append("iteration type requires 50-query rotating smoke with gates")
+    if set(iteration_types) & PATIENT_PORTAL_SMOKE_ITERATION_TYPES:
+        reasons.append("iteration type requires patient portal current-versus-history smoke")
+    if getattr(args, "broad_change", False):
+        reasons.append("broad-change flag requires standing, rotating, and patient portal smoke")
+    if getattr(args, "release_quality", False):
+        reasons.append("release-quality flag requires standing, rotating, and patient portal smoke")
+    if getattr(args, "skip_standing_smoke", False):
+        reasons.append("standing smoke explicitly skipped")
+    if getattr(args, "skip_rotating_smoke", False):
+        reasons.append("rotating smoke explicitly skipped")
+    if getattr(args, "force_patient_portal_smoke", False):
+        reasons.append("patient portal smoke explicitly forced")
+    if getattr(args, "skip_patient_portal_smoke", False):
+        reasons.append("patient portal smoke explicitly skipped")
+    if not reasons:
+        reasons.append("process-only change defaults to static/focused checks only")
+
+    return {
+        "standing_smoke": standing,
+        "rotating_smoke": rotating,
+        "patient_portal_smoke": patient_portal,
+        "reasons": reasons,
+    }
+
+
+def build_iteration_smoke_steps(args: argparse.Namespace, verification_id: str, iteration_types: list[str]) -> list[dict]:
+    decision = smoke_tier_decision(args, iteration_types)
+    steps = []
+    for index, command in enumerate(getattr(args, "static_command", []) or [], start=1):
+        steps.append(
+            {
+                "name": f"static_check_{index}",
+                "tier": "static",
+                "command": command,
+                "shell": True,
+                "reason": "user-supplied static verification command",
+            }
+        )
+    for index, command in enumerate(getattr(args, "focused_command", []) or [], start=1):
+        steps.append(
+            {
+                "name": f"focused_check_{index}",
+                "tier": "focused",
+                "command": command,
+                "shell": True,
+                "reason": "user-supplied focused verification command",
+            }
+        )
+    if decision["standing_smoke"]:
+        standing_jsonl = (
+            Path(getattr(args, "verification_run_dir"))
+            / "standing_clinical_smoke.jsonl"
+        )
+        steps.append(
+            {
+                "name": "standing_clinical_api_smoke",
+                "tier": "standing",
+                "command": [
+                    sys.executable,
+                    str(SCRIPTS / "evaluate_search_api.py"),
+                    "--queries",
+                    str(ROOT / "config" / "search_quality_clinical_queries.tsv"),
+                    "--base-url",
+                    str(args.base_url),
+                    "--top-k",
+                    "5",
+                    "--timeout",
+                    str(args.timeout),
+                    "--jsonl-out",
+                    str(standing_jsonl),
+                    "--fail-on-missing-expected",
+                ],
+                "shell": False,
+                "reason": "standing clinical API smoke for runtime/search-quality behavior",
+                "output": repo_display_path(standing_jsonl),
+            }
+        )
+    if decision["rotating_smoke"]:
+        run_id = f"{safe_verification_id(verification_id)}_rotating_50"
+        steps.append(
+            {
+                "name": "rotating_50_query_smoke",
+                "tier": "rotating",
+                "command": [
+                    sys.executable,
+                    str(SCRIPTS / "run_search_quality_experiment.py"),
+                    "--base-url",
+                    str(args.base_url),
+                    "--scope",
+                    str(args.scope),
+                    "--run-family",
+                    "smoke",
+                    "--label",
+                    f"{verification_id} automated 50-query smoke",
+                    "--run-id",
+                    run_id,
+                    "--queries",
+                    str(args.queries),
+                    "--query-limit",
+                    "50",
+                    "--query-selection",
+                    "rotate",
+                    "--search-system",
+                    SEARCH_SYSTEM_API,
+                    "--top-k",
+                    str(args.top_k),
+                    "--timeout",
+                    str(args.timeout),
+                    "--workers",
+                    str(getattr(args, "workers", DEFAULT_API_WORKERS)),
+                    "--output-root",
+                    str(args.output_root),
+                    "--html-report",
+                    str(args.html_report),
+                    "--require-api-backend",
+                    str(args.require_api_backend),
+                    "--fail-gates",
+                ],
+                "shell": False,
+                "reason": "50-query rotating smoke with release gates",
+            }
+        )
+    if decision["patient_portal_smoke"]:
+        run_id = f"{safe_verification_id(verification_id)}_patient_portal"
+        steps.append(
+            {
+                "name": "patient_portal_current_history_smoke",
+                "tier": "patient_portal",
+                "command": [
+                    sys.executable,
+                    str(SCRIPTS / "run_search_quality_experiment.py"),
+                    "--base-url",
+                    str(args.base_url),
+                    "--scope",
+                    str(args.scope),
+                    "--run-family",
+                    "patient_portal",
+                    "--label",
+                    f"{verification_id} patient portal current-versus-history lane",
+                    "--run-id",
+                    run_id,
+                    "--queries",
+                    str(ROOT / "config" / "search_quality_patient_portal_queries.tsv"),
+                    "--query-limit",
+                    "0",
+                    "--search-system",
+                    SEARCH_SYSTEM_API,
+                    "--top-k",
+                    str(args.top_k),
+                    "--timeout",
+                    str(args.timeout),
+                    "--workers",
+                    str(getattr(args, "workers", DEFAULT_API_WORKERS)),
+                    "--output-root",
+                    str(args.output_root),
+                    "--html-report",
+                    str(args.html_report),
+                    "--require-api-backend",
+                    str(args.require_api_backend),
+                    "--fail-gates",
+                ],
+                "shell": False,
+                "reason": "patient portal smoke for current-visit versus copied-forward history behavior",
+            }
+        )
+    return steps
+
+
+def command_result_excerpt(value: str, *, limit: int = 6000) -> str:
+    if len(value) <= limit:
+        return value
+    return value[-limit:]
+
+
+def execute_iteration_smoke_step(step: dict, *, dry_run: bool) -> dict:
+    result = dict(step)
+    result["command_text"] = command_text(step.get("command") or "")
+    result["started_at"] = utc_timestamp()
+    if dry_run:
+        result["status"] = "planned"
+        result["returncode"] = None
+        result["passed"] = None
+        result["finished_at"] = result["started_at"]
+        return result
+    try:
+        if step.get("shell"):
+            completed = subprocess.run(
+                str(step.get("command") or ""),
+                cwd=ROOT,
+                env=helper_command_env(),
+                shell=True,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        else:
+            completed = subprocess.run(
+                [str(part) for part in (step.get("command") or [])],
+                cwd=ROOT,
+                env=helper_command_env(),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        result["returncode"] = completed.returncode
+        result["passed"] = completed.returncode == 0
+        result["status"] = "passed" if completed.returncode == 0 else "failed"
+        result["stdout_tail"] = command_result_excerpt(completed.stdout or "")
+        result["stderr_tail"] = command_result_excerpt(completed.stderr or "")
+    except Exception as exc:
+        result["returncode"] = None
+        result["passed"] = False
+        result["status"] = "error"
+        result["error"] = str(exc)
+    result["finished_at"] = utc_timestamp()
+    return result
+
+
+def write_iteration_smoke_markdown(path: Path, entry: dict) -> None:
+    lines = [
+        f"# {entry.get('verification_id')} Smoke Verification",
+        "",
+        f"- Created: {entry.get('created_at')}",
+        f"- Dry run: {entry.get('dry_run')}",
+        f"- Iteration types: {', '.join(entry.get('iteration_types') or [])}",
+        f"- Overall status: {entry.get('status')}",
+        f"- Base URL: `{entry.get('base_url')}`",
+        "",
+        "## Decision",
+        "",
+    ]
+    decision = entry.get("decision") or {}
+    lines.append(f"- Standing clinical smoke: `{decision.get('standing_smoke')}`")
+    lines.append(f"- Rotating 50-query smoke: `{decision.get('rotating_smoke')}`")
+    lines.append(f"- Patient portal smoke: `{decision.get('patient_portal_smoke')}`")
+    for reason in decision.get("reasons") or []:
+        lines.append(f"- Reason: {reason}")
+    lines.extend(["", "## Steps", ""])
+    for step in entry.get("steps") or []:
+        status = step.get("status")
+        lines.append(f"### {step.get('name')} ({status})")
+        lines.append("")
+        lines.append(f"- Tier: `{step.get('tier')}`")
+        lines.append(f"- Reason: {step.get('reason')}")
+        lines.append(f"- Return code: `{step.get('returncode')}`")
+        lines.append("")
+        lines.append("```sh")
+        lines.append(str(step.get("command_text") or command_text(step.get("command") or "")))
+        lines.append("```")
+        stdout = str(step.get("stdout_tail") or "").strip()
+        stderr = str(step.get("stderr_tail") or "").strip()
+        if stdout:
+            lines.extend(["", "Stdout tail:", "", "```text", stdout, "```"])
+        if stderr:
+            lines.extend(["", "Stderr tail:", "", "```text", stderr, "```"])
+        lines.append("")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+def run_iteration_smoke_gates(args: argparse.Namespace) -> int:
+    iteration_types = normalize_iteration_types(args.iteration_type)
+    verification_id = str(args.iteration_id or "").strip() or f"iteration-smoke-{run_id_from_timestamp()}"
+    verification_safe_id = safe_verification_id(verification_id)
+    run_dir = args.output_root / "iteration_smoke_gates" / verification_safe_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    setattr(args, "verification_run_dir", str(run_dir))
+    json_path = args.verification_out or (run_dir / "verification.json")
+    md_path = args.verification_md_out or (run_dir / "verification.md")
+    decision = smoke_tier_decision(args, iteration_types)
+    steps = build_iteration_smoke_steps(args, verification_id, iteration_types)
+    results = [execute_iteration_smoke_step(step, dry_run=args.dry_run) for step in steps]
+    failed = [step for step in results if step.get("passed") is False]
+    entry = {
+        "verification_id": verification_id,
+        "created_at": utc_timestamp(),
+        "dry_run": bool(args.dry_run),
+        "iteration_types": iteration_types,
+        "base_url": args.base_url,
+        "decision": decision,
+        "status": "planned" if args.dry_run else ("failed" if failed else "passed"),
+        "steps": results,
+        "verification_json_path": repo_display_path(json_path),
+        "verification_md_path": repo_display_path(md_path),
+    }
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(json.dumps(entry, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_iteration_smoke_markdown(md_path, entry)
+    update_iteration_smoke_manifest(args.output_root, entry)
+    manifest = enrich_manifest_metrics(read_manifest(args.output_root / MANIFEST_NAME), persist=True)
+    write_manifest(args.output_root / MANIFEST_NAME, manifest)
+    write_html_report(args.html_report, manifest)
+    print(json.dumps({"status": entry["status"], "verification": entry["verification_json_path"]}, indent=2, sort_keys=True))
+    print(f"wrote {entry['verification_md_path']}")
+    print(f"wrote {args.html_report}")
+    return 1 if failed else 0
 
 
 def read_run_rows(run: dict) -> list[dict]:
@@ -1865,6 +2592,77 @@ def h(value: object) -> str:
     return html.escape("" if value is None else str(value), quote=True)
 
 
+def iteration_smoke_step_summary(entry: dict) -> str:
+    parts = []
+    for step in entry.get("steps") or []:
+        name = str(step.get("name") or step.get("tier") or "step")
+        status = str(step.get("status") or "unknown")
+        parts.append(f"{name}: {status}")
+    return "; ".join(parts) or "No commands selected."
+
+
+def iteration_smoke_gate_panel_html(output_root: Path = DEFAULT_OUTPUT_ROOT, *, limit: int = 6) -> str:
+    manifest = read_iteration_smoke_manifest(output_root)
+    entries = list(manifest.get("runs") or [])
+    if not entries:
+        return """
+          <section class="panel">
+            <h2>Post-Iteration Smoke Gates</h2>
+            <p class="muted">No post-iteration smoke-helper runs are recorded yet.</p>
+          </section>
+        """
+    entries.sort(key=lambda item: str(item.get("created_at") or ""))
+    rows = []
+    for entry in reversed(entries[-limit:]):
+        decision = entry.get("decision") or {}
+        status = str(entry.get("status") or "unknown")
+        status_class = "neutral"
+        if status == "passed":
+            status_class = "good"
+        elif status == "failed":
+            status_class = "bad"
+        tiers = []
+        if decision.get("standing_smoke"):
+            tiers.append("standing clinical")
+        if decision.get("rotating_smoke"):
+            tiers.append("50-query rotating")
+        if decision.get("patient_portal_smoke"):
+            tiers.append("patient portal")
+        if not tiers:
+            tiers.append("static/focused only")
+        rows.append(
+            "<tr>"
+            f"<td><strong>{h(entry.get('verification_id'))}</strong><br><small>{h(entry.get('created_at'))}</small></td>"
+            f"<td><span class=\"status-badge {h(status_class)}\">{h(status)}</span></td>"
+            f"<td>{h(', '.join(entry.get('iteration_types') or []))}</td>"
+            f"<td>{h(', '.join(tiers))}</td>"
+            f"<td>{h(iteration_smoke_step_summary(entry))}</td>"
+            f"<td><code>{h(entry.get('verification_md_path'))}</code><br><code>{h(entry.get('verification_json_path'))}</code></td>"
+            "</tr>"
+        )
+    return f"""
+      <section class="panel">
+        <h2>Post-Iteration Smoke Gates</h2>
+        <p class="muted">Generated by <code>--iteration-smoke-gates</code>. Use this as the verification summary for iteration records.</p>
+        <div class="table-wrap compact">
+          <table>
+            <thead>
+              <tr>
+                <th><span>Iteration</span></th>
+                <th><span>Status</span></th>
+                <th><span>Types</span></th>
+                <th><span>Selected tiers</span></th>
+                <th><span>Steps</span></th>
+                <th><span>Artifacts</span></th>
+              </tr>
+            </thead>
+            <tbody>{''.join(rows)}</tbody>
+          </table>
+        </div>
+      </section>
+    """
+
+
 def load_translation_benchmark_report() -> dict | None:
     if not DEFAULT_TRANSLATION_BENCHMARK_REPORT_JSON.exists():
         try:
@@ -1888,25 +2686,6 @@ def load_translation_benchmark_report() -> dict | None:
             return None
 
 
-def load_gold_standard_comparison() -> dict | None:
-    if not DEFAULT_GOLD_STANDARD_COMPARISON_JSON.exists():
-        return None
-    try:
-        return json.loads(DEFAULT_GOLD_STANDARD_COMPARISON_JSON.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-
-
-def docs_relative_href(path: Path) -> str:
-    try:
-        return str(path.relative_to(DEFAULT_REPORT.parent))
-    except ValueError:
-        try:
-            return str(Path("..") / path.relative_to(ROOT))
-        except ValueError:
-            return str(path)
-
-
 def translation_benchmark_slice(report: dict, slice_id: str) -> dict:
     for slice_report in report.get("slices") or []:
         if slice_report.get("id") == slice_id:
@@ -1925,67 +2704,6 @@ def translation_card(title: str, value: str, detail: str, *, status: str = "neut
         <span>{h(title)}</span>
         <small>{h(detail)}</small>
       </div>
-    """
-
-
-def gold_live_slice(comparison: dict, slice_id: str) -> dict:
-    for slice_report in comparison.get("live_slices") or []:
-        if slice_report.get("id") == slice_id:
-            return dict(slice_report)
-    return {}
-
-
-def gold_slice_summary(comparison: dict, slice_id: str) -> dict:
-    return dict((gold_live_slice(comparison, slice_id).get("summary") or {}))
-
-
-def complete_status(complete: int, rows: int) -> str:
-    if rows <= 0:
-        return "neutral"
-    rate = complete / rows
-    if rate >= 0.90:
-        return "good"
-    if rate >= 0.70:
-        return "warn"
-    return "bad"
-
-
-def gold_current_card(title: str, summary: dict) -> str:
-    rows = int(summary.get("paragraphs") or summary.get("rows") or 0)
-    complete = int(summary.get("queries_all_expected_at_10") or 0)
-    missing = int(summary.get("queries_with_missing_at_10") or max(rows - complete, 0))
-    return translation_card(
-        title,
-        f"{complete}/{rows}",
-        f"{pct(summary.get('recall_at_10'))} of expected IDs found; {missing} rows missing something",
-        status=complete_status(complete, rows),
-    )
-
-
-def gold_standard_comparison_html() -> str:
-    comparison = load_gold_standard_comparison()
-    if not comparison:
-        return ""
-    clinical = gold_slice_summary(comparison, "clinical_smoke")
-    pubmed_dev = gold_slice_summary(comparison, "pubmed_literature_dev")
-    pubmed_heldout = gold_slice_summary(comparison, "pubmed_literature_heldout")
-    detail_href = docs_relative_href(DEFAULT_GOLD_STANDARD_COMPARISON_MD)
-    created_at = comparison.get("created_at") or ""
-    return f"""
-        <div class="plain-explanation">
-          <div class="latest-header">
-            <div>
-              <h3>Current Live Gold Comparison</h3>
-              <p class="muted">Generated {h(created_at)} from the running API. This is the current system scored against the locked expected-CUI files.</p>
-            </div>
-            <a class="status-badge neutral" href="{h(detail_href)}">Current details</a>
-          </div>
-          <div class="summary-grid">
-            {gold_current_card("Clinical now complete", clinical)}
-            {gold_current_card("PubMed practice now complete", pubmed_dev)}
-            {gold_current_card("PubMed locked now complete", pubmed_heldout)}
-          </div>
-        </div>
     """
 
 
@@ -2013,16 +2731,16 @@ def translation_plain_explanation_html(
     code_incomplete = max(code_rows - code_complete, 0)
     code_missing_sabs = max(code_expected_sabs - code_found_sabs, 0)
     code_incomplete_sentence = (
-        "1 row still needs a missing code type fixed."
+        "1 example still needs a missing code type fixed."
         if code_incomplete == 1
-        else f"{code_incomplete} rows still need a missing code type fixed."
+        else f"{code_incomplete} examples still need a missing code type fixed."
     )
     return f"""
         <div class="plain-explanation">
           <h3>What These Checks Mean</h3>
           <p>
             Each test starts with medical text and a short list of IDs that should be found.
-            A row passes when those expected IDs show up in the first 10 answers.
+            An example passes when those expected IDs show up in the first 10 answers.
           </p>
           <ul class="plain-steps">
             <li>
@@ -2044,8 +2762,74 @@ def translation_plain_explanation_html(
             <li>
               <strong>Code check:</strong>
               After finding a medical concept, this checks whether we can also show the expected vocabulary code, such as SNOMED CT, RxNorm, LOINC, or ICD-10-CM.
-              {h(code_complete)} of {h(code_rows)} rows had all expected code types, and {h(code_found_sabs)} of {h(code_expected_sabs)} expected code links were found.
+              {h(code_complete)} of {h(code_rows)} examples had all expected code types, and {h(code_found_sabs)} of {h(code_expected_sabs)} expected code links were found.
               {h(code_incomplete_sentence)}
+            </li>
+          </ul>
+        </div>
+    """
+
+
+def translation_quality_gate_stack_html() -> str:
+    return """
+        <div class="plain-explanation">
+          <h3>Quality Gate Stack</h3>
+          <p>
+            The repeat-run checks are useful smoke tests, but they are not by
+            themselves a complete search-quality program. A release-quality run
+            should pass separate gates for identity, ranking, context, source
+            provenance, vocabulary outputs, long documents, and drift.
+          </p>
+          <ul class="plain-steps">
+            <li>
+              <strong>Identity and recall:</strong>
+              Expected and acceptable CUIs must appear in the first 10 results,
+              with top-1 target rate, mean best expected rank, and per-domain
+              misses reported. This is the current paragraph benchmark's main job.
+            </li>
+            <li>
+              <strong>Ranking and precision:</strong>
+              Known wrong CUIs, generic prose concepts, metadata concepts, and
+              overbroad fragments should not enter the top 10. Useful secondary
+              concepts should be tracked separately from true false positives.
+            </li>
+            <li>
+              <strong>Assertion and attributes:</strong>
+              The system must distinguish active/current mentions from negated,
+              historical, uncertain, planned, family-history, and copied-forward
+              context. Attribute checks should cover laterality, site, severity,
+              lab value/unit, drug route/dose/frequency, and procedure status.
+            </li>
+            <li>
+              <strong>Long-document behavior:</strong>
+              PubMed abstracts, pasted pages, radiology reports, and clinical-note
+              style text need section-aware chunking and reranking checks so central
+              concepts survive while incidental background text is demoted. Tune on
+              practice/dev sets; use locked heldout examples only as a release signal.
+            </li>
+            <li>
+              <strong>Source, evidence, and license integrity:</strong>
+              Core source-specific benchmarks should verify DailyMed label context,
+              MedlinePlus lay language, and PubMed/PMC literature evidence.
+              ClinicalTrials.gov posted outcomes, PubTator3 sampled relation
+              candidates, and external CUI-neighbor embeddings should stay as
+              opt-in probes until ablations show value without default-result
+              drift. PubTator3 candidates require PubMed/PMC validation before
+              promotion. Source deltas must show no unexplained count collapse,
+              CUI loss, source-code drift, restricted-content leakage, or
+              protocol-only evidence misuse.
+            </li>
+            <li>
+              <strong>Vocabulary and code outputs:</strong>
+              CUI success is not enough. Separate checks should verify the expected
+              SNOMED CT, RxNorm, LOINC, ICD-10-CM, MeSH, and source-code mappings
+              for the use case being served.
+            </li>
+            <li>
+              <strong>Repeatability and operational health:</strong>
+              Comparable runs need a stable query fingerprint, fixed scope/backend,
+              before/after deltas, latency or timeout tracking, and retained payloads
+              so regressions can be reproduced instead of inferred from a score.
             </li>
           </ul>
         </div>
@@ -2062,32 +2846,24 @@ def translation_next_quality_work_html() -> str:
           </p>
           <ul class="plain-steps">
             <li>
-              <strong>Long-document validation:</strong>
-              Section-aware chunking, per-section linking, and merged chunk support are
-              now in the search path. Use the PubMed dev misses to tune reranking so
-              secondary concepts survive long abstracts without letting incidental
-              context dominate.
+              <strong>Convert the gate stack into files:</strong>
+              Add explicit query sets for assertion/context, nested spans,
+              entity attributes, long-document sections, and vocabulary-specific
+              code expectations instead of relying on the paragraph smoke test to
+              imply those behaviors.
             </li>
             <li>
-              <strong>Entity attributes:</strong>
-              For each extracted concept, score whether the system captures negated,
-              possible, historical, family-history, patient-versus-other-person,
-              active/current, severity, laterality, and body-site status. Drug concepts
-              also need route, dose, and frequency fields; lab concepts need value and unit fields.
+              <strong>Separate dev from release checks:</strong>
+              Keep PubMed practice examples and rotating paragraph samples for tuning.
+              Treat the locked PubMed heldout examples, full judged paragraph pool,
+              source-specific benchmarks, precision audit, and source-delta report
+              as release gates.
             </li>
             <li>
-              <strong>Nested and overlapping concepts:</strong>
-              Add span-level rules for cases such as <code>postmenopausal bleeding</code>
-              containing <code>bleeding</code>. Prefer the longest clinically specific concept
-              when it is well supported, retain nested child concepts only when they add a
-              separate useful semantic role, and report both span-level precision and
-              concept-level recall.
-            </li>
-            <li>
-              <strong>Vocabulary-specific outputs:</strong>
-              Same-CUI success is not enough. Keep separate quality checks for SNOMED CT,
-              RxNorm, LOINC, ICD-10-CM, and MeSH so the result can be judged against the
-              vocabulary needed for a clinical, pharmacy, lab, billing, or literature use case.
+              <strong>Report ranking quality, not just found/not-found:</strong>
+              Add top-1 target rate, mean best expected rank, useful-extra count,
+              known-false-positive@10, generic/meta false-positive@10, and
+              latency/timeout summaries to the repeat-run table.
             </li>
             <li>
               <strong>External benchmark comparison:</strong>
@@ -2108,6 +2884,18 @@ def translation_next_quality_work_html() -> str:
               and <a href="https://github.com/CogStack/MedCAT">MedCAT</a>
               as clinical-text references for spans, standard codes, attributes, temporal
               handling, EHR UMLS/SNOMED linking, and self-supervised context learning.
+            </li>
+            <li>
+              <strong>TREC PM/CDS document/source retrieval:</strong>
+              The external benchmark lane in <code>scripts/run_trec_benchmark.py</code>
+              imports Precision Medicine or Clinical Decision Support topics and one or
+              more qrels files, resolves judged PubMed and ClinicalTrials.gov IDs against
+              local corpora, and reports coverage before retrieval scoring. Use the
+              all-judged-positive query file for corpus-expansion accounting and the
+              resolved-local query file for document/source retrieval metrics. Keep this
+              separate from CUI recall: qrels <code>relevance &gt; 0</code> entries are
+              positives, and unjudged returned documents are unknown rather than false
+              positives.
             </li>
           </ul>
         </div>
@@ -2153,14 +2941,14 @@ def translation_benchmark_panel_html() -> str:
       <section class="panel top-read-panel">
         <div class="latest-header">
           <div>
-            <h2>Translation Benchmark</h2>
-            <p class="muted">Locked {h(locked_at)}. Start here; the details are below only when you need to diagnose a change.</p>
+            <h2>Historical Translation Benchmark</h2>
+            <p class="muted">Locked {h(locked_at)}. This is a historical lock; start with the progress log for current status.</p>
           </div>
           <a class="status-badge neutral" href="{h(full_report_href)}">Full benchmark report</a>
         </div>
         <div class="primary-read">
-          <strong>Clinical examples are mostly working, but the locked PubMed set is the limiting check.</strong>
-          <span>Use practice PubMed misses for tuning; keep the locked PubMed, official UMLS, and code checks separate.</span>
+          <strong>Historical locked benchmark, not the current full test loop.</strong>
+          <span>Use the progress log for the latest weakness, fix, and regression sequence. Use this locked report for provenance.</span>
         </div>
         <div class="summary-grid">
           {translation_card(
@@ -2188,7 +2976,6 @@ def translation_benchmark_panel_html() -> str:
               status="warn" if code_complete < code_rows else "good",
           )}
         </div>
-        {gold_standard_comparison_html()}
         {translation_plain_explanation_html(
             clinical_all=clinical_all,
             clinical_rows=clinical_rows,
@@ -2204,6 +2991,7 @@ def translation_benchmark_panel_html() -> str:
             code_found_sabs=code_found_sabs,
             code_expected_sabs=code_expected_sabs,
         )}
+        {translation_quality_gate_stack_html()}
         {translation_next_quality_work_html()}
       </section>
     """
@@ -2639,7 +3427,7 @@ def recommendations_for_run(run: dict, previous: dict | None = None) -> list[str
         )
     elif strict < 0.90:
         recommendations.append(
-            "Close the remaining strict@10 misses, prioritizing rows where the top hit is right but expected CUIs are missing."
+            "Close the remaining strict@10 misses, prioritizing examples where the top hit is right but expected CUIs are missing."
         )
     if top_target < 0.90 or top_wrong_count:
         recommendations.append(
@@ -2916,12 +3704,19 @@ def latest_evaluation_panel(runs: list[dict]) -> str:
 def repeatable_run_panel() -> str:
     server_command = """PORT=8770 ELASTIC_URL=http://localhost:9200 ELASTIC_INDEX=qe-scaling-sapbert-cls \\
   PUBLIC_OUTPUT_ONLY=1 sh scripts/start_search_quality_server.sh"""
+    helper_command = """PYTHONPATH=src:scripts python3 scripts/run_search_quality_experiment.py \\
+  --iteration-smoke-gates \\
+  --iteration-id SQI-YYYY-MM-DD-NNN \\
+  --iteration-type ranking \\
+  --focused-command "python3 -m pytest tests/test_evidence_vectors.py -k '<selector>' -q" \\
+  --base-url http://127.0.0.1:8766"""
     smoke_command = """PYTHONPATH=src python3 scripts/run_search_quality_experiment.py \\
   --base-url http://127.0.0.1:8770 \\
   --scope umls_evidence \\
   --run-family smoke \\
   --query-limit 50 \\
   --query-selection rotate \\
+  --workers 2 \\
   --output-root build/search_quality_experiments \\
   --html-report docs/search_quality_experiments.html \\
   --fail-gates"""
@@ -2947,8 +3742,11 @@ PYTHONPATH=src python3 scripts/run_search_quality_experiment.py \\
         <p class="muted">The stable manifest is <code>build/search_quality_experiments/runs.json</code>; this page is regenerated at <code>docs/search_quality_experiments.html</code>.</p>
         <h3>Elasticsearch-backed API server</h3>
         <pre><code>{h(server_command)}</code></pre>
+        <h3>Post-iteration smoke helper</h3>
+        <pre><code>{h(helper_command)}</code></pre>
         <h3>Fast rotating 50-query smoke run</h3>
         <pre><code>{h(smoke_command)}</code></pre>
+        <p class="muted">Live API experiment runs default to two worker threads and write <code>query_timings.tsv</code>; pass <code>--workers 1</code> for serial timing.</p>
         <h3>Direct UMLS versus UMLS + evidence pair</h3>
         <pre><code>{h(scope_commands)}</code></pre>
       </details>
@@ -3175,10 +3973,10 @@ def run_set_outcome_summary(run: dict) -> str:
     false_positive_count = summary_int(run, "queries_with_disallowed_at_10")
     score = overall_score(run)
     return (
-        f"{strict_count} of {paragraphs} rows fully found in the first 10 answers "
+        f"{strict_count} of {paragraphs} examples fully found in the first 10 answers "
         f"({pct(summary.get('strict_success_at_10_rate'))}); "
-        f"{missing_count} rows missed at least one expected ID; "
-        f"{false_positive_count} rows included a known wrong ID; "
+        f"{missing_count} examples missed at least one expected ID; "
+        f"{false_positive_count} examples included a known wrong ID; "
         f"overall score {score:.1f}/100"
     )
 
@@ -3207,9 +4005,9 @@ def run_set_change_summary(previous: dict, latest: dict) -> str:
     ).replace("same", "unchanged")
     return (
         f"Score {score_delta}; "
-        f"fully found rows {strict_delta}; "
-        f"rows with missing expected IDs {missing_delta}; "
-        f"rows with known wrong IDs {false_positive_delta}"
+        f"fully found examples {strict_delta}; "
+        f"examples with missing expected IDs {missing_delta}; "
+        f"examples with known wrong IDs {false_positive_delta}"
     )
 
 
@@ -3236,8 +4034,8 @@ def repeated_run_sets_overview_html(runs: list[dict]) -> str:
         )
 
     return f"""
-      <p class="muted">Each row groups runs that used the same setup and the same list of test questions. The result shown is the newest run in that group. The test-set fingerprint is just a short ID for that exact question list.</p>
-      <p><strong>Release checks</strong> are pass/fail safeguards, not another score. A run passes when it does not get meaningfully worse than the comparable older run, does not add known wrong answers, does not lose major source coverage, and does not show restricted or protocol-only evidence. <strong>Not checked</strong> means the run was saved for comparison but those safeguards were not applied.</p>
+      <p class="muted">Each line groups runs that used the same setup and the same list of test questions. The result shown is the newest run in that group. The test-set fingerprint is just a short ID for that exact question list.</p>
+      <p><strong>Release checks</strong> are pass/fail safeguards, not another score. The current repeat table mainly checks strict success@10, known false positives, source coverage, and evidence-scope problems. A true release decision should also include the quality-gate stack above: ranking precision, assertion/context behavior, long-document heldout examples, source-specific benchmarks, vocabulary/code outputs, source-delta integrity, and operational repeatability. <strong>Not checked</strong> means the run was saved for comparison but those safeguards were not applied.</p>
       <div class="table-wrap repeat-runs">
         <table>
           <thead>
@@ -3379,7 +4177,7 @@ def umls_api_comparison_panel_html() -> str:
               <th>Expected in local top 10</th>
               <th>Expected local rank 1</th>
               <th>Mean overlap@10</th>
-              <th>Expected rows</th>
+              <th>Expected examples</th>
             </tr>
           </thead>
           <tbody>{''.join(rows)}</tbody>
@@ -3459,7 +4257,7 @@ def plain_language_improvement_html(runs: list[dict]) -> str:
         scope_note = (
             "This table only compares runs with the same benchmark definition. Some cleanup work changed the "
             "benchmark itself, such as moving negated joint erosion out of the expected-answer list, so those "
-            "changes are explained below even when they are not counted as row-to-row fixes inside this table."
+            "changes are explained below even when they are not counted as example-to-example fixes inside this table."
         )
         problem = (
             "Most queries were already working. The remaining failures were small but important: one expected "
@@ -3496,10 +4294,10 @@ def plain_language_improvement_html(runs: list[dict]) -> str:
     else:
         problem = (
             "This table compares the same kind of run over time: same query file, same API scope, same backend, "
-            "and same basic search settings. That means the rows can be read as a real before-and-after."
+            "and same basic search settings. That means the entries can be read as a real before-and-after."
         )
         changes = [
-            "We used the first row in this run set as the starting point and the newest row as the current result.",
+            "We used the first run in this set as the starting point and the newest run as the current result.",
             "The improvement work focused on getting expected medical ideas to appear in the first 10 results.",
             "The same test was rerun after the change so the newest numbers could be compared directly.",
         ]
@@ -3542,7 +4340,7 @@ def plain_language_improvement_html(runs: list[dict]) -> str:
     remaining_rows_html = ""
     if remaining_rows:
         remaining_rows_html = (
-            "<p><strong>Remaining rows to investigate:</strong></p>"
+            "<p><strong>Remaining examples to investigate:</strong></p>"
             f"<ul class=\"plain-steps\">{''.join(f'<li>{h(item)}</li>' for item in remaining_rows)}</ul>"
         )
 
@@ -4609,7 +5407,9 @@ def report_intro_html(runs: list[dict], *, generated: str) -> str:
     return (
         f"<p class=\"muted\">Generated {h(display_timestamp(generated))}. "
         f"Timestamps are UTC. Showing {h(repeated_count)} repeated comparable run types from "
-        f"{h(len(runs))} registered runs.</p>"
+        f"{h(len(runs))} registered runs. Start with the "
+        "<a href=\"search_quality_progress_log.html\">progress log</a> for the readable "
+        "weakness, fix, and regression story; use this page as the detailed run archive.</p>"
     )
 
 
@@ -5040,6 +5840,7 @@ def write_html_report(path: Path, manifest: dict) -> None:
 		  <h1>Search Quality Repeat Runs</h1>
 		  {report_intro_html(all_runs, generated=generated)}
 		  {translation_benchmark_panel_html()}
+		  {iteration_smoke_gate_panel_html(DEFAULT_OUTPUT_ROOT)}
 
 		  <details class="panel layered-details">
 		    <summary>
@@ -5071,6 +5872,7 @@ def write_html_report(path: Path, manifest: dict) -> None:
 	</html>
 """
     path.parent.mkdir(parents=True, exist_ok=True)
+    body = "\n".join(line.rstrip() for line in body.splitlines()) + "\n"
     path.write_text(body, encoding="utf-8")
 
 
@@ -5152,6 +5954,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--timeout", type=float, default=90.0)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=DEFAULT_API_WORKERS,
+        help=(
+            "Number of concurrent live API query workers. Defaults to "
+            f"{DEFAULT_API_WORKERS}; pass 1 for serial execution. UMLS-only runs stay serial."
+        ),
+    )
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--html-report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--no-run", action="store_true", help="Only regenerate the HTML report from the manifest.")
@@ -5211,11 +6022,108 @@ def parse_args() -> argparse.Namespace:
         action="append",
         help="Restricted source marker for public-display gate. Repeatable; defaults cover restricted/private/non-level-0 patterns.",
     )
+    parser.add_argument(
+        "--iteration-smoke-gates",
+        action="store_true",
+        help="Plan or run post-iteration verification checks and write JSON/Markdown/HTML summaries.",
+    )
+    parser.add_argument(
+        "--iteration-id",
+        help="Iteration identifier for --iteration-smoke-gates, such as SQI-2026-06-10-011.",
+    )
+    parser.add_argument(
+        "--iteration-type",
+        action="append",
+        default=[],
+        help=(
+            "Iteration type used to choose smoke tiers. Repeat or comma-separate values. "
+            f"Allowed: {', '.join(ITERATION_TYPE_CHOICES)}."
+        ),
+    )
+    parser.add_argument(
+        "--static-command",
+        action="append",
+        default=[],
+        help="Static verification command to run before live smoke. Repeatable; executed by the shell.",
+    )
+    parser.add_argument(
+        "--focused-command",
+        action="append",
+        default=[],
+        help="Focused test/check command to run before live smoke. Repeatable; executed by the shell.",
+    )
+    parser.add_argument(
+        "--docs-only-change",
+        action="store_true",
+        help="For --iteration-smoke-gates, record a docs/local-layout-only decision and skip live smoke unless forced.",
+    )
+    parser.add_argument(
+        "--ui-report-only-change",
+        action="store_true",
+        help="For --iteration-smoke-gates, record a UI/report-only decision and skip live smoke unless forced.",
+    )
+    parser.add_argument(
+        "--broad-change",
+        action="store_true",
+        help="For --iteration-smoke-gates, force standing and 50-query rotating smoke because the change has broad runtime risk.",
+    )
+    parser.add_argument(
+        "--release-quality",
+        action="store_true",
+        help="For --iteration-smoke-gates, force standing and 50-query rotating smoke because the result is release-quality evidence.",
+    )
+    parser.add_argument(
+        "--force-standing-smoke",
+        action="store_true",
+        help="For --iteration-smoke-gates, run standing clinical API smoke regardless of inferred tier.",
+    )
+    parser.add_argument(
+        "--force-rotating-smoke",
+        action="store_true",
+        help="For --iteration-smoke-gates, run 50-query rotating smoke with gates regardless of inferred tier.",
+    )
+    parser.add_argument(
+        "--force-patient-portal-smoke",
+        action="store_true",
+        help="For --iteration-smoke-gates, run the patient portal current-versus-history lane regardless of inferred tier.",
+    )
+    parser.add_argument(
+        "--skip-standing-smoke",
+        action="store_true",
+        help="For --iteration-smoke-gates, skip standing clinical smoke and record that decision.",
+    )
+    parser.add_argument(
+        "--skip-rotating-smoke",
+        action="store_true",
+        help="For --iteration-smoke-gates, skip rotating smoke and record that decision.",
+    )
+    parser.add_argument(
+        "--skip-patient-portal-smoke",
+        action="store_true",
+        help="For --iteration-smoke-gates, skip patient portal current-versus-history smoke and record that decision.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="For --iteration-smoke-gates, write the planned verification commands without running them.",
+    )
+    parser.add_argument(
+        "--verification-out",
+        type=Path,
+        help="For --iteration-smoke-gates, JSON verification summary path.",
+    )
+    parser.add_argument(
+        "--verification-md-out",
+        type=Path,
+        help="For --iteration-smoke-gates, Markdown verification summary path.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    if args.iteration_smoke_gates:
+        return run_iteration_smoke_gates(args)
     failed_gate_results = []
     if args.register_run:
         run = json.loads(args.register_run.read_text(encoding="utf-8"))
@@ -5244,6 +6152,7 @@ def main() -> int:
                     queries=args.queries,
                     api_scope=args.scope,
                     current_signature=evaluation_signature,
+                    payload_shape=current_payload_shape(args),
                 )
             run = run_experiment(
                 args,

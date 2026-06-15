@@ -447,10 +447,20 @@ class SearchIndex(
                     )
                 semantic_type = str(row.get("semantic_type") or "").strip()
                 if semantic_type and cui not in semantic_types_by_cui:
+                    field = str(row.get("field") or "").strip()
                     semantic_rows = local_extension_semantic_type_rows(
                         semantic_type,
-                        field=str(row.get("field") or ""),
+                        field=field,
                     )
+                    if not semantic_rows:
+                        semantic_rows = [
+                            {
+                                "name": semantic_type,
+                                "sty": semantic_type,
+                            }
+                        ]
+                        if field:
+                            semantic_rows[0]["local_field"] = field
                     for semantic_row in semantic_rows:
                         semantic_row["source"] = "active_label_supplement"
                         semantic_row["atui"] = f"ACTIVE_LABEL_SUPPLEMENT:{cui}"
@@ -501,6 +511,18 @@ class SearchIndex(
                     break
         return rows_by_cui
 
+    def related_concepts_mode_name(self) -> str:
+        parts: list[str] = []
+        if self.expensive_related_source_limit > 0:
+            parts.append("evidence_vectors")
+        if self.external_cui_vector_index:
+            parts.append("external_embeddings")
+        if self.relation_index:
+            parts.append("mrrel")
+        if self.research_relation_index:
+            parts.append("research")
+        return "_".join(parts) if parts else "disabled"
+
     def status(self) -> dict:
         return {
             "vectors_path": str(self.vector_paths[0]) if self.vector_paths else "",
@@ -548,11 +570,7 @@ class SearchIndex(
             "semantic_type_cuis": self.semantic_type_index.source_count() if self.semantic_type_index else 0,
             "semantic_type_rows": self.semantic_type_index.semantic_type_count() if self.semantic_type_index else 0,
             "relation_index": str(self.relation_index_path or ""),
-            "related_concepts_mode": (
-                "evidence_vectors_external_embeddings_mrrel_research"
-                if self.expensive_related_source_limit > 0
-                else "external_embeddings_mrrel_research_default"
-            ),
+            "related_concepts_mode": self.related_concepts_mode_name(),
             "related_source_limit": self.related_source_limit,
             "expensive_related_source_limit": self.expensive_related_source_limit,
             "query_cache_size": self.query_cache_size,

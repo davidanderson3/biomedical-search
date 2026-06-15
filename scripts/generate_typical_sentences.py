@@ -27,7 +27,7 @@ TOPIC_ROWS = [
     ("pulmonary", "pneumonia", "community acquired pneumonia", "productive cough", "right lower lobe crackles", "chest radiograph", "right lower lobe infiltrate", "ceftriaxone and azithromycin", "sputum culture", "hypoxemia"),
     ("pulmonary", "asthma exacerbation", "asthma", "wheezing", "prolonged expiratory phase", "peak flow measurement", "reduced peak expiratory flow", "albuterol nebulizer", "spirometry", "respiratory distress"),
     ("pulmonary", "pulmonary embolism", "acute pulmonary embolism", "pleuritic chest pain", "unilateral leg swelling", "computed tomography angiography", "segmental pulmonary embolus", "apixaban", "venous duplex ultrasound", "right heart strain"),
-    ("gastroenterology", "diverticulitis", "acute uncomplicated diverticulitis", "left lower quadrant pain", "localized abdominal tenderness", "computed tomography abdomen", "sigmoid diverticulitis", "amoxicillin clavulanate", "colonoscopy follow up", "perforation"),
+    ("gastroenterology", "diverticulitis", "acute uncomplicated diverticulitis", "left lower quadrant pain", "localized abdominal tenderness", "computed tomography abdomen", "sigmoid diverticulitis", "amoxicillin clavulanate", "colonoscopy follow-up", "perforation"),
     ("gastroenterology", "gastrointestinal bleeding", "upper gastrointestinal bleeding", "melena", "orthostatic hypotension", "upper endoscopy", "bleeding gastric ulcer", "intravenous pantoprazole", "endoscopic hemostasis", "acute blood loss anemia"),
     ("gastroenterology", "clostridioides difficile infection", "clostridioides difficile colitis", "watery diarrhea", "diffuse abdominal cramping", "stool toxin assay", "positive C difficile toxin", "oral vancomycin", "contact isolation", "toxic megacolon"),
     ("endocrinology", "type 2 diabetes", "poorly controlled type 2 diabetes mellitus", "polyuria", "elevated hemoglobin A1c", "hemoglobin A1c", "A1c above goal", "metformin and insulin glargine", "diabetes education", "diabetic neuropathy"),
@@ -42,10 +42,10 @@ TOPIC_ROWS = [
     ("neurology", "seizure", "generalized tonic clonic seizure", "postictal confusion", "tongue biting", "electroencephalogram", "epileptiform discharges", "levetiracetam", "seizure precautions", "status epilepticus"),
     ("neurology", "migraine", "migraine headache", "photophobia", "normal neurologic examination", "head CT", "no acute intracranial process", "sumatriptan", "headache diary", "medication overuse headache"),
     ("psychiatry", "major depression", "major depressive disorder", "low mood", "flat affect", "PHQ 9 questionnaire", "severe depressive symptoms", "sertraline", "behavioral health referral", "suicidal ideation"),
-    ("psychiatry", "alcohol withdrawal", "alcohol withdrawal syndrome", "tremulousness", "tachycardia", "CIWA assessment", "elevated withdrawal score", "lorazepam", "withdrawal monitoring", "seizure risk"),
+    ("psychiatry", "alcohol withdrawal", "alcohol withdrawal syndrome", "tremulousness", "tachycardia", "CIWA assessment", "elevated withdrawal score", "lorazepam", "withdrawal monitoring", "withdrawal seizure"),
     ("infectious disease", "sepsis", "sepsis due to cellulitis", "fever and malaise", "hypotension", "blood culture", "gram positive cocci in clusters", "broad spectrum antibiotics", "source control", "septic shock"),
-    ("infectious disease", "osteomyelitis", "diabetic foot osteomyelitis", "foot ulcer drainage", "exposed bone", "foot MRI", "marrow edema concerning for osteomyelitis", "vancomycin", "bone biopsy", "amputation risk"),
-    ("dermatology", "psoriasis", "plaque psoriasis", "itchy rash", "silvery scale", "skin examination", "erythematous plaques on extensor surfaces", "topical corticosteroid", "dermatology follow up", "joint pain"),
+    ("infectious disease", "osteomyelitis", "diabetic foot osteomyelitis", "foot ulcer drainage", "exposed bone", "foot MRI", "marrow edema concerning for osteomyelitis", "vancomycin", "bone biopsy", "amputation"),
+    ("dermatology", "psoriasis", "plaque psoriasis", "itchy rash", "silvery scale", "skin examination", "erythematous plaques on extensor surfaces", "topical corticosteroid", "dermatology follow-up", "joint pain"),
     ("dermatology", "herpes zoster", "herpes zoster", "burning dermatomal pain", "vesicular rash", "clinical skin examination", "unilateral dermatomal vesicles", "valacyclovir", "pain control", "postherpetic neuralgia"),
     ("musculoskeletal", "osteoarthritis", "knee osteoarthritis", "knee pain with stairs", "crepitus", "knee radiograph", "tricompartmental degenerative changes", "acetaminophen", "intra articular steroid injection", "limited mobility"),
     ("musculoskeletal", "hip fracture", "femoral neck fracture", "inability to bear weight", "shortened externally rotated leg", "hip radiograph", "displaced femoral neck fracture", "pain control", "operative fixation", "delirium"),
@@ -88,7 +88,7 @@ SHORT_TEMPLATES = [
     ("clinical_note", "Nursing note described {symptom} and new {finding}."),
     ("clinical_note", "Follow up testing for {focus} included {test}."),
     ("clinical_note", "The clinician recommended {procedure} if {symptom} recurs."),
-    ("clinical_note", "{treatment} was held temporarily because of concern for {complication}."),
+    ("clinical_note", "{treatment} {treatment_past_verb} held temporarily because of concern for {complication}."),
     ("clinical_note", "The visit focused on counseling for {condition} and prevention of {complication}."),
     ("clinical_note", "Physical examination did not reproduce {symptom}, but {finding} was present."),
     ("clinical_note", "The patient was observed overnight after {procedure} for {focus}."),
@@ -197,7 +197,7 @@ LONG_TEMPLATES = [
     (
         "clinical_paragraph",
         "Medication reconciliation noted {treatment} for {condition}, but the patient returned with {symptom}. "
-        "Because {finding} and {result} were present, the team documented risk of {complication}.",
+        "Because {finding} and {result} were present, the team documented {complication} as a concern.",
     ),
     (
         "clinical_question",
@@ -296,7 +296,7 @@ LONG_TEMPLATES = [
     ),
     (
         "drug_label_query",
-        "A drug-label style query asks whether {treatment} is used for {condition} when the patient has {symptom} and {finding}. "
+        "A drug-label style query asks whether {treatment} {treatment_verb} used for {condition} when the patient has {symptom} and {finding}. "
         "The answer should distinguish indication language from warnings about {complication}.",
     ),
     (
@@ -306,7 +306,7 @@ LONG_TEMPLATES = [
     ),
     (
         "drug_label_query",
-        "The prescribing note says {treatment} was started after {test} confirmed {result} in the setting of {condition}. "
+        "The prescribing note says {treatment} {treatment_past_verb} started after {test} confirmed {result} in the setting of {condition}. "
         "Patient counseling covered recurrent {symptom}, planned {procedure}, and warning signs of {complication}.",
     ),
     (
@@ -378,7 +378,7 @@ LONG_VARIANT_SUFFIXES = (
     "The same query variant adds later follow up wording to test ranking stability across longer notes.",
     "A second documentation pass repeats the clinical focus with different surrounding context.",
     "The expanded wording is intentionally redundant so candidate retrieval must preserve the central concepts.",
-    "This variant simulates copied-forward chart context mixed with a new active assessment.",
+    "This variant simulates older chart context mixed with a new active assessment.",
 )
 FULL_PAGE_STYLES = (
     "full_page_clinical",
@@ -458,22 +458,44 @@ def compact_query(parts: list[str]) -> str:
     return " ".join(" ".join(part.split()) for part in parts if part.strip())
 
 
+def agreement_verb(phrase: str) -> str:
+    lower = phrase.lower()
+    if " and " in lower:
+        return "are"
+    if lower in {"intravenous fluids", "broad spectrum antibiotics", "seizure precautions"}:
+        return "are"
+    return "is"
+
+
+def past_agreement_verb(phrase: str) -> str:
+    return "were" if agreement_verb(phrase) == "are" else "was"
+
+
+def topic_with_grammar(topic: dict) -> dict:
+    return {
+        **topic,
+        "treatment_verb": agreement_verb(topic["treatment"]),
+        "treatment_past_verb": past_agreement_verb(topic["treatment"]),
+        "procedure_verb": agreement_verb(topic["procedure"]),
+    }
+
+
 def full_page_sections(topic: dict, companion: dict, *, style: str, variant_index: int) -> list[str]:
     background = (
-        f"Older history: the copied problem list still includes {companion['condition']} and prior "
+        f"Older history: the prior problem list still includes {companion['condition']} and prior "
         f"{companion['treatment']}. The current visit says there is no active issue related to "
         f"{companion['complication']}, "
         f"and the team is not making a new care decision about {companion['focus']} today."
     )
     carry_forward = (
-        "Copied medication lists, nursing notes, patient instructions, old test results, family history, scheduling "
-        "text, and follow-up reminders appear alongside the active assessment. The repeated phrases restate the "
+        "Medication lists, nursing notes, patient instructions, old test results, family history, scheduling "
+        "text, and follow-up reminders appear alongside the active assessment. These repeated phrases restate the "
         "active problem in different words while also adding routine chart language such as assessment, plan, "
         "review, education, and return precautions."
     )
     if variant_index:
         carry_forward += (
-            " A later copied version adds another brief update after phone triage, using different wording for "
+            " A later chart update adds another brief update after phone triage, using different wording for "
             "the same active concern."
         )
 
@@ -503,7 +525,7 @@ def full_page_sections(topic: dict, companion: dict, *, style: str, variant_inde
                 f"such as {topic['finding']} are worsening, or if there are signs concerning for "
                 f"{topic['complication']}. Follow-up is arranged to review {topic['test']} findings, management "
                 f"involving {topic['treatment']}, and whether "
-                f"{topic['procedure']} is still needed."
+                f"{topic['procedure']} {agreement_verb(topic['procedure'])} still needed."
             ),
         ]
 
@@ -564,7 +586,7 @@ def full_page_sections(topic: dict, companion: dict, *, style: str, variant_inde
     if style == "full_page_drug_safety":
         return [
             (
-                f"Care-safety review: {topic['treatment']} is documented for the active "
+                f"Care-safety review: {topic['treatment']} {agreement_verb(topic['treatment'])} documented for the active "
                 f"problem of {topic['condition']} in a patient reporting {topic['symptom']} with "
                 f"{topic['finding']}."
             ),
@@ -585,7 +607,7 @@ def full_page_sections(topic: dict, companion: dict, *, style: str, variant_inde
                 f"Patient counseling: the instructions explain when to seek care for {topic['complication']}, "
                 f"why the care plan includes {topic['treatment']}, and why the team may still need "
                 f"{topic['procedure']}. "
-                "Order review, clinician assessment, and discharge teaching were pasted together in the same note."
+                "The note combines order review, clinician assessment, and discharge teaching."
             ),
         ]
 
@@ -598,7 +620,7 @@ def full_page_sections(topic: dict, companion: dict, *, style: str, variant_inde
         (
             f"Can you explain whether the {topic['test']} result is why you are concerned about "
             f"{topic['focus']}? I was told {topic['treatment']} might be part of the plan, and I am not sure "
-            f"whether {topic['procedure']} is something I need now or only if things do not improve."
+            f"whether {topic['procedure']} {agreement_verb(topic['procedure'])} something I need now or only if things do not improve."
         ),
         (
             f"I am also worried because the instructions mention watching for {topic['complication']}. "
@@ -654,7 +676,7 @@ def iter_full_page_rows(count: int):
 
 def iter_rows(count: int):
     emitted = 0
-    topics = [dict(zip(TOPIC_FIELDS, row)) for row in TOPIC_ROWS]
+    topics = [topic_with_grammar(dict(zip(TOPIC_FIELDS, row))) for row in TOPIC_ROWS]
     for style, template in SHORT_TEMPLATES:
         for topic_index, topic in enumerate(topics, start=1):
             if emitted >= count:

@@ -1,1 +1,21 @@
 id	query	expected_cuis	why	source
+real_four-word-row-2	type 2 diabetes mellitus	C0011860	Reviewed safe real-query regression; plain clinical diagnosis phrase; expected CUI is UMLS top Diabetes Mellitus, Non-Insulin-Dependent.	private_real_query_diagnostic
+real_one-word-row-10	hypothyroidism	C0020676	Reviewed safe real-query regression; single clinical diagnosis term with matching local and UMLS top result.	private_real_query_diagnostic
+real_one-word-row-11	nausea	C0027497	Reviewed safe real-query regression; single symptom term with matching local and UMLS top result.	private_real_query_diagnostic
+real_one-word-row-12	anemia	C0002871	Reviewed safe real-query regression; single clinical finding term with matching local and UMLS top result.	private_real_query_diagnostic
+real_one-word-row-13	cough	C0010200	Reviewed safe real-query regression; single symptom term with matching local and UMLS top result.	private_real_query_diagnostic
+real_one-word-row-14	fatigue	C0015672	Reviewed safe real-query regression; single symptom term with matching local and UMLS top result.	private_real_query_diagnostic
+real_one-word-row-15	pain	C0030193	Reviewed safe real-query regression; single symptom term; protects prior local no-hit against UMLS top Pain.	private_real_query_diagnostic
+real_one-word-row-16	pneumonia	C0032285	Reviewed safe real-query regression; single clinical diagnosis term with matching local and UMLS top result.	private_real_query_diagnostic
+real_one-word-row-17	anxiety	C0003467	Reviewed safe real-query regression; single symptom/condition term with matching local and UMLS top result.	private_real_query_diagnostic
+real_one-word-row-2	hypertension	C0020538	Reviewed safe real-query regression; single clinical diagnosis term with matching local and UMLS top result.	private_real_query_diagnostic
+real_one-word-row-3	diabetes	C0011847	Reviewed safe real-query regression; broad common term where Diabetes is the primary target and Diabetes Mellitus / Type 2 Diabetes are acceptable alternatives.	private_real_query_diagnostic
+real_one-word-row-4	depression	C0011570	Reviewed safe real-query regression; single clinical diagnosis term with matching local and UMLS top result.	private_real_query_diagnostic
+real_one-word-row-5	obesity	C0028754	Reviewed safe real-query regression; single clinical diagnosis term with matching local and UMLS top result.	private_real_query_diagnostic
+real_one-word-row-6	fever	C0015967	Reviewed safe real-query regression; single symptom term with matching local and UMLS top result.	private_real_query_diagnostic
+real_one-word-row-7	stroke	C0038454	Reviewed safe real-query regression; broad common term where cerebrovascular accident is the primary target and major stroke subtype CUIs are acceptable alternatives.	private_real_query_diagnostic
+real_one-word-row-8	asthma	C0004096	Reviewed safe real-query regression; single clinical diagnosis term with matching local and UMLS top result.	private_real_query_diagnostic
+real_one-word-row-9	headache	C0018681	Reviewed safe real-query regression; single symptom term with matching local and UMLS top result.	private_real_query_diagnostic
+real_two-word-row-2	diabetes mellitus	C0011849	Reviewed safe real-query regression; common clinical diagnosis phrase with matching local and UMLS top result.	private_real_query_diagnostic
+real_two-word-row-3	atrial fibrillation	C0004238	Reviewed safe real-query regression; common rhythm diagnosis phrase; accepts canonical atrial fibrillation plus lexical-variant alternatives.	private_real_query_diagnostic
+real_two-word-row-4	heart failure	C0018801	Reviewed safe real-query regression; common clinical diagnosis phrase; protects prior local no-hit against UMLS heart-failure concepts and acceptable variants.	private_real_query_diagnostic

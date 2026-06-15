@@ -1,6 +1,53 @@
 import re
 
-from scripts.generate_typical_sentences import DEFAULT_FULL_PAGE_COUNT, iter_full_page_rows
+from scripts.generate_typical_sentences import DEFAULT_COUNT, DEFAULT_FULL_PAGE_COUNT, iter_full_page_rows, iter_rows
+
+
+BAD_GENERATED_PHRASES = (
+    "full-page sample query",
+    "intended central concepts",
+    "search expectation",
+    "ranking challenge",
+    "evidence-routing challenge",
+    "final query intent",
+    "search engine",
+    "top-ranked concepts",
+    "first page of search results",
+    "current page",
+    "current chart excerpt asks",
+    "page also contains",
+    "chart excerpt also contains",
+    "those sections",
+    "reason-for-visit section",
+    "exam section",
+    "participant flow section",
+    "completed-results section",
+    "different parts of the page",
+    "different parts of the note",
+    "the page is long",
+    "the note is long",
+    "licensed-only umls",
+    "generic corpus boilerplate",
+    "copied",
+    "copied problem list",
+    "copied medication lists",
+    "pasted together",
+    "risk of seizure risk",
+    "risk of amputation risk",
+    "intravenous fluids is",
+    "intravenous fluids was",
+    "aspirin and statin is",
+    "aspirin and statin was",
+    "metformin and insulin glargine is",
+    "metformin and insulin glargine was",
+    "ceftriaxone and azithromycin is",
+    "ceftriaxone and azithromycin was",
+    "ceftriaxone and doxycycline is",
+    "ceftriaxone and doxycycline was",
+    "broad spectrum antibiotics is",
+    "broad spectrum antibiotics was",
+    "seizure precautions is",
+)
 
 
 def test_full_page_samples_are_natural_page_text():
@@ -14,32 +61,7 @@ def test_full_page_samples_are_natural_page_text():
         assert row["expected_focus"].lower() in lower
         assert re.search(r"\bpages?\b", lower) is None
         assert re.search(r"\bsections?\b", lower) is None
-        for phrase in (
-            "full-page sample query",
-            "intended central concepts",
-            "search expectation",
-            "ranking challenge",
-            "evidence-routing challenge",
-            "final query intent",
-            "search engine",
-            "top-ranked concepts",
-            "first page of search results",
-            "current page",
-            "current chart excerpt asks",
-            "page also contains",
-            "chart excerpt also contains",
-            "those sections",
-            "reason-for-visit section",
-            "exam section",
-            "participant flow section",
-            "completed-results section",
-            "different parts of the page",
-            "different parts of the note",
-            "the page is long",
-            "the note is long",
-            "licensed-only umls",
-            "generic corpus boilerplate",
-        ):
+        for phrase in BAD_GENERATED_PHRASES:
             assert phrase not in lower
         if row["style"] == "full_page_lay_language":
             for phrase in (
@@ -53,3 +75,13 @@ def test_full_page_samples_are_natural_page_text():
                 "no active issue related",
             ):
                 assert phrase not in lower
+
+
+def test_generated_sentence_corpus_avoids_known_artifacts():
+    rows = list(iter_rows(DEFAULT_COUNT))
+
+    assert len(rows) == DEFAULT_COUNT
+    for row in rows:
+        lower = row["query"].lower()
+        for phrase in BAD_GENERATED_PHRASES:
+            assert phrase not in lower

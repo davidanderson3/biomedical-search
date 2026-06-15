@@ -91,6 +91,12 @@ DRUG_ROLLUP_BIO_LABEL_TERMS = {
     "receptor",
     "transporter",
 }
+YES_NO_RELATED_LABELS = {"no", "yes"}
+
+
+def is_yes_no_related_value(relation: dict) -> bool:
+    label = relation.get("label") or relation.get("target_label") or relation.get("name") or ""
+    return normalized_key(str(label)) in YES_NO_RELATED_LABELS
 
 
 def inverse_relation_labels(relation: str, rela: str) -> tuple[str, str]:
@@ -137,6 +143,8 @@ class SearchRelatedMixin:
         for item in [*primary, *secondary]:
             target_cui = str(item.get("cui") or "").strip()
             if not target_cui or target_cui in seen:
+                continue
+            if is_yes_no_related_value(item):
                 continue
             seen.add(target_cui)
             merged.append(dict(item))
@@ -246,6 +254,8 @@ class SearchRelatedMixin:
             category = str(relation.get("category") or "").strip()
             target_cui = str(relation.get("cui") or "").strip()
             if not category or not target_cui:
+                continue
+            if is_yes_no_related_value(relation):
                 continue
             if is_noisy_symptom_to_organism_relation(relation, {"key": "ORGANISM"}):
                 continue
@@ -871,6 +881,8 @@ class SearchRelatedMixin:
             relations.extend(external_neighbors)
         grouped: dict[str, list[dict]] = {}
         for relation in relations:
+            if is_yes_no_related_value(relation):
+                continue
             category = str(relation.get("category") or "").strip()
             target_cui = str(relation.get("cui") or "").strip()
             if not category or not target_cui:

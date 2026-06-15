@@ -3,7 +3,9 @@ set -eu
 
 PORT="${PORT:-8766}"
 HOST="${HOST:-0.0.0.0}"
-PUBLIC_OUTPUT_ONLY="${PUBLIC_OUTPUT_ONLY:-1}"
+LOCAL_SCAN_PROFILE="${LOCAL_SCAN_PROFILE:-full}"
+MAX_SEQ_LENGTH="${MAX_SEQ_LENGTH:-128}"
+PUBLIC_OUTPUT_ONLY="${PUBLIC_OUTPUT_ONLY:-0}"
 PUBLIC_OUTPUT_ARGS=""
 if [ "$PUBLIC_OUTPUT_ONLY" = "1" ] || [ "$PUBLIC_OUTPUT_ONLY" = "true" ]; then
   PUBLIC_OUTPUT_ARGS="--public-output-only"
@@ -27,33 +29,60 @@ add_doc() {
   fi
 }
 
-add_vector build/scaling_chunk_001_gap_topics_concept_vectors.sapbert_cls.jsonl
-add_vector build/scaling_chunk_002_common_clinical_concept_vectors.sapbert_cls.jsonl
-add_vector build/scaling_chunk_003_abbreviation_language_concept_vectors.sapbert_cls.jsonl
-add_vector build/scaling_chunk_004_drug_safety_therapeutics_concept_vectors.sapbert_cls.jsonl
-add_vector build/scaling_chunk_005_diagnostics_procedures_devices_concept_vectors.sapbert_cls.jsonl
-add_vector build/pubmed_bulk_recent_baseline_concept_vectors.sapbert_cls.jsonl
-add_vector build/pubmed_bulk_recent_next2_concept_vectors.sapbert_cls.jsonl
-add_vector build/pubmed_bulk_recent_1331_1330_concept_vectors.sapbert_cls.jsonl
-add_vector build/pubmed_bulk_recent_1329_1328_concept_vectors.sapbert_cls.jsonl
-add_vector build/pubmed_bulk_recent_1327_1326_concept_vectors.sapbert_cls.jsonl
-add_vector build/pubmed_bulk_recent_1325_1324_concept_vectors.sapbert_cls.jsonl
-add_vector build/pubmed_bulk_recent_1323_1322_concept_vectors.sapbert_cls.jsonl
-add_vector build/pubmed_bulk_recent_1321_1320_concept_vectors.sapbert_cls.jsonl
+add_core_vectors() {
+  add_vector build/scaling_chunk_001_gap_topics_concept_vectors.sapbert_cls.jsonl
+  add_vector build/scaling_chunk_002_common_clinical_concept_vectors.sapbert_cls.jsonl
+  add_vector build/scaling_chunk_003_abbreviation_language_concept_vectors.sapbert_cls.jsonl
+  add_vector build/scaling_chunk_004_drug_safety_therapeutics_concept_vectors.sapbert_cls.jsonl
+  add_vector build/scaling_chunk_005_diagnostics_procedures_devices_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_baseline_concept_vectors.sapbert_cls.jsonl
+}
 
-add_doc build/scaling_chunk_001_gap_topics_concept_documents.jsonl
-add_doc build/scaling_chunk_002_common_clinical_concept_documents.jsonl
-add_doc build/scaling_chunk_003_abbreviation_language_concept_documents.jsonl
-add_doc build/scaling_chunk_004_drug_safety_therapeutics_concept_documents.jsonl
-add_doc build/scaling_chunk_005_diagnostics_procedures_devices_concept_documents.jsonl
-add_doc build/pubmed_bulk_recent_baseline_concept_documents.jsonl
-add_doc build/pubmed_bulk_recent_next2_concept_documents.jsonl
-add_doc build/pubmed_bulk_recent_1331_1330_concept_documents.jsonl
-add_doc build/pubmed_bulk_recent_1329_1328_concept_documents.jsonl
-add_doc build/pubmed_bulk_recent_1327_1326_concept_documents.jsonl
-add_doc build/pubmed_bulk_recent_1325_1324_concept_documents.jsonl
-add_doc build/pubmed_bulk_recent_1323_1322_concept_documents.jsonl
-add_doc build/pubmed_bulk_recent_1321_1320_concept_documents.jsonl
+add_core_docs() {
+  add_doc build/scaling_chunk_001_gap_topics_concept_documents.jsonl
+  add_doc build/scaling_chunk_002_common_clinical_concept_documents.jsonl
+  add_doc build/scaling_chunk_003_abbreviation_language_concept_documents.jsonl
+  add_doc build/scaling_chunk_004_drug_safety_therapeutics_concept_documents.jsonl
+  add_doc build/scaling_chunk_005_diagnostics_procedures_devices_concept_documents.jsonl
+  add_doc build/pubmed_bulk_recent_baseline_concept_documents.jsonl
+}
+
+add_full_pubmed_vectors() {
+  add_vector build/pubmed_bulk_recent_next2_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_1331_1330_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_1329_1328_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_1327_1326_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_1325_1324_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_1323_1322_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_1321_1320_concept_vectors.sapbert_cls.jsonl
+}
+
+add_full_pubmed_docs() {
+  add_doc build/pubmed_bulk_recent_next2_concept_documents.jsonl
+  add_doc build/pubmed_bulk_recent_1331_1330_concept_documents.jsonl
+  add_doc build/pubmed_bulk_recent_1329_1328_concept_documents.jsonl
+  add_doc build/pubmed_bulk_recent_1327_1326_concept_documents.jsonl
+  add_doc build/pubmed_bulk_recent_1325_1324_concept_documents.jsonl
+  add_doc build/pubmed_bulk_recent_1323_1322_concept_documents.jsonl
+  add_doc build/pubmed_bulk_recent_1321_1320_concept_documents.jsonl
+}
+
+case "$LOCAL_SCAN_PROFILE" in
+  core)
+    add_core_vectors
+    add_core_docs
+    ;;
+  full)
+    add_core_vectors
+    add_full_pubmed_vectors
+    add_core_docs
+    add_full_pubmed_docs
+    ;;
+  *)
+    echo "LOCAL_SCAN_PROFILE must be 'full' or 'core'; got '$LOCAL_SCAN_PROFILE'" >&2
+    exit 2
+    ;;
+esac
 
 exec python3 scripts/search_quality_server.py \
   --host "$HOST" \
@@ -64,7 +93,7 @@ exec python3 scripts/search_quality_server.py \
   --provenance-index build/search_quality_provenance.sqlite \
   --provider sapbert \
   --local-files-only \
-  --max-seq-length 128 \
+  --max-seq-length "$MAX_SEQ_LENGTH" \
   --elastic-url "" \
   --label-fallback-limit 120 \
   --definition-fallback-limit 80 \

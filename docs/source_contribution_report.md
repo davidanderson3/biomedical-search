@@ -2,6 +2,14 @@
 
 Generated: 2026-05-13
 
+Product-quality contribution estimate added: 2026-06-11
+
+Conservative source-policy update: 2026-06-12. Default search evidence should
+stay centered on UMLS plus core tested sources. Non-UMLS expansion should happen
+only when a measured gap shows that UMLS, DailyMed, MedlinePlus, and PubMed/PMC
+cannot cover the behavior safely. ClinicalTrials.gov, PubTator3, CUI2Vec, and
+BioConceptVec are opt-in probes, not default evidence pillars.
+
 This report summarizes the source inventory currently present in local build
 artifacts. Sources differ by integration state: some are already materialized in
 the permitted public/source-subset add-on pack under `build/public`, some are
@@ -46,6 +54,35 @@ Example: one DailyMed drug label is one source record. It can produce many
 linked signals for indications, adverse effects, warnings, and contraindications.
 Those signals are then grouped into concept-level retrieval records and vectors.
 
+## Product-Quality Contribution Estimate
+
+This is an estimated attribution of current whole-product search quality, not a
+causal ablation result. It answers: "What is carrying the useful behavior today?"
+The percentages sum to 100% of current product value, not 100% of possible
+future quality. Raw artifact size is only one input: UMLS has no source-corpus
+evidence rows in the dashboard, but it contributes the identity backbone, label
+lookup, semantic routing, code mappings, definitions, and relations that most
+other layers depend on.
+
+| Rank | Resource / layer | Estimated contribution | Why this share | Current local basis |
+| ---: | --- | ---: | --- | --- |
+| 1 | UMLS terminology and source-code backbone | 44% | Most searches start with CUI identity, labels, synonyms, source vocabulary codes, semantic types, definitions, and relation context. It is the base layer for exact lookup, hydration, source-code output, and semantic grouping. | `22,107,347` UMLS-derived index rows; UMLS-only comparison was useful but much weaker than evidence-backed search, so this is high but not dominant alone. |
+| 2 | Custom ranking, filtering, assertion, and reranking heuristics | 20% | These rules turn raw matches into usable search: suppress generic UMLS prose, protect current clinical intent, demote stale history, preserve long-document mentions, and prevent obvious bad top answers. | Rule inventory: generic suppression, assertion/currentness, patient-message meta context, ranking protections, long-document preservation, and smoke-gated tests. |
+| 3 | Curated local judgment/config assets | 10% | Active-label supplements, acceptable alternatives, useful-extra ledgers, disallowed CUIs, benchmark expectations, and reviewed equivalence decisions convert repeated misses into durable behavior. | `243` active-label rows, `69` precision-audit rows, `168` paragraph rows, `12` portal rows, useful-extra and acceptable-alternative configs. |
+| 4 | PubMed, PubMed Bulk, PMC OA, and Europe PMC literature evidence | 8% | Literature evidence supplies article-level support, long-document abstract/body context, disease/drug/procedure associations, and PMID/PMCID provenance. It matters a lot for research-style search but still has broad-suite gaps. | PubMed product: `6,788,458` evidence rows and `434,311` docs; focused PubMed now strong, broader 13-abstract suite still needs rerun. |
+| 5 | HPO and MONDO ontology layers | 4% | These strengthen phenotype and disease synonym/hierarchy coverage beyond default labels, especially for disease and phenotype wording. | HPO and MONDO are inventoried as ontology/reference products with substantial public-pack retrieval records and evidence signals. |
+| 6 | MedlinePlus and MedlinePlus Genetics | 4% | These provide consumer/patient phrasing, health-topic aliases, genetics descriptions, inheritance language, and patient-readable condition context. | MedlinePlus is a systematic snapshot; MedlinePlus Genetics is a subset. Consumer-lay coverage is useful but still under-tested. |
+| 7 | DailyMed drug-label evidence | 4% | Drug labels add indications, warnings, adverse reactions, contraindications, interactions, population language, pharmacology, dose/form language, and medication-specific regulatory wording. | DailyMed is present as subset evidence and source-specific rows. The 2026-06-12 audit found direct DailyMed slices map many linked CUIs outside UMLS `MTHSPL` source-CUI coverage, so it is not just duplicate source vocabulary. |
+| 8 | NCI, FDA, CDC, NIDDK, and NCBI Bookshelf OA public reference pages | 2% | These add authoritative public-domain or public-reference wording for oncology, public health, regulatory safety, kidney/GI/endocrine topics, and review-style passages. | Current coverage is subset/demo or bounded OA material, so contribution is real but limited. |
+| 9 | Evaluation and benchmark infrastructure | 2% | Smoke gates, MedMentions/TREC scaffolds, precision audits, and progress ledgers do not answer queries directly, but they keep quality from regressing and expose weak lanes. | Iteration smoke gates, rotating 50-query checks, patient-portal lane, MedMentions/TREC reports, precision-audit review. |
+| 10 | Enrichment, candidate discovery, and review inputs | 2% | OpenAlex, Wikipedia/Wikimedia, local search logs, reviewed snippets, ClinicalTrials.gov posted-outcome probes, PubTator3 relation candidates, CUI2Vec, and BioConceptVec help choose or explain future work, but they are not primary trusted clinical evidence today. | ClinicalTrials.gov and PubTator3 were removed from the default source-specific gate; external embedding neighbors are not auto-loaded by the server. |
+| - | Rejected or restricted sources | 0% | Rejected acquisition paths and permission-required clinician references should not contribute to default product behavior. | Narrow clinical linking and broad OpenAlex default-path promotion are rejected; permission-required clinician references remain excluded. |
+
+Use this estimate as the current working prior. To make it measured, run
+ablation benchmarks that disable one layer at a time: UMLS-only, UMLS plus
+heuristics, UMLS plus heuristics plus curated config, then add source families
+in controlled groups.
+
 ## Source Inventory And Contribution
 
 All source layers and tracked source candidates are listed in one table. The
@@ -62,7 +99,7 @@ add-on pack instead of treating them as directly comparable public-pack shares.
 | NCBI Bookshelf / NLM LitArch OA | Integrated concept/vector pack | `49` | `19,775` | `2,652` | In the public pack, this source supplies `3.3%` of searchable retrieval records and `3.5%` of linked evidence signals. Density: `403.6` signals per source record. | Open-access guideline/report/book-chapter language; current subset covers adult obesity evaluation/treatment and asthma diagnosis/management reports. |
 | MedlinePlus Genetics | Integrated concept/vector pack | `500` | `12,900` | `3,116` | In the public pack, this source supplies `3.8%` of searchable retrieval records and `2.3%` of linked evidence signals. Density: `25.8` signals per source record. | Genetic conditions, phenotypes, inheritance language, related genes/chromosomes, consumer-readable disease descriptions. |
 | MedlinePlus | Integrated concept/vector pack | `250` | `6,696` | `2,118` | In the public pack, this source supplies `2.6%` of searchable retrieval records and `1.2%` of linked evidence signals. Density: `26.8` signals per source record. | Lay symptom names, condition summaries, test names, patient-facing aliases, topic groupings. |
-| ClinicalTrials.gov | Integrated concept/vector pack | `50` | `3,271` | `1,417` | In the public pack, this source supplies `1.7%` of searchable retrieval records and `0.6%` of linked evidence signals. Density: `65.4` signals per source record. | Trial-design language: conditions, interventions, eligibility criteria, outcomes, populations, phases, status. |
+| ClinicalTrials.gov | Legacy bounded candidate subset, not default evidence | `50` | `3,271` | `1,417` | These counts describe historical local artifacts, not default source approval. Registry, recruitment, eligibility, and planned endpoint text should not drive default ranking. | Opt-in posted-results-only candidate source; promote only after protocol-only text is excluded and ablation proves value. |
 | DailyMed | Integrated concept/vector pack | `10` | `1,695` | `555` | In the public pack, this source supplies `0.7%` of searchable retrieval records and `0.3%` of linked evidence signals. Density: `169.5` signals per source record. | Drug-label language: indications, dosage, contraindications, warnings, adverse reactions, interactions, use in populations, clinical pharmacology. |
 | NCI | Integrated concept/vector pack | `3` | `639` | `258` | In the public pack, this source supplies `0.3%` of searchable retrieval records and `0.1%` of linked evidence signals. Density: `213.0` signals per source record. | Cancer diagnosis, treatment modality, risk-factor, testing, biopsy, imaging, and oncology workup language. |
 | NIDDK | Integrated concept/vector pack | `3` | `542` | `239` | In the public pack, this source supplies `0.3%` of searchable retrieval records and `0.1%` of linked evidence signals. Density: `180.7` signals per source record. | Diabetes, kidney disease, digestive disease, endocrine/nutrition education, complications, tests, management terms. |
@@ -72,8 +109,8 @@ add-on pack instead of treating them as directly comparable public-pack shares.
 | Europe PMC abstracts | Broader corpus layer | `41,839` | Profile evidence counted below | `0` standalone vectors | Outside the public add-on pack; contributes to the local literature corpus layer. | Additional literature coverage and abstracts that overlap with, extend, or complement PubMed. |
 | PMC Open Access full text | Broader corpus/evidence layer | `2,397` | `545,863` | `0` standalone vectors | Outside the public add-on pack. In the common-clinical profile, density is `227.7` evidence signals per source record. | Open full-text article context, longer methods/results/discussion prose, and dense co-mention evidence. |
 | Literature profile evidence | Broader evidence layer | Derived from PubMed / Europe PMC | `236,894` biomedicine; `427,573` expanded | Feeds broader concept builds | Outside the public add-on pack; profile-sharded evidence for broader local retrieval builds. | Profile-sharded CUI evidence derived from PubMed/Europe PMC literature. |
-| cui2vec | External CUI embedding-neighbor index | `30,207` source CUIs | `241,656` neighbor edges | `56,264` target CUIs | External neighbor index, not source text. Density: `8.0` neighbor edges per source CUI. | Distributional CUI-CUI similarity signal derived from external biomedical embeddings. Useful for related-concept expansion and weak association discovery, not direct textual evidence. |
-| BioConceptVec | External CUI embedding-neighbor index | `17,104` source CUIs | `136,832` neighbor edges | `55,097` target CUIs | External neighbor index, not source text. Density: `8.0` neighbor edges per source CUI. | Distributional biomedical concept-neighbor signal. Complements UMLS relations and local corpus evidence with embedding-based associations from a third-party vector source. |
+| cui2vec | External CUI embedding-neighbor index | `30,207` source CUIs | `241,656` neighbor edges | `56,264` target CUIs | External neighbor index, not source text. Density: `8.0` neighbor edges per source CUI. | Opt-in distributional CUI-CUI similarity signal. Useful for reviewed related-concept probes and weak association discovery, not direct textual evidence or default ranking. |
+| BioConceptVec | External CUI embedding-neighbor index | `17,104` source CUIs | `136,832` neighbor edges | `55,097` target CUIs | External neighbor index, not source text. Density: `8.0` neighbor edges per source CUI. | Opt-in biomedical concept-neighbor signal. Complements UMLS relations in ablations, but should not be treated as source evidence. |
 | OpenAlex top-cited evidence | Enrichment concept/vector layer | `124` | `2,340` | `878` concept docs/vectors | Outside the public add-on pack. In the enrichment layer, density is `18.9` evidence signals per source record. | High-citation metadata and abstracts for high-impact clinical, diagnostic, drug, genomic, and procedure topics. |
 | Drug enrichment | Enrichment concept/vector layer | `27` target drug CUIs | Code-index and literature signals | `27` concept docs/vectors | Outside the public add-on pack; one retrieval record per targeted drug concept. | Open literature plus RxNorm/ATC/MTHSPL/DrugBank code-index signals for targeted drug concepts. |
 | Wikipedia enrichment | Enrichment concept/vector layer | `2` selected concepts | `0` linked evidence signals | `2` concept docs/vectors | Outside the public add-on pack; one retrieval record per selected concept. | Open encyclopedia text for selected concepts where license-compatible. |
@@ -100,7 +137,7 @@ that UMLS labels and literature alone do not handle well.
 | Mondo Disease Ontology | Current MONDO OBO term corpus from `mondo.obo`; linked and vectorized into the public concept pack. | MONDO gives normalized disease names, synonyms, definitions, xrefs, and hierarchy in a license-compatible form. | Obsolete terms by default. Native MONDO xref and hierarchy semantics are still not a separate first-class relation graph. |
 | MedlinePlus | Bounded English health-topic XML subset from the current MedlinePlus feed. | It adds patient-facing language, common symptom terms, aliases, tests, and topic groupings that users actually type. | Spanish topics and the full health-topic feed are omitted from the current bounded public pack. |
 | MedlinePlus Genetics | Bounded set from the current MedlinePlus Genetics / GHR summaries XML. | It gives rare-disease and genetics language, including gene symbols, inheritance, chromosomes, and phenotype descriptions. | The current bounded slice is not exhaustive genetics coverage. |
-| ClinicalTrials.gov | Query seed: `cancer OR diabetes OR migraine OR sepsis OR pneumonia`, bounded by record count. | Those conditions exercise common clinical domains and produce useful trial language for interventions, eligibility, outcomes, phases, and populations. | It is not a representative sample of all trials and is not evidence that interventions work. |
+| ClinicalTrials.gov | Legacy query seed: `cancer OR diabetes OR migraine OR sepsis OR pneumonia`, bounded by record count. | This slice is useful only as a reminder of what not to blend into default evidence: registry/protocol language can look authoritative while not being a clinical assertion. | It is not a representative sample of all trials, not evidence that interventions work, and not part of the default source-specific gate. |
 | DailyMed | One bounded label per seed drug: metformin, insulin, osimertinib, sumatriptan, pantoprazole, cephalexin, amoxicillin, warfarin, semaglutide, and acetaminophen. | The list covers common chronic medications, antibiotics, anticoagulation, migraine therapy, oncology therapy, OTC analgesics, and high-value label sections such as warnings and contraindications. | It omits the full DailyMed label universe, duplicate manufacturer labels, and most drug classes. |
 | NCBI Bookshelf / NLM LitArch OA | Open Access LitArch packages matched by guideline/report terms; current records come from one obesity evidence report and two asthma expert panel reports. | This is the safest route to long-form guideline/report language because package licenses are preserved and non-OA Bookshelf material is avoided. | StatPearls and other Bookshelf titles with restrictive or uncertain reuse terms are omitted, as are most specialties. |
 | NCI | Default public pages for cancer diagnosis, treatment types, and risk factors. | These pages add practical oncology workup, treatment-modality, and risk-factor language from a reusable government source. | Broader PDQ, dictionary, and cancer-specific pages are not yet included. |
@@ -111,7 +148,7 @@ that UMLS labels and literature alone do not handle well.
 | OpenAlex top-cited evidence | Six broad clinical/biomedical queries over a recent five-year window, filtered to high-citation works. | This adds high-impact literature metadata and abstracts for common clinical, diagnostic, drug, genomic, and procedure topics. | Lower-cited papers, older classics outside the window, and niche topic areas are underrepresented. |
 | Drug enrichment | Twenty-seven target drug CUIs with open literature plus RxNorm, ATC, MTHSPL, and DrugBank mapping signals. | The targets were chosen to improve known drug-query gaps and to preserve code-vocabulary signals around common and high-impact medications. | It is not a comprehensive drug ontology or complete formulary expansion. |
 | Wikipedia and Wikimedia/open images | Selected concepts and image targets from local enrichment configs, with compatible source/license metadata. | These layers are meant for UI enrichment and occasional open encyclopedia context, not primary clinical reasoning. | They intentionally avoid broad scraping and do not attempt comprehensive medical coverage. |
-| cui2vec and BioConceptVec | Locally available external CUI-neighbor indexes with bounded nearest-neighbor rows. | They add distributional related-concept recall when curated relations or text evidence are sparse. | They are not textual evidence and should be treated as association signals, not curated clinical facts. |
+| cui2vec and BioConceptVec | Locally available external CUI-neighbor indexes with bounded nearest-neighbor rows. | They add distributional related-concept recall in opt-in probes when curated relations or text evidence are sparse. | They are not textual evidence, not default server inputs, and should be treated as association signals rather than curated clinical facts. |
 | UMLS-derived local indexes | Licensed local indexes for code mappings, definitions, semantic types, and related concepts. | These provide the identity backbone needed to resolve labels, codes, CUIs, and semantic routing. | They are not redistributable public source text and do not replace source-specific evidence. |
 | Permission-required clinician references | No public/default records. | They are tracked because they would be useful for clinician-style differential diagnosis and management language. | They remain excluded until a deployment has permission, licensed content, or a compliant source-specific reuse strategy. |
 
@@ -264,7 +301,7 @@ government health pages.
 | Mondo Disease Ontology | The count reflects the current linked/vectorized MONDO corpus; it is now a broad ontology slice rather than a hand-picked cap. | Yes, as a refreshed baseline; not as an uncapped ranking weight. | Refresh releases, add explicit MONDO xref/hierarchy relation indexes, and calibrate disease-ontology boosts against other clinical sources. |
 | MedlinePlus | The current count is a bounded English topic slice chosen for rebuild speed and common patient-language coverage. | Yes. | Move toward the full English feed first; add Spanish as a separate bilingual retrieval decision. |
 | MedlinePlus Genetics | The bounded slice gives dense rare-disease and genetics language without making the public pack large on the first pass. | Yes. | Expand toward the full Genetics feed while monitoring duplicate concept merges and gene-symbol ambiguity. |
-| ClinicalTrials.gov | The count comes from a small seed query over common conditions, meant to capture trial wording without flooding the corpus. | Selective. | Add condition seeds from query logs and keep trial text clearly separated from treatment-efficacy evidence. |
+| ClinicalTrials.gov | The count comes from a small legacy seed query over common conditions. | No default expansion. | Rebuild only as an opt-in posted-results lane if a measured treatment/outcome gap requires it; exclude protocol, recruitment, eligibility, and planned endpoint text. |
 | DailyMed | The ten labels were seed drugs chosen to cover common, high-impact, and safety-sensitive medication classes. | Yes, high priority. | Expand to top prescribed, high-risk, and high-query medications, then de-duplicate manufacturer label variants. |
 | NCBI Bookshelf / NLM LitArch OA | The count reflects license-compatible OA packages that matched guideline/report terms in the current pass. | Yes, high priority. | Add more OA reports and guidelines after preserving package license metadata and excluding uncertain titles. |
 | NCI | The three-page count is a public-domain oncology smoke test for diagnosis, treatment, and risk-factor language. | Yes. | Add public cancer topic, PDQ, dictionary, staging, testing, and treatment pages in controlled batches. |
@@ -275,8 +312,8 @@ government health pages.
 | Europe PMC abstracts | The count is the staged Europe PMC complement to PubMed after local filters and availability checks. | Selective. | Use it to fill coverage gaps and de-duplicate aggressively by DOI, PMID, title, and concept evidence. |
 | PMC Open Access full text | The count is smaller because only OA full-text records are included, but each full-text article can produce many evidence signals. | Selective, with license checks. | Expand OA full-text subsets by topic and tune chunking so long papers do not dominate concept evidence. |
 | Literature profile evidence | The evidence counts are generated outputs from CUI-linking profile shards over the broader literature corpus. | Yes, as a build product. | Tune profile queries, linking thresholds, and evidence weighting against held-out retrieval examples. |
-| cui2vec | The count reflects the local external embedding index and a bounded neighbor fan-out of about eight edges per source CUI. | Keep as support signal. | Tune top-k, weights, and filters; do not treat embedding neighbors as textual clinical evidence. |
-| BioConceptVec | The count reflects the available BioConceptVec CUI coverage with the same bounded neighbor fan-out. | Keep as support signal. | Use it to supplement sparse concepts and compare its neighbors against curated relations before boosting. |
+| cui2vec | The count reflects the local external embedding index and a bounded neighbor fan-out of about eight edges per source CUI. | Keep as opt-in support signal only. | Run subset probes and ablations; do not auto-load it, do not treat embedding neighbors as textual clinical evidence, and do not promote high-score drift. |
+| BioConceptVec | The count reflects the available BioConceptVec CUI coverage with the same bounded neighbor fan-out. | Keep as opt-in support signal only. | Use subset probes to supplement sparse concepts and compare neighbors against curated/source evidence before any promotion. |
 | OpenAlex top-cited evidence | The count comes from six broad recent queries filtered to highly cited works, so it favors broad signal over exhaustive coverage. | Yes, selectively. | Expand query topics and time windows where high-level evidence metadata improves ranking or snippets. |
 | Drug enrichment | The 27 target CUIs were selected to address known drug-query gaps and preserve code-vocabulary links around priority medications. | Yes, high priority. | Expand by drug class and query frequency while preserving RxNorm, ATC, MTHSPL, and DrugBank provenance. |
 | Wikipedia enrichment | The two selected concepts keep encyclopedia text supplemental rather than a primary clinical source. | Low priority. | Add only where open encyclopedia context fills nonclinical background gaps that source evidence misses. |
@@ -296,11 +333,12 @@ are not fully integrated into that public pack.
 | Source or layer | Public concept/vector pack? | Current implementation state | What is not fully implemented |
 | --- | --- | --- | --- |
 | HPO term documents | Yes | Implemented as public concept documents/vectors from non-obsolete HPO terms. | Ranking normalization is still a policy/evaluation decision; HPO annotation-derived relations remain separate. |
-| MedlinePlus, MedlinePlus Genetics, ClinicalTrials.gov, DailyMed, NCBI Bookshelf / NLM LitArch OA, NCI, CDC, FDA, NIDDK | Yes | Implemented in the public pack as bounded seed subsets. | These are not full-source imports. They need broader source coverage, dedupe, and evaluation before being considered complete. |
+| MedlinePlus, MedlinePlus Genetics, DailyMed, NCBI Bookshelf / NLM LitArch OA, NCI, CDC, FDA, NIDDK | Yes | Implemented in the public pack as bounded seed subsets. | These are not full-source imports. They need broader source coverage, dedupe, and evaluation before being considered complete. |
+| ClinicalTrials.gov | Legacy candidate subset only | Implemented locally as a bounded candidate artifact, but removed from the default source-specific gate. | Not default source evidence. A future lane must be posted-results-only and exclude protocol, recruitment, eligibility, and planned endpoint text. |
 | Mondo Disease Ontology | Yes | Implemented as public concept documents/vectors from non-obsolete MONDO terms. | Ranking normalization and native MONDO xref/hierarchy relation indexes are still separate follow-up work. |
 | PubMed, Europe PMC, PMC OA, and literature profile evidence | No | Implemented as broader local corpus/evidence/vector build products. | Not part of the public permitted-source add-on pack; Europe PMC and PMC OA are not standalone public vectors in this report. |
 | OpenAlex, drug enrichment, Wikipedia, and Wikimedia/open images | No | Implemented as enrichment or metadata layers outside the public add-on pack. | Not broadly integrated into the default public concept/vector aggregate. |
-| cui2vec and BioConceptVec | No | Implemented as external neighbor indexes. | They are not source text, not public evidence documents, and should only support ranking/expansion with source-aware weighting. |
+| cui2vec and BioConceptVec | No | Implemented as external neighbor indexes and kept out of the default server load path. | They are not source text, not public evidence documents, and should only support opt-in probes or reviewed ablations. |
 | HPO native annotations and xrefs | No | Staged as relation/index signals. | Not part of the public vector pack by default; annotation reuse terms need review before public redistribution. |
 | UMLS-derived local indexes | No | Implemented as licensed local identity/code/definition/semantic-type indexes. | Not redistributable public source text and not public vectors. |
 | Permission-required clinician references | No | Not implemented in the public/default corpus. | They remain zero until rights, licensing, or a compliant source-specific reuse strategy exists. |
@@ -325,17 +363,18 @@ the part that UMLS alone does not provide.
 
 **cui2vec and BioConceptVec** contribute external embedding-neighbor signals,
 not source text. They are useful for recall-oriented related-concept expansion
-and exploratory associations, but should be treated as co-occurrence or
-distributional support rather than curated clinical knowledge.
+and exploratory associations, but they are opt-in probes only. Treat them as
+co-occurrence or distributional support rather than curated clinical knowledge;
+do not auto-load them or count them as source evidence.
 
 **DailyMed** contributes high-quality drug-label text. It is particularly useful
 for drug to indication, drug to adverse effect, drug to contraindication, drug
 interaction, pregnancy/lactation/population, and clinical pharmacology contexts.
 
-**ClinicalTrials.gov** contributes structured research and eligibility language.
-It is useful for connecting diseases, interventions, populations, biomarkers,
-procedures, and outcomes, but should not be interpreted as evidence that an
-intervention is effective.
+**ClinicalTrials.gov** is not a default evidence source. It may be useful later
+only as an opt-in posted-results lane. Protocol, eligibility, recruitment, and
+planned endpoint text should stay out of default ranking evidence because they
+describe trial design rather than clinical truth.
 
 **NCBI Bookshelf / NLM LitArch Open Access** is the closest currently integrated
 open source to long-form guideline text. The implementation uses the NLM LitArch
@@ -386,7 +425,6 @@ Public/default sources:
 
 - MedlinePlus and MedlinePlus Genetics: public NLM XML feeds.
 - DailyMed: public SPL label service.
-- ClinicalTrials.gov: public API.
 - NCI, CDC, FDA, NIDDK: reusable government pages with page-level caveats.
 - NCBI Bookshelf / NLM LitArch OA: only the Open Access subset, fetched through
   the NLM LitArch FTP route; package-level licenses are preserved.
@@ -397,6 +435,8 @@ Public/default sources:
 
 Restricted/candidate sources:
 
+- ClinicalTrials.gov: public API, but default search evidence should exclude it
+  unless a posted-results-only lane is explicitly tested and promoted.
 - Merck/MSD Manual Professional, AAFP, Medscape, BMJ Best Practice, NICE CKS,
   StatPearls outside the NLM LitArch OA subset, Patient.info Professional,
   GPnotebook, and WikEM remain policy-tracked but blocked from the public
@@ -411,13 +451,20 @@ The broader current source mix is good for:
 - genetics/phenotype expansion
 - rare-disease phenotype, disease-gene, and gene-phenotype relationships
 - drug safety and drug-label relationships
-- trial eligibility/intervention/outcome language
 - large-scale literature-backed biomedical co-mention and context evidence
-- external embedding-neighbor expansion from cui2vec and BioConceptVec
 - open full-text article evidence where PMC OA coverage exists
 - public-domain oncology, diabetes, kidney, digestive, infectious disease, and
   drug-safety reference language
 - some guideline-style reasoning from open Bookshelf packages
+
+The opt-in source mix is useful for:
+
+- posted trial-outcome probes when PubMed/PMC and labels cannot answer a
+  measured treatment/outcome gap
+- PubTator3 relation-candidate discovery after a measured relation gap exists
+  and candidate edges can be validated against PubMed/PMC
+- external embedding-neighbor expansion from CUI2Vec and BioConceptVec when an
+  ablation shows recall benefit without default-result drift
 
 The broader current source mix is weaker for:
 
