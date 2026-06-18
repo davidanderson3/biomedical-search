@@ -339,6 +339,9 @@ mark_installed() {
 }
 
 compose_app_image_exists() {
+  if [ -f "${INSTALL_STATE_FILE:-}" ]; then
+    return 0
+  fi
   image_id=$(
     cd "$ROOT_DIR" &&
       docker compose -f "$COMPOSE_FILE" images -q app 2>/dev/null |

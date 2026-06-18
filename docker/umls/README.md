@@ -290,7 +290,7 @@ Environment variables:
 - `ELASTIC_SNAPSHOT_DIR`: Elasticsearch-visible snapshot directory, default `/workspace/build/elasticsearch_snapshots/qe-public-search-sapbert`
 - `APP_PORT`: host port for the UI/API, default `8766`
 - `ELASTIC_PORT`: host port for Elasticsearch, default `9200`
-- `BULK_DOCS_PER_FILE`: temporary bulk part size, default `25000`
+- `BULK_DOCS_PER_FILE`: temporary bulk part size, default `5000`
 - `FORCE_RELOAD`: set to `1` to rebuild a non-empty Elasticsearch index
 - `SAPBERT_MODEL`: SapBERT model path, default `/workspace/build/models/sapbert`
 - `SAPBERT_PRELOAD`: set to `0` to skip the packaged SapBERT check in the `app` container

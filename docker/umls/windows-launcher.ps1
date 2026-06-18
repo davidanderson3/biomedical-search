@@ -206,6 +206,9 @@ function Ensure-Docker {
 }
 
 function Test-AppImageExists {
+  if (Test-Path -LiteralPath $installStateFile -PathType Leaf) {
+    return $true
+  }
   Push-Location $rootDir
   try {
     $imageId = (& docker compose -f $composeFile images -q app 2>$null | Select-Object -First 1)

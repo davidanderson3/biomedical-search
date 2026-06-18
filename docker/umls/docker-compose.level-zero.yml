@@ -28,7 +28,7 @@ services:
     environment:
       ELASTIC_URL: http://elasticsearch:9200
       ELASTIC_INDEX: ${ELASTIC_INDEX:-qe-level-zero-sapbert-cls}
-      BULK_DOCS_PER_FILE: ${BULK_DOCS_PER_FILE:-25000}
+      BULK_DOCS_PER_FILE: ${BULK_DOCS_PER_FILE:-5000}
       ELASTIC_SHARDS: ${ELASTIC_SHARDS:-1}
       ELASTIC_REPLICAS: ${ELASTIC_REPLICAS:-0}
       FORCE_RELOAD: ${FORCE_RELOAD:-0}
