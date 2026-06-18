@@ -37,6 +37,7 @@ See `pipeline/README.md`.
 | --- | --- |
 | `search_quality_server.py` | Local search API and browser UI server. |
 | `start_search_quality_server.sh` | Shell launcher for the search-quality server. |
+| `sanitize_vector_only_metadata.py` | Strips readable labels/text/code-like metadata from compact vector shards redistributed as vector-only evidence. |
 
 See `serve/README.md`.
 

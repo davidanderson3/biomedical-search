@@ -54,9 +54,12 @@ smaller package that intentionally omits the source-code resolver and raw RRF
 subset.
 
 The level-zero/category-zero package is a separate release, not an alternate
-mode inside the full release folder. It uses the five curated scaling shards,
-skips the source-code resolver by default, and ships with its own `build/`
-payload and ordinary start/install/run launchers.
+mode inside the full release folder. It limits readable document shards to the
+five curated scaling shards, skips the source-code resolver by default, and
+ships with its own `build/` payload and ordinary start/install/run launchers.
+Broader category 3 evidence can be included as vector-only compact shards after
+running `scripts/sanitize_vector_only_metadata.py`; those shards must not carry
+plain labels, evidence text, or source-code mappings in metadata.
 
 Regenerating the pruned RRF subset is an internal/source-checkout build step,
 not part of this portable release. The subset is still UMLS-licensed source
@@ -316,8 +319,11 @@ Environment variables:
 This is the intended portable local deployment shape for the interface. The
 runtime payload should contain only reviewed artifacts with terms appropriate
 for the intended recipients. The `public-slim` profile omits raw UMLS RRF files
-while keeping the full shard set. The `full` licensed profile includes only the
-pruned RRF subset described above. Level-zero/category-zero must be shipped as a
-separate release, not mixed into this full folder. Do not include raw
-copyrighted full text or restricted clinical artifacts. Internal build/review
-pages and dashboards are not part of the public Docker runtime.
+while keeping the full readable shard set. The `full` licensed profile includes
+only the pruned RRF subset described above. Level-zero/category-zero must be
+shipped as a separate release, not mixed into this full folder. In level-zero,
+non-level-zero/category 3 content may be distributed only as sanitized
+vector-only compact shards; do not include its readable document shards, raw
+copyrighted full text, source-code resolver, or restricted clinical artifacts.
+Internal build/review pages and dashboards are not part of the public Docker
+runtime.

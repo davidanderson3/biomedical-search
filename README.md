@@ -37,8 +37,11 @@ install and reports if installation is still needed.
 
 This package is the full UMLS Search release. The level-zero/category-zero
 package is built and distributed as its own release, with its own `build/`
-payload and ordinary start/install/run launchers. Do not combine level-zero
-launchers or payload artifacts into this full release folder.
+payload and ordinary start/install/run launchers. Level-zero readable document
+shards are limited to curated level-zero content; broader category 3 evidence
+may be shipped only as sanitized vector-only shards with readable labels, text,
+and source-code mappings removed. Do not combine level-zero launchers or
+payload artifacts into this full release folder.
 
 ## Stop UMLS Search
 

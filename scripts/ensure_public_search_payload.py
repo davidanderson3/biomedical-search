@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import gzip
+import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -10,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-LEVEL_ZERO_VECTOR_STEMS = [
+LEVEL_ZERO_DOCUMENT_STEMS = [
     "scaling_chunk_001_gap_topics",
     "scaling_chunk_002_common_clinical",
     "scaling_chunk_003_abbreviation_language",
@@ -19,11 +21,7 @@ LEVEL_ZERO_VECTOR_STEMS = [
 ]
 
 FULL_VECTOR_STEMS = [
-    "scaling_chunk_001_gap_topics",
-    "scaling_chunk_002_common_clinical",
-    "scaling_chunk_003_abbreviation_language",
-    "scaling_chunk_004_drug_safety_therapeutics",
-    "scaling_chunk_005_diagnostics_procedures_devices",
+    *LEVEL_ZERO_DOCUMENT_STEMS,
     "pubmed_bulk_recent_baseline",
     "pubmed_bulk_recent_next2",
     "pubmed_bulk_recent_1331_1330",
@@ -82,6 +80,19 @@ SAPBERT_MODEL_FILES = [
     "vocab.txt",
 ]
 
+VECTOR_ONLY_SAFE_METADATA_KEYS = {
+    "embedding_device",
+    "embedding_model",
+    "embedding_pooling",
+    "embedding_provider",
+    "evidence_count",
+    "source_bundle",
+    "sources",
+    "total_weight",
+    "vector_content_category",
+    "vector_metadata_policy",
+}
+
 
 def log(message: str) -> None:
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -101,8 +112,12 @@ def normalize_profile(profile: str) -> str:
 
 
 def profile_vector_stems(profile: str) -> list[str]:
+    return list(FULL_VECTOR_STEMS)
+
+
+def profile_document_stems(profile: str) -> list[str]:
     if normalize_profile(profile) == "level-zero":
-        return list(LEVEL_ZERO_VECTOR_STEMS)
+        return list(LEVEL_ZERO_DOCUMENT_STEMS)
     return list(FULL_VECTOR_STEMS)
 
 
@@ -145,6 +160,34 @@ def compact_vector_stem(path: Path) -> str | None:
     return None
 
 
+def vector_only_metadata_issue(path: Path) -> str:
+    opener = gzip.open if path.name.endswith(".gz") else open
+    try:
+        with opener(path, "rt", encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                payload = json.loads(line)
+                if str(payload.get("text") or "").strip():
+                    return f"line {line_number} contains text"
+                metadata = payload.get("metadata") or {}
+                if not isinstance(metadata, dict):
+                    continue
+                if metadata.get("document"):
+                    return f"line {line_number} contains embedded document metadata"
+                labels = metadata.get("labels")
+                if labels:
+                    return f"line {line_number} contains labels"
+                unexpected_keys = sorted(
+                    key for key in metadata if key not in VECTOR_ONLY_SAFE_METADATA_KEYS
+                )
+                if unexpected_keys:
+                    return f"line {line_number} contains non-vector-only metadata key(s): {', '.join(unexpected_keys)}"
+    except Exception as exc:
+        return f"could not inspect vector-only metadata: {exc}"
+    return ""
+
+
 def concept_document_stem(path: Path) -> str | None:
     name = path.name
     for suffix in ("_concept_documents.jsonl.gz", "_concept_documents.jsonl"):
@@ -158,17 +201,26 @@ def unexpected_runtime_files(build_dir: Path, *, profile: str) -> list[str]:
     if profile != "level-zero":
         return []
 
-    allowed_stems = set(LEVEL_ZERO_VECTOR_STEMS)
+    allowed_vector_stems = set(profile_vector_stems(profile))
+    allowed_document_stems = set(profile_document_stems(profile))
     unexpected: list[str] = []
     compact_dir = build_dir / "compact_vectors"
     if compact_dir.exists():
         for path in sorted(compact_dir.glob("*_sapbert_cls.*")):
             stem = compact_vector_stem(path)
-            if stem and stem not in allowed_stems:
+            if stem and stem not in allowed_vector_stems:
                 unexpected.append(str(path.relative_to(build_dir)))
+        vector_only_stems = allowed_vector_stems - allowed_document_stems
+        for stem in sorted(vector_only_stems):
+            metadata_path = compact_dir / f"{stem}_sapbert_cls.metadata.jsonl.gz"
+            if not metadata_path.exists():
+                continue
+            issue = vector_only_metadata_issue(metadata_path)
+            if issue:
+                unexpected.append(f"{metadata_path.relative_to(build_dir)} ({issue})")
     for path in sorted(build_dir.glob("*_concept_documents.jsonl*")):
         stem = concept_document_stem(path)
-        if stem and stem not in allowed_stems:
+        if stem and stem not in allowed_document_stems:
             unexpected.append(str(path.relative_to(build_dir)))
     for path in sorted(build_dir.glob("cui_code_index.runtime.sqlite*")):
         unexpected.append(str(path.relative_to(build_dir)))
@@ -186,6 +238,7 @@ def missing_runtime_files(build_dir: Path, *, profile: str) -> list[str]:
     for stem in profile_vector_stems(profile):
         if not vector_present(build_dir, stem):
             missing.append(f"compact_vectors/{stem}_sapbert_cls.manifest.json")
+    for stem in profile_document_stems(profile):
         if not document_present(build_dir, stem):
             missing.append(f"{stem}_concept_documents.jsonl.gz")
     for name in REQUIRED_INDEXES:
@@ -230,7 +283,8 @@ def main() -> int:
         choices=PROFILE_CHOICES,
         default=os.environ.get("PUBLIC_SEARCH_PAYLOAD_PROFILE", "full"),
         help=(
-            "Search data profile. level-zero/category-zero uses the curated level-zero shard set; "
+            "Search data profile. level-zero/category-zero uses the full vector shard set "
+            "with only curated level-zero readable document shards; "
             "public-slim omits the CUI/code resolver and raw RRF subset; full requires the "
             "compact runtime resolver and raw RRF subset."
         ),
@@ -312,9 +366,10 @@ def main() -> int:
                 f"compact_vectors/{stem}_sapbert_cls.manifest.json",
                 f"compact_vectors/{stem}_sapbert_cls.vectors.f32",
                 f"compact_vectors/{stem}_sapbert_cls.metadata.jsonl.gz",
-                f"{stem}_concept_documents.jsonl.gz",
             ]
         )
+    for stem in profile_document_stems(profile):
+        allow_patterns.append(f"{stem}_concept_documents.jsonl.gz")
     if profile == "full":
         allow_patterns.extend(FULL_PROFILE_CODE_INDEXES)
         allow_patterns.extend(

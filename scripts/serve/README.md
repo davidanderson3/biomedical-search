@@ -6,3 +6,5 @@ Index-only category. Executable entrypoints remain at `../<script>.py` and
 - `../search_quality_server.py` - local search API and browser UI server.
 - `../start_search_quality_server.sh` - shell launcher for the search-quality
   server.
+- `../sanitize_vector_only_metadata.py` - strips readable labels/text/code-like
+  metadata from compact vector shards redistributed as vector-only evidence.

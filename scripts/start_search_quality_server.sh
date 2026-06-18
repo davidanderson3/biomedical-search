@@ -81,6 +81,14 @@ add_level_zero_shards() {
   add_vector build/scaling_chunk_003_abbreviation_language_concept_vectors.sapbert_cls.jsonl
   add_vector build/scaling_chunk_004_drug_safety_therapeutics_concept_vectors.sapbert_cls.jsonl
   add_vector build/scaling_chunk_005_diagnostics_procedures_devices_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_baseline_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_next2_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_1331_1330_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_1329_1328_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_1327_1326_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_1325_1324_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_1323_1322_concept_vectors.sapbert_cls.jsonl
+  add_vector build/pubmed_bulk_recent_1321_1320_concept_vectors.sapbert_cls.jsonl
 
   add_doc build/scaling_chunk_001_gap_topics_concept_documents.jsonl
   add_doc build/scaling_chunk_002_common_clinical_concept_documents.jsonl

@@ -78,13 +78,6 @@ from pathlib import Path
 manifest_path = Path(sys.argv[1])
 profile = sys.argv[2].strip().lower()
 
-level_zero_stems = [
-    "scaling_chunk_001_gap_topics",
-    "scaling_chunk_002_common_clinical",
-    "scaling_chunk_003_abbreviation_language",
-    "scaling_chunk_004_drug_safety_therapeutics",
-    "scaling_chunk_005_diagnostics_procedures_devices",
-]
 full_stems = [
     "scaling_chunk_001_gap_topics",
     "scaling_chunk_002_common_clinical",
@@ -111,7 +104,9 @@ aliases = {
 profile = aliases.get(profile)
 if not profile:
     raise SystemExit(f"unknown PUBLIC_SEARCH_PAYLOAD_PROFILE: {sys.argv[2]}")
-selected_stems = set(level_zero_stems if profile == "level-zero" else full_stems)
+# Level-zero is a separate readable-content release, but it can carry the full
+# vector shard set when non-level-zero readable metadata has been stripped.
+selected_stems = set(full_stems)
 
 
 def stem_from_path(path: str) -> str:
