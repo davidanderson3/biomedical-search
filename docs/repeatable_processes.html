@@ -1,0 +1,936 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Repeatable Processes</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>Repeatable Processes</h1>
+<p>Last updated: 2026-06-10</p>
+<p>This report is the operating index for repeatable work in this repository. It consolidates the runbooks that were previously spread across README, benchmark docs, pipeline docs, API docs, and script help.</p>
+<p>Scope: this covers processes that are currently documented or backed by scripts. It does not replace the specialized docs; it tells you which repeatable process to use, which command starts it, what inputs it expects, what artifacts it writes, and how to verify the result.</p>
+<h2>Ground Rules</h2>
+<p>SNOMED CT, external CUI vectors, and raw real-query exports are not public fixtures.</p>
+<p>sibling script utilities when the command examples include it.</p>
+<p><code>scripts/&lt;name&gt;.sh</code>; use <code>scripts/README.md</code> and the category README files as the navigation layer.</p>
+<p>needed.</p>
+<p>or API behavior changes, run the standing clinical API smoke before marking the iteration shipped.</p>
+<p>rotating smoke with gates.</p>
+<p><code>docs/search_quality_iterations.html</code>.</p>
+<ul><li>Run commands from the repository root.</li><li>Treat <code>build/</code> as generated output and <code>data/</code> as local source input.</li><li>Keep licensed or private inputs under ignored local paths. UMLS, LOINC,</li><li>Use <code>/path/to/...</code> placeholders for local licensed files in docs and examples.</li><li>Use <code>PYTHONPATH=src:scripts</code> for scripts that import both package code and</li><li>Keep executable script entrypoints stable at <code>scripts/&lt;name&gt;.py</code> or</li><li>For docs-only or local-source layout changes, record why live smoke was not</li><li>For runtime search, ranking, source-code output, benchmark-label, judgment,</li><li>For broad ranking/runtime or release-quality changes, also run the 50-query</li><li>Record bounded search-quality work in <code>docs/search_quality_iterations.html</code> and</li></ul>
+<h2>Process Index</h2>
+<table><thead><tr><th>Area</th><th>Process</th><th>Entrypoint</th><th>Main outputs</th><th>Verification</th></tr></thead><tbody><tr><td>Setup</td><td>Install public/dev dependencies</td><td><code>pip install -r requirements-*.txt</code></td><td>Local Python env</td><td>Targeted <code>pytest</code> or full test suite</td></tr><tr><td>Script catalog</td><td>Stable script entrypoint map</td><td><code>scripts/README.md</code></td><td>Category indexes under <code>scripts/*/README.md</code></td><td>Existing <code>scripts/&lt;name&gt;.py</code> and <code>.sh</code> references remain valid</td></tr><tr><td>Public rebuild</td><td>Public/shareable rebuild wrapper</td><td><code>scripts/run_public_rebuild.py</code></td><td><code>build/public/*</code></td><td>Paragraph quality and precision audit</td></tr><tr><td>Reproducibility</td><td>Local artifact manifest</td><td><code>scripts/reproducibility_manifest.py</code></td><td><code>build/reproducibility_manifest.json</code></td><td>Manifest exists and records expected inputs</td></tr><tr><td>Source policy</td><td>Reference-source policy review</td><td><code>evidence_vectors.py reference-source-policy</code></td><td>Policy table output</td><td>Restricted sources remain blocked by default</td></tr><tr><td>Source acquisition</td><td>Measured acquisition plan</td><td><code>evidence_vectors.py plan-source-acquisition</code></td><td>Plan JSON/TSV/MD and review queues</td><td>Review plan plus source-acquisition progression</td></tr><tr><td>Source progression</td><td>Acquisition ledger validation</td><td><code>scripts/source_acquisition_progression.py</code></td><td>Progression manifest/report</td><td><code>--fail-on-regression</code> after artifacts exist</td></tr><tr><td>Corpus fetch</td><td>Public corpus acquisition</td><td><code>evidence_vectors.py fetch-*</code></td><td>Corpus JSONL</td><td>Row counts and source/license metadata</td></tr><tr><td>Source subset</td><td>One-source incremental build</td><td><code>evidence_vectors.py build-source-subset</code></td><td>Corpus/evidence/docs/vectors</td><td>Source-specific benchmark and smoke as needed</td></tr><tr><td>UMLS indexes</td><td>Label/code/type indexes</td><td><code>evidence_vectors.py build-*index</code></td><td>SQLite indexes</td><td>Server can resolve labels, codes, CUIs</td></tr><tr><td>Linking</td><td>Corpus to CUI evidence</td><td><code>evidence_vectors.py link-*</code></td><td>Evidence JSONL shards</td><td>Evidence counts and profile mix</td></tr><tr><td>Concept docs</td><td>Evidence aggregation</td><td><code>evidence_vectors.py build-docs*</code></td><td>Concept document JSONL</td><td>Row counts and representative CUI docs</td></tr><tr><td>Embedding</td><td>Vector generation</td><td><code>evidence_vectors.py embed</code></td><td>Vector JSONL</td><td>Provider/model/dimensions match target</td></tr><tr><td>Incremental UMLS</td><td>Fingerprint, diff, vector reuse</td><td><code>evidence_vectors.py build-atom-fingerprints</code>, <code>diff-atom-fingerprints</code>, <code>plan-vector-reuse</code></td><td>Changed CUI TSV, reuse plan, assembled vectors</td><td>Strict assembly summary passes</td></tr><tr><td>Elasticsearch</td><td>Export/load/alias</td><td><code>evidence_vectors.py export-elastic</code>, <code>load-elastic</code>, <code>alias-elastic</code></td><td>Mapping, bulk parts, loaded index/alias</td><td>kNN query and live API status</td></tr><tr><td>Serving</td><td>Search API and browser UI</td><td><code>scripts/search_quality_server.py</code></td><td>Local API/UI on port</td><td><code>/api/health</code>, <code>/api/status</code>, smoke</td></tr><tr><td>API regression</td><td>Standing clinical smoke</td><td><code>scripts/evaluate_search_api.py</code> or <code>scripts/run_search_regression_benchmark.py</code></td><td>TSV/JSON summaries</td><td>Expected CUIs rank within target top-k</td></tr><tr><td>Search experiment</td><td>Paragraph quality experiment</td><td><code>scripts/run_search_quality_experiment.py</code></td><td>Run directory, metrics, HTML update</td><td>Gates pass when <code>--fail-gates</code> is set</td></tr><tr><td>Post-iteration smoke</td><td>Automatic smoke-tier helper</td><td><code>scripts/run_search_quality_experiment.py --iteration-smoke-gates</code></td><td>Verification JSON/Markdown, HTML panel</td><td>Selected static/focused/live steps pass</td></tr><tr><td>Promotion gate</td><td>Weakness-to-code-or-evidence loop</td><td>Search experiment, source progression, and iteration ledger</td><td>Promote/reject decision record</td><td>Improved target with no unacceptable regression</td></tr><tr><td>Precision audit</td><td>Top-N visible FP audit</td><td><code>scripts/audit_paragraph_precision.py</code> and <code>scripts/build_precision_audit_report.py</code></td><td>Audit TSV/MD report</td><td>Reviewed residuals classified</td></tr><tr><td>Rule inventory</td><td>Heuristic/rule review</td><td><code>scripts/build_search_rule_inventory.py</code></td><td><code>docs/search_rule_inventory.html</code>, <code>docs/search_rule_inventory.html</code></td><td>Static report review and relevant unit tests</td></tr><tr><td>Label supplement</td><td>Active-label validation</td><td><code>scripts/validate_active_label_supplement.py</code></td><td>Validation result</td><td>Validation plus active-label tests</td></tr><tr><td>Judgments/reranker</td><td>Shadow ML reranker</td><td><code>scripts/search_quality_shadow_reranker.py</code></td><td>Canonical judgments, features, HTML report</td><td>Wins/losses/regressions reviewed; no production effect</td></tr><tr><td>PubMed benchmark</td><td>Strict PubMed literature benchmark</td><td><code>scripts/fetch_pubmed_paragraph_queries.py</code>, <code>scripts/build_pubmed_long_document_slice.py</code></td><td>Dev/heldout/focused query TSVs</td><td>Separate dev and heldout reports</td></tr><tr><td>MedMentions</td><td>External linking benchmark</td><td><code>scripts/run_medmentions_benchmark.py</code></td><td>Prepared queries and eval outputs</td><td>Category-specific metrics</td></tr><tr><td>TREC PM/CDS</td><td>External document-source benchmark</td><td><code>scripts/run_trec_benchmark.py</code></td><td>Topics, qrels, coverage, document-query TSVs</td><td>Coverage first; document/source metrics separate from CUI metrics</td></tr><tr><td>Real logs</td><td>Private query inventory</td><td><code>scripts/build_real_query_inventory.py</code></td><td>Local inventory/review queue</td><td>Raw data stays under <code>data/</code>/<code>build/</code></td></tr><tr><td>OHDSI</td><td>Aggregate relationship mining</td><td><code>scripts/mine_ohdsi_relationships.py</code></td><td>Relationship-edge JSONL</td><td>Patient-level rows rejected</td></tr><tr><td>Procedures</td><td>Public procedure bundles</td><td><code>scripts/build_procedure_bundles.py</code></td><td>Concepts/relations/registry JSONL</td><td>CPT content rejected</td></tr><tr><td>Enrichment</td><td>Drug/OpenAlex/Wikipedia/image enrichments</td><td><code>scripts/build_*enrichment.py</code></td><td>Enrichment docs/vectors/metadata</td><td>Source-specific manifest and review</td></tr><tr><td>Dashboards</td><td>Source/progress/report generation</td><td><code>scripts/build_source_evidence_dashboard.py</code>, <code>scripts/scaling_status.py</code>, report builders</td><td>HTML/JSON/MD reports</td><td>Static syntax/review checks</td></tr><tr><td>Translation</td><td>Locked translation benchmark report</td><td><code>scripts/compare_to_gold_standard.py</code>, <code>scripts/build_translation_benchmark_report.py</code></td><td>Translation JSON/HTML</td><td>Locked slices remain separate</td></tr><tr><td>Iteration loop</td><td>Existing-data/new-UMLS iteration</td><td><code>scripts/run_existing_data_iteration.py</code></td><td>Iteration manifest/report/artifacts</td><td>Iteration gates and smoke decision</td></tr></tbody></table>
+<h2>Environment And Test Setup</h2>
+<p>Use this when validating a fresh clone or preparing a development machine.</p>
+<pre><code class="language-sh">python3 -m pip install -r requirements-public.txt
+python3 -m pip install -r requirements-dev.txt
+python3 -m pytest -q</code></pre>
+<p>Inputs:</p>
+<ul><li><code>requirements-public.txt</code></li><li><code>requirements-dev.txt</code></li><li>local Python 3 environment</li></ul>
+<p>Outputs:</p>
+<ul><li>installed public and dev dependencies</li><li>pytest results</li></ul>
+<p>Notes:</p>
+<p><code>transformers</code>.</p>
+<p>targeted tests for bounded code changes and record why they are sufficient.</p>
+<ul><li>The public hashing path is mostly standard-library only.</li><li>Transformer embeddings need optional packages such as <code>torch</code> and</li><li>Full <code>pytest -q</code> can be broader than needed for a small docs-only change; use</li></ul>
+<h2>Script Catalog</h2>
+<p>Use this when you need to find the right script without breaking existing command references.</p>
+<p>Primary index:</p>
+<pre><code class="language-sh">sed -n &#x27;1,220p&#x27; scripts/README.md</code></pre>
+<p>Inputs:</p>
+<p><code>scripts/quality/</code>, <code>scripts/benchmarks/</code>, <code>scripts/sources/</code>, and <code>scripts/reports/</code></p>
+<ul><li>current scripts under <code>scripts/</code></li><li>category README files under <code>scripts/pipeline/</code>, <code>scripts/serve/</code>,</li></ul>
+<p>Outputs:</p>
+<ul><li>stable script category map</li><li>documented compatibility rule for future moves</li></ul>
+<p>Verification:</p>
+<p><code>scripts/&lt;name&gt;.sh</code>.</p>
+<p>and add a focused test or dry run for the old command path.</p>
+<ul><li>Existing command examples should still point to <code>scripts/&lt;name&gt;.py</code> or</li><li>If a script is physically moved later, preserve the old path with a wrapper</li></ul>
+<h2>Public Rebuild</h2>
+<p>Use this to run the public/shareable rebuild path while keeping licensed UMLS inputs local.</p>
+<p>Dry-run first:</p>
+<pre><code class="language-sh">python3 scripts/run_public_rebuild.py \
+  --umls-meta /path/to/UMLS/META \
+  --out-dir build/public \
+  --provider hashing \
+  --dry-run</code></pre>
+<p>Run the rebuild:</p>
+<pre><code class="language-sh">python3 scripts/run_public_rebuild.py \
+  --umls-meta /path/to/UMLS/META \
+  --out-dir build/public \
+  --provider hashing</code></pre>
+<p>Inputs:</p>
+<p><code>MRDEF.RRF</code>, and <code>MRSAB.RRF</code></p>
+<ul><li>local UMLS META directory with <code>MRCONSO.RRF</code>, <code>MRSTY.RRF</code>, <code>MRREL.RRF</code>,</li><li>public source topic/config files under <code>config/</code></li></ul>
+<p>Outputs:</p>
+<ul><li>bounded public corpora</li><li>local UMLS-derived SQLite indexes</li><li>linked evidence</li><li>concept documents and vectors</li><li>paragraph quality evaluation</li><li>precision audit</li><li><code>build/public/reproducibility_manifest.json</code></li><li><code>build/public/server_command.txt</code></li></ul>
+<p>Verification:</p>
+<p>them for the current path.</p>
+<ul><li>Review the wrapper output.</li><li>Run the server command written to <code>build/public/server_command.txt</code>.</li><li>Run paragraph quality and precision audit if the wrapper did not complete</li></ul>
+<h2>Reproducibility Manifest</h2>
+<p>Use this before publishing, comparing builds, or explaining which local source drops were used.</p>
+<pre><code class="language-sh">python3 scripts/reproducibility_manifest.py \
+  --umls-meta /path/to/UMLS/META \
+  --loinc-dir data/local_sources/loinc/Loinc_2.82 \
+  --snomed-zip /path/to/SnomedCT_release.zip \
+  --hash-small-files \
+  --out build/reproducibility_manifest.json</code></pre>
+<p>Inputs:</p>
+<ul><li>optional local source paths for licensed inputs</li><li>generated artifacts under <code>build/</code></li></ul>
+<p>Outputs:</p>
+<ul><li><code>build/reproducibility_manifest.json</code></li></ul>
+<p>Verification:</p>
+<ul><li>Confirm expected inputs are present.</li><li>Use <code>--full-hash</code> only when large artifact hashing is acceptable.</li></ul>
+<h2>Source Policy Review</h2>
+<p>Use this when deciding whether a source belongs in the public rebuild, a private licensed deployment, or no automated path.</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py reference-source-policy</code></pre>
+<p>Inputs:</p>
+<ul><li><code>config/reference_source_policy.tsv</code></li></ul>
+<p>Outputs:</p>
+<ul><li>terminal policy report</li></ul>
+<p>Verification:</p>
+<p>ingestion paths, not public-source fetch defaults.</p>
+<ul><li>Restricted clinician references remain excluded from the default public path.</li><li>Private/licensed deployments use local permitted excerpts through explicit</li></ul>
+<h2>Corpus Acquisition</h2>
+<p>Use the <code>fetch-*</code> commands to materialize public corpus JSONL from upstream sources.</p>
+<p>Common examples:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py fetch-pubmed-topics \
+  --topics config/pubmed_biomedicine_topics.tsv \
+  --retmax 500 \
+  --out build/pubmed_biomedicine_topics_corpus.jsonl
+
+python3 scripts/evidence_vectors.py fetch-europepmc-topics \
+  --topics config/pubmed_biomedicine_topics.tsv \
+  --max-records 500 \
+  --out build/europepmc_biomedicine_topics_corpus.jsonl
+
+python3 scripts/evidence_vectors.py fetch-pmc-oa-topics \
+  --topics config/pubmed_biomedicine_topics.tsv \
+  --max-records 200 \
+  --out build/pmc_oa_biomedicine_topics_corpus.jsonl
+
+python3 scripts/evidence_vectors.py fetch-clinicaltrials \
+  --query &#x27;cancer OR diabetes OR migraine OR sepsis OR pneumonia&#x27; \
+  --max-records 100 \
+  --out build/clinicaltrials_subset_corpus.jsonl
+
+python3 scripts/evidence_vectors.py fetch-medlineplus \
+  --max-records 0 \
+  --include-spanish \
+  --out build/medlineplus_full_corpus.jsonl
+
+python3 scripts/evidence_vectors.py fetch-medlineplus-genetics \
+  --max-records 500 \
+  --out build/medlineplus_genetics_subset_corpus.jsonl
+
+python3 scripts/evidence_vectors.py fetch-dailymed \
+  --drug-name metformin \
+  --drug-name pantoprazole \
+  --max-labels-per-drug 1 \
+  --max-records 20 \
+  --out build/dailymed_subset_corpus.jsonl
+
+python3 scripts/evidence_vectors.py fetch-bookshelf-oa \
+  --term &#x27;clinical guidelines&#x27; \
+  --term &#x27;expert panel report&#x27; \
+  --max-books 3 \
+  --max-records 100 \
+  --out build/bookshelf_oa_subset_corpus.jsonl
+
+python3 scripts/evidence_vectors.py fetch-obo-ontology \
+  --source hpo \
+  --out build/hpo_ontology_corpus.jsonl
+
+python3 scripts/evidence_vectors.py fetch-reference-pages \
+  --source nci \
+  --max-records 25 \
+  --out build/nci_reference_pages_corpus.jsonl</code></pre>
+<p>Inputs:</p>
+<ul><li>topic TSVs under <code>config/</code></li><li>optional API keys for upstream rate limits, such as <code>NCBI</code> for E-utilities</li></ul>
+<p>Outputs:</p>
+<ul><li>source-specific corpus JSONL files under <code>build/</code></li></ul>
+<p>Verification:</p>
+<p>preserved.</p>
+<p><code>--allow-restricted-reference-source</code>.</p>
+<ul><li>Confirm row counts.</li><li>Confirm source metadata, URLs, identifiers, and license/provenance fields are</li><li>For sources with restricted variants, confirm the public command did not use</li></ul>
+<h2>PubMed Bulk Acquisition</h2>
+<p>Use this for bulk PubMed baseline shards rather than repeated topic API calls.</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py download-pubmed-baseline \
+  --year 2026 \
+  --latest-number 1334 \
+  --count 2 \
+  --out-dir data/pubmed/baseline \
+  --manifest build/pubmed_baseline_download_manifest.json
+
+python3 scripts/evidence_vectors.py ingest-pubmed-baseline \
+  --input data/pubmed/baseline/pubmed26n1334.xml.gz data/pubmed/baseline/pubmed26n1333.xml.gz \
+  --out build/pubmed_bulk_recent_corpus.jsonl</code></pre>
+<p>Inputs:</p>
+<ul><li>PubMed baseline XML/XML.GZ files, downloaded locally</li></ul>
+<p>Outputs:</p>
+<ul><li>baseline download manifest</li><li>PubMed corpus JSONL</li></ul>
+<p>Verification:</p>
+<p><code>--no-verify-md5</code>.</p>
+<p>alias promotion.</p>
+<ul><li>MD5 verification remains enabled unless there is a deliberate reason to pass</li><li>For pilots, use bounded shard counts and run search-quality review before</li></ul>
+<h2>Targeted PubMed Weakness Acquisition</h2>
+<p>Use this before adding more arbitrary PubMed baseline shards. The queue lives in <code>config/search_quality_targeted_pubmed_weaknesses.tsv</code> and starts from judged query misses, not source availability.</p>
+<p>Workflow:</p>
+<p>are missing at rank 10.</p>
+<p>section-linking issue first.</p>
+<p>linked evidence, and source snippets before acquiring new PubMed records.</p>
+<p>expected CUI.</p>
+<p>standing smoke, rotating 50-query gate, and patient-portal lane still pass.</p>
+<ol><li>Re-run the focused PubMed long-document lane and identify expected CUIs that</li><li>If the expected CUI appears by rank 20 or 60, treat it as a merge/rerank or</li><li>If the expected CUI is absent after expanded retrieval, inspect local labels,</li><li>Add or relink only the PubMed evidence needed for the benchmarked query and</li><li>Promote the change only when the focused PubMed lane improves and the</li></ol>
+<p>Outputs:</p>
+<p><code>build/scaling_runs/targeted_pubmed_weakness_acquisition/</code></p>
+<ul><li>updated target queue or per-query notes</li><li>targeted acquisition summary under</li><li>focused PubMed and regular smoke-gate verification reports</li></ul>
+<h2>One-Source Incremental Build</h2>
+<p>Use this when adding or refreshing one public source slice without rerunning the full public rebuild.</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-source-subset \
+  --source dailymed \
+  --drug-name pantoprazole \
+  --label-index build/public/indexes/umls_biomedicine_search_label_index.sqlite \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --out-dir build/public/source_subsets/dailymed_pantoprazole \
+  --update-docs build/public/permitted_sources_concept_documents.jsonl \
+  --update-vectors build/public/permitted_sources_concept_vectors.hashing.jsonl</code></pre>
+<p>Inputs:</p>
+<ul><li>source seed arguments</li><li>local label index</li><li>optional MRCONSO for display labels</li></ul>
+<p>Outputs:</p>
+<ul><li>source-local corpus, evidence, concept docs, vectors, and manifest</li><li>optional aggregate docs/vectors update</li></ul>
+<p>Verification:</p>
+<p>source has a matching gate.</p>
+<ul><li>Run a source-specific benchmark from <code>config/source_benchmarks/</code> when the</li><li>Run the normal smoke tier if the source affects active runtime behavior.</li></ul>
+<h2>UMLS Identity Indexes</h2>
+<p>Use this after changing UMLS release files or when building a new local runtime.</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-profile-indexes \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --mrsty /path/to/UMLS/META/MRSTY.RRF \
+  --out-dir build/profile_indexes \
+  --replace
+
+python3 scripts/evidence_vectors.py build-label-index \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --mrsty /path/to/UMLS/META/MRSTY.RRF \
+  --profile biomedicine \
+  --out build/umls_biomedicine_search_label_index.sqlite \
+  --replace
+
+python3 scripts/evidence_vectors.py build-code-index \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --out build/cui_code_index.sqlite \
+  --replace
+
+python3 scripts/evidence_vectors.py build-semantic-type-index \
+  --mrsty /path/to/UMLS/META/MRSTY.RRF \
+  --out build/umls_semantic_types.sqlite \
+  --replace</code></pre>
+<p>Inputs:</p>
+<ul><li>UMLS <code>MRCONSO.RRF</code></li><li>UMLS <code>MRSTY.RRF</code></li></ul>
+<p>Outputs:</p>
+<ul><li><code>build/profile_indexes/*.sqlite</code></li><li><code>build/umls_biomedicine_search_label_index.sqlite</code></li><li><code>build/cui_code_index.sqlite</code></li><li><code>build/umls_semantic_types.sqlite</code></li></ul>
+<p>Verification:</p>
+<p>indexes are loaded by the server.</p>
+<ul><li><code>/api/resolve</code> can resolve CUIs, labels, and source vocabulary codes when the</li></ul>
+<h2>Evidence Linking</h2>
+<p>Use this to anchor corpus text to CUIs through UMLS labels.</p>
+<p>For a single label index:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py link-corpus \
+  --corpus build/pubmed_corpus.jsonl build/europepmc_corpus.jsonl \
+  --label-index build/umls_label_index.sqlite \
+  --out build/corpus_evidence.jsonl \
+  --matcher trie</code></pre>
+<p>For semantic profile shards:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py link-profile-shards \
+  --corpus build/pubmed_corpus.jsonl build/europepmc_corpus.jsonl build/dailymed_subset_corpus.jsonl \
+  --index-dir build/profile_indexes \
+  --out-dir build/profile_evidence \
+  --run-name public_corpus \
+  --matcher trie \
+  --materialize-corpus</code></pre>
+<p>Inputs:</p>
+<ul><li>corpus JSONL</li><li>label/profile SQLite indexes</li></ul>
+<p>Outputs:</p>
+<ul><li>evidence JSONL</li><li>profile-sharded evidence JSONL</li></ul>
+<p>Verification:</p>
+<p>unless the run is explicitly exploratory.</p>
+<ul><li>Inspect evidence counts by source/profile.</li><li>Confirm ambiguous labels are not over-linked; keep <code>--max-ambiguity</code> tight</li></ul>
+<h2>Reviewed Local Evidence</h2>
+<p>Use this only after manual review has mapped private/query examples to safe CUIs.</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py ingest-query-log \
+  --input /path/to/reviewed_query_log.tsv \
+  --out build/query_evidence.jsonl \
+  --source local_search_log
+
+python3 scripts/evidence_vectors.py ingest-snippets \
+  --input /path/to/reviewed_snippets.tsv \
+  --out build/snippet_evidence.jsonl \
+  --source reviewed_notes</code></pre>
+<p>Inputs:</p>
+<ul><li>reviewed TSVs with required <code>query,cui</code> or <code>cui,text</code></li></ul>
+<p>Outputs:</p>
+<ul><li>evidence JSONL</li></ul>
+<p>Verification:</p>
+<p>public artifacts.</p>
+<ul><li>Do not ingest raw, unreviewed, or identifying real-query exports directly into</li></ul>
+<h2>Concept Documents</h2>
+<p>Use this to aggregate evidence rows into CUI/view documents.</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-docs-sqlite \
+  --evidence build/profile_evidence/*.jsonl \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --sqlite build/literature_docs.sqlite \
+  --replace \
+  --out build/literature_concept_documents.jsonl</code></pre>
+<p>Inputs:</p>
+<ul><li>evidence JSONL</li><li>optional MRCONSO for CUI labels</li></ul>
+<p>Outputs:</p>
+<ul><li>concept document JSONL</li><li>optional SQLite work database</li></ul>
+<p>Verification:</p>
+<p>and source list.</p>
+<ul><li>Check row counts.</li><li>Spot-check representative CUIs for labels, evidence views, evidence counts,</li></ul>
+<h2>Extension Concepts</h2>
+<p>Use this only when a useful biomedical idea is not represented cleanly by existing UMLS or local concepts.</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-extension-concepts \
+  --input config/extension_concepts.new.jsonl \
+  --out-docs build/extension_concept_documents.jsonl \
+  --out-evidence build/extension_concept_evidence.jsonl \
+  --out-registry build/extension_concept_registry.jsonl</code></pre>
+<p>Inputs:</p>
+<ul><li>reviewed extension concept JSONL</li></ul>
+<p>Outputs:</p>
+<ul><li>local <code>NEW#######</code> concept documents</li><li>extension evidence</li><li>extension registry</li></ul>
+<p>Verification:</p>
+<p>index.</p>
+<ul><li>Reject duplicate/synonym-only concepts.</li><li>Preserve broader, related, or close-match anchors when available.</li><li>State clearly if concepts are built but not loaded into the active search</li></ul>
+<h2>Vector Embedding</h2>
+<p>Use SapBERT/CLS for quality-bearing vectors. Use hashing only for dependency-free pipeline smoke.</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py embed \
+  --docs build/literature_concept_documents.jsonl \
+  --out build/literature_concept_vectors.sapbert_cls.jsonl \
+  --provider sapbert \
+  --local-files-only \
+  --max-seq-length 128 \
+  --batch-size 32 \
+  --omit-text \
+  --vector-precision 6</code></pre>
+<p>Hashing smoke example:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py embed \
+  --docs build/concept_documents.jsonl \
+  --out build/concept_vectors.debug.hashing.jsonl \
+  --provider hashing \
+  --dim 384</code></pre>
+<p>Inputs:</p>
+<ul><li>concept document JSONL</li><li>optional local model cache for transformer providers</li></ul>
+<p>Outputs:</p>
+<ul><li>vector JSONL</li></ul>
+<p>Verification:</p>
+<ul><li>Confirm vector dimensions, provider, model, pooling, and text hash metadata.</li><li>Do not treat hashing-vector quality as a semantic search-quality signal.</li></ul>
+<h2>Incremental UMLS And Vector Reuse</h2>
+<p>Use this when moving between UMLS releases or avoiding re-embedding unchanged documents.</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-atom-fingerprints \
+  --mrconso /path/to/2025AB/META/MRCONSO.RRF \
+  --release 2025AB \
+  --out build/incremental/umls_atom_fingerprints_2025AB.tsv
+
+python3 scripts/evidence_vectors.py build-atom-fingerprints \
+  --mrconso /path/to/2026AA/META/MRCONSO.RRF \
+  --release 2026AA \
+  --out build/incremental/umls_atom_fingerprints_2026AA.tsv
+
+python3 scripts/evidence_vectors.py diff-atom-fingerprints \
+  --old build/incremental/umls_atom_fingerprints_2025AB.tsv \
+  --new build/incremental/umls_atom_fingerprints_2026AA.tsv \
+  --old-release 2025AB \
+  --new-release 2026AA \
+  --out build/incremental/changed_cuis_2025AB_to_2026AA.tsv \
+  --summary-out build/incremental/changed_cuis_2025AB_to_2026AA.summary.json
+
+python3 scripts/evidence_vectors.py build-document-manifest \
+  --docs build/old_concept_documents.jsonl \
+  --release 2025AB \
+  --out build/incremental/concept_document_manifest_2025AB.tsv
+
+python3 scripts/evidence_vectors.py plan-vector-reuse \
+  --old-manifest build/incremental/concept_document_manifest_2025AB.tsv \
+  --new-docs build/new_concept_documents.jsonl \
+  --old-vectors build/old_concept_vectors.sapbert_cls.jsonl \
+  --old-release 2025AB \
+  --new-release 2026AA \
+  --out-plan build/incremental/vector_reuse_plan_2025AB_to_2026AA.tsv \
+  --out-reused-vectors build/incremental/reused_vectors_2025AB_to_2026AA.jsonl \
+  --out-docs-to-embed build/incremental/docs_to_embed_2026AA.jsonl \
+  --out-new-manifest build/incremental/concept_document_manifest_2026AA.tsv \
+  --require-old-vector-text-hash \
+  --summary-out build/incremental/vector_reuse_plan_2025AB_to_2026AA.summary.json
+
+python3 scripts/evidence_vectors.py assemble-incremental-vectors \
+  --manifest build/incremental/concept_document_manifest_2026AA.tsv \
+  --vectors build/incremental/reused_vectors_2025AB_to_2026AA.jsonl build/incremental/fresh_vectors_2026AA.sapbert_cls.jsonl \
+  --expect-provider transformers-cls \
+  --expect-model cambridgeltl/SapBERT-from-PubMedBERT-fulltext \
+  --expect-pooling cls \
+  --expect-dims 768 \
+  --require-text-hash \
+  --release 2026AA \
+  --out build/new_concept_vectors.sapbert_cls.jsonl \
+  --summary-out build/incremental/assembled_vectors_2026AA.summary.json</code></pre>
+<p>Inputs:</p>
+<ul><li>old and new UMLS MRCONSO files</li><li>old/new concept documents</li><li>old vectors</li></ul>
+<p>Outputs:</p>
+<ul><li>atom fingerprint TSVs</li><li>changed-CUI TSV and summary</li><li>vector reuse plan</li><li>reused vector JSONL</li><li>docs-to-embed JSONL</li><li>assembled vector JSONL</li></ul>
+<p>Verification:</p>
+<p>set is considered usable.</p>
+<ul><li><code>assemble-incremental-vectors</code> must pass strict validation before the vector</li></ul>
+<h2>Provenance, Relations, And Definitions</h2>
+<p>Use these indexes to hydrate search details and related-concept views without loading all raw evidence into memory.</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-provenance-index \
+  --evidence build/profile_evidence/*.jsonl \
+  --docs build/literature_concept_documents.jsonl \
+  --sqlite build/search_quality_provenance.sqlite \
+  --sources-per-text 5 \
+  --max-document-items 6 \
+  --replace
+
+python3 scripts/evidence_vectors.py build-relation-index \
+  --mrrel /path/to/UMLS/META/MRREL.RRF \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --docs build/literature_concept_documents.jsonl \
+  --out build/umls_related_concepts.sqlite \
+  --max-relations-per-cui 8 \
+  --replace
+
+python3 scripts/evidence_vectors.py build-research-relation-index \
+  --mrrel /path/to/UMLS/META/MRREL.RRF \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --mrsty /path/to/UMLS/META/MRSTY.RRF \
+  --docs build/literature_concept_documents.jsonl \
+  --out build/umls_research_relations.sqlite \
+  --max-relations-per-category 12 \
+  --replace
+
+python3 scripts/evidence_vectors.py build-definition-index \
+  --mrdef /path/to/UMLS/META/MRDEF.RRF \
+  --docs build/literature_concept_documents.jsonl \
+  --out build/umls_definitions.sqlite \
+  --replace
+
+python3 scripts/evidence_vectors.py build-relationship-edge-index \
+  --edges config/curated_relationship_edges.jsonl \
+  --out build/relationship_edges.sqlite \
+  --replace</code></pre>
+<p>Verification:</p>
+<ul><li><code>/api/detail</code> can hydrate evidence and mappings.</li><li><code>/api/related</code> shows relation and edge categories when indexes are present.</li></ul>
+<h2>Elasticsearch Export And Load</h2>
+<p>Use this to create ANN indexes and aliases for live search.</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py export-elastic \
+  --vectors build/literature_concept_vectors.sapbert_cls.jsonl \
+  --index qe-literature-sapbert-cls \
+  --out-mapping build/qe-literature-sapbert-cls.elastic.mapping.json \
+  --out-bulk build/qe-literature-sapbert-cls.elastic.bulk.ndjson \
+  --similarity cosine \
+  --bulk-docs-per-file 5000
+
+python3 scripts/evidence_vectors.py load-elastic \
+  --url http://localhost:9200 \
+  --index qe-literature-sapbert-cls \
+  --mapping build/qe-literature-sapbert-cls.elastic.mapping.json \
+  --bulk build/qe-literature-sapbert-cls.elastic.bulk.ndjson \
+  --create-index
+
+python3 scripts/evidence_vectors.py alias-elastic \
+  --url http://localhost:9200 \
+  --index qe-literature-sapbert-cls \
+  --alias qe-scaling-sapbert-cls</code></pre>
+<p>Verification:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py search-elastic \
+  --url http://localhost:9200 \
+  --index qe-scaling-sapbert-cls \
+  --query &#x27;pseudomonas aeruginosa wound abscess&#x27; \
+  --provider sapbert \
+  --local-files-only \
+  --max-seq-length 128 \
+  --k 10 \
+  --num-candidates 100</code></pre>
+<p>Promotion rule:</p>
+<p>possible.</p>
+<ul><li>Move aliases only after the relevant quality review passes and rollback is</li></ul>
+<h2>Search API And UI</h2>
+<p>Use this to serve the local API and browser search UI.</p>
+<pre><code class="language-sh">python3 scripts/search_quality_server.py --port 8766</code></pre>
+<p>Public-output-only mode:</p>
+<pre><code class="language-sh">python3 scripts/search_quality_server.py --port 8766 --public-output-only</code></pre>
+<p>Health and status:</p>
+<pre><code class="language-sh">curl -s &quot;http://127.0.0.1:8766/api/health&quot;
+curl -s &quot;http://127.0.0.1:8766/api/status&quot;</code></pre>
+<p>Common API checks:</p>
+<pre><code class="language-sh">curl -s &quot;http://127.0.0.1:8766/api/search?q=No%20evidence%20of%20pulmonary%20embolism&amp;k=5&amp;mode=balanced&amp;include_related=false&quot;
+curl -s &quot;http://127.0.0.1:8766/api/detail?cui=C0034065&amp;include_related=true&quot;
+curl -s &quot;http://127.0.0.1:8766/api/resolve?q=SNOMED:49436004&quot;
+curl -s &quot;http://127.0.0.1:8766/api/related?cui=C0004238&amp;k=10&amp;vocab=ICD10CM&quot;</code></pre>
+<p>Verification:</p>
+<ul><li><code>/api/health</code> returns <code>ok: true</code>.</li><li><code>/api/status</code> reports expected artifact paths and backend.</li><li>Runtime/ranking/API changes also need the relevant smoke command below.</li></ul>
+<h2>Standing Clinical Smoke And Regression</h2>
+<p>Use this as the first live check after runtime search behavior changes.</p>
+<pre><code class="language-sh">python3 scripts/evaluate_search_api.py \
+  --queries config/search_quality_clinical_queries.tsv \
+  --base-url http://127.0.0.1:8766 \
+  --top-k 5</code></pre>
+<p>For CSV/JSON summary outputs:</p>
+<pre><code class="language-sh">scripts/run_search_regression_benchmark.py config/search_quality_clinical_queries.tsv \
+  --base-url http://127.0.0.1:8766 \
+  --top-k 10 \
+  --rows-out build/search_regression_rows.csv \
+  --json-out build/search_regression_summary.json</code></pre>
+<p>Inputs:</p>
+<ul><li>running API</li><li>query TSV with expected CUIs</li></ul>
+<p>Outputs:</p>
+<ul><li>terminal TSV rows, or rows/summary files</li></ul>
+<p>Verification:</p>
+<ul><li>Expected CUIs appear within the configured top-k.</li><li>Record any rank-2 or lower expected hits if the row expects top-1 behavior.</li></ul>
+<h2>Paragraph Quality Experiment</h2>
+<p>Use this for release-quality paragraph evaluation and 50-query rotating smoke.</p>
+<pre><code class="language-sh">python3 scripts/run_search_quality_experiment.py \
+  --queries config/search_quality_paragraph_queries.tsv \
+  --query-limit 50 \
+  --query-selection rotate \
+  --search-system api \
+  --scope umls_evidence \
+  --fail-gates</code></pre>
+<p>Use <code>--query-limit 0</code> intentionally for the full judged pool. Live API runs default to two worker threads; pass <code>--workers 1</code> when you need strict serial timing. UMLS-only in-process runs remain serial.</p>
+<p>Inputs:</p>
+<ul><li>running API</li><li>paragraph query TSV</li></ul>
+<p>Outputs:</p>
+<p>and hit count</p>
+<ul><li><code>build/search_quality_experiments/runs/&lt;run&gt;/</code></li><li>metrics JSON</li><li><code>query_timings.tsv</code> with per-query API elapsed time, cache-hit status, backend,</li><li>paragraph quality report</li><li>source-quality summaries</li><li>updated experiment report when configured by the script</li></ul>
+<p>Verification:</p>
+<ul><li>Strict success@10 gate.</li><li>No known false positives in the first 10.</li><li>Source-quality summaries reviewed for source drift.</li></ul>
+<h2>Patient Portal Benchmark Lane</h2>
+<p>Use this to gate long patient-portal messages where active/current visit concepts should rank above copied-forward history while old medications and diagnoses remain available lower in the result set.</p>
+<pre><code class="language-sh">python3 scripts/run_search_quality_experiment.py \
+  --queries config/search_quality_patient_portal_queries.tsv \
+  --query-limit 0 \
+  --search-system api \
+  --scope umls_evidence \
+  --run-family patient_portal \
+  --label &quot;Patient portal current-versus-history lane&quot; \
+  --fail-gates</code></pre>
+<p>Inputs:</p>
+<ul><li>running API</li><li><code>config/search_quality_patient_portal_queries.tsv</code></li></ul>
+<p>Outputs:</p>
+<ul><li><code>build/search_quality_experiments/runs/&lt;run&gt;/</code></li><li>metrics JSON</li><li>paragraph quality report</li><li>payloads for portal-lane review</li></ul>
+<p>Verification:</p>
+<ul><li>Active/current concepts are visible in the first page.</li><li>Old-history context CUIs remain recoverable lower in the results.</li><li>Configured portal meta/noise disallowed CUIs do not appear in the top 10.</li><li>Runtime ranking changes still need the post-iteration smoke helper.</li></ul>
+<h2>Post-Iteration Smoke Helper</h2>
+<p>Use this after an iteration to choose and run the right verification tier from the iteration type. The helper writes a JSON summary, a Markdown verification note, and updates the Post-Iteration Smoke Gates panel in <code>docs/search_quality_experiments.html</code>.</p>
+<p>Dry-run the plan:</p>
+<pre><code class="language-sh">python3 scripts/run_search_quality_experiment.py \
+  --iteration-smoke-gates \
+  --iteration-id SQI-YYYY-MM-DD-NNN \
+  --iteration-type ranking \
+  --focused-command &quot;python3 -m pytest tests/test_evidence_vectors.py -k &#x27;&lt;selector&gt;&#x27; -q&quot; \
+  --base-url http://127.0.0.1:8766 \
+  --dry-run</code></pre>
+<p>Run the selected checks:</p>
+<pre><code class="language-sh">python3 scripts/run_search_quality_experiment.py \
+  --iteration-smoke-gates \
+  --iteration-id SQI-YYYY-MM-DD-NNN \
+  --iteration-type ranking \
+  --focused-command &quot;python3 -m pytest tests/test_evidence_vectors.py -k &#x27;&lt;selector&gt;&#x27; -q&quot; \
+  --base-url http://127.0.0.1:8766</code></pre>
+<p>Useful flags:</p>
+<p>unless forced.</p>
+<p>smoke unless forced.</p>
+<p>smoke.</p>
+<p><code>py_compile</code>.</p>
+<p>live smoke.</p>
+<p>tier.</p>
+<p>the current-versus-history patient portal lane.</p>
+<ul><li><code>--docs-only-change</code>: record a docs/local-layout decision and skip live smoke</li><li><code>--ui-report-only-change</code>: record a UI/report-only decision and skip live</li><li><code>--broad-change</code> or <code>--release-quality</code>: force standing and 50-query rotating</li><li><code>--static-command</code>: add syntax/static checks such as <code>node --check</code> or</li><li><code>--focused-command</code>: add targeted unit tests or focused rebuild checks before</li><li><code>--force-standing-smoke</code> and <code>--force-rotating-smoke</code>: override the inferred</li><li><code>--force-patient-portal-smoke</code> and <code>--skip-patient-portal-smoke</code>: override</li></ul>
+<p>Default live-smoke selection:</p>
+<p>with gates, and the patient portal current-versus-history lane.</p>
+<p>gates.</p>
+<p>flag requires live smoke.</p>
+<ul><li><code>ranking</code> and <code>benchmark</code>: standing clinical smoke, 50-query rotating smoke</li><li><code>long-document</code>: standing clinical smoke plus 50-query rotating smoke with</li><li><code>source-code</code>, <code>data</code>, and <code>audit</code>: standing clinical smoke.</li><li><code>process</code> and <code>ui</code>: static/focused checks only, unless another type or force</li></ul>
+<p>Outputs:</p>
+<ul><li><code>build/search_quality_experiments/iteration_smoke_gates/&lt;iteration&gt;/verification.json</code></li><li><code>build/search_quality_experiments/iteration_smoke_gates/&lt;iteration&gt;/verification.md</code></li><li><code>build/search_quality_experiments/iteration_smoke_gates.json</code></li><li>refreshed <code>docs/search_quality_experiments.html</code></li></ul>
+<p>Verification:</p>
+<ul><li>The helper exits nonzero when any selected live or focused command fails.</li><li>Copy the Markdown summary path and headline metrics into the iteration record.</li></ul>
+<h2>Focused Paragraph Evaluation And Precision Audit</h2>
+<p>Use this for targeted failure analysis or full benchmark audit outside the experiment ledger.</p>
+<pre><code class="language-sh">python3 scripts/evaluate_paragraph_quality.py \
+  --queries /path/to/focused_queries.tsv \
+  --output-dir build/improvements/&lt;run_name&gt; \
+  --top-k 60
+
+python3 scripts/audit_paragraph_precision.py \
+  --payloads build/improvements/&lt;run_name&gt;/paragraph_search_payloads.jsonl \
+  --output-dir build/improvements/&lt;run_name&gt; \
+  --top-n 10</code></pre>
+<p>Use the full benchmark periodically:</p>
+<pre><code class="language-sh">python3 scripts/evaluate_paragraph_quality.py \
+  --output-dir build/improvements/&lt;run_name&gt; \
+  --top-k 60</code></pre>
+<p>Outputs:</p>
+<ul><li>paragraph summaries and payloads</li><li><code>paragraph_precision_audit.tsv</code></li><li><code>paragraph_precision_metrics.json</code></li><li><code>paragraph_precision_report.md</code></li></ul>
+<p>Verification:</p>
+<p><code>config/search_quality_precision_audit_review.tsv</code>.</p>
+<ul><li>Convert reviewed suspect rows into</li><li>Regenerate the precision-audit report:</li></ul>
+<pre><code class="language-sh">python3 scripts/build_precision_audit_report.py</code></pre>
+<h2>Rule Inventory And Active Labels</h2>
+<p>Use this whenever changing suppression rules, assertion cues, portal language handling, audit rows, or active-label supplement rows.</p>
+<pre><code class="language-sh">python3 scripts/build_search_rule_inventory.py
+
+python3 scripts/validate_active_label_supplement.py
+
+python3 -m pytest tests/test_evidence_vectors.py -k active_label_supplement -q</code></pre>
+<p>Inputs:</p>
+<ul><li>ranker/assertion/filter code</li><li><code>config/active_label_supplement.tsv</code></li><li>precision/useful-extra configs</li></ul>
+<p>Outputs:</p>
+<ul><li><code>docs/search_rule_inventory.html</code></li><li><code>docs/search_rule_inventory.html</code></li><li>validation/test results</li></ul>
+<p>Verification:</p>
+<ul><li>Every rule class has a clear purpose and a benchmark/audit/test reason.</li><li>Risky labels have context or block guards.</li></ul>
+<h2>Canonical Judgments And Shadow Reranker</h2>
+<p>Use this to keep labels centralized and test ML rank changes without affecting production ranking.</p>
+<pre><code class="language-sh">python3 scripts/search_quality_shadow_reranker.py run-all</code></pre>
+<p>Equivalent explicit steps:</p>
+<pre><code class="language-sh">python3 scripts/search_quality_shadow_reranker.py seed-judgments
+python3 scripts/search_quality_shadow_reranker.py extract-features
+python3 scripts/search_quality_shadow_reranker.py train-shadow
+python3 scripts/search_quality_shadow_reranker.py evidence-report</code></pre>
+<p>To test a reviewed evidence policy as shadow-only features:</p>
+<pre><code class="language-sh">python3 scripts/search_quality_shadow_reranker.py extract-features \
+  --evidence-policy build/search_quality_shadow_reranker/evidence_shadow_policy.tsv \
+  --out build/search_quality_shadow_reranker/feature_rows.evidence_policy.tsv
+python3 scripts/search_quality_shadow_reranker.py train-shadow \
+  --features build/search_quality_shadow_reranker/feature_rows.evidence_policy.tsv \
+  --out-dir build/search_quality_shadow_reranker/evidence_policy_shadow</code></pre>
+<p>Inputs:</p>
+<ul><li>expected CUI rows</li><li>useful-extra audit rows</li><li>true false positives</li><li>patient portal rows</li><li>PubMed long-document slice</li><li>saved search payloads</li></ul>
+<p>Outputs:</p>
+<p>report under <code>build/search_quality_shadow_reranker/</code></p>
+<p>review-only policy artifact; runtime ranking does not read it</p>
+<ul><li><code>config/search_quality_judgments.tsv</code></li><li>feature rows under <code>build/search_quality_shadow_reranker/</code></li><li>HTML report comparing current rank vs ML rank</li><li>shadow evidence promotion/demotion TSV, examples TSV, summary JSON, and HTML</li><li><code>build/search_quality_shadow_reranker/evidence_shadow_policy.tsv</code> as a</li></ul>
+<p>Verification:</p>
+<p>probes when older payloads are needed to surface demotion candidates.</p>
+<p>signal and the same benchmark slice has no unacceptable regression.</p>
+<p>live smoke passes.</p>
+<ul><li>Review wins, losses, and regressions.</li><li>Treat unjudged evidence rows as unknown, not bad.</li><li>Keep current-capture promotion reports separate from historical negative</li><li>Promote or demote evidence only after the shadow report shows repeated judged</li><li>Do not wire the model into runtime ranking until regressions are triaged and</li></ul>
+<h2>PubMed Literature Benchmark</h2>
+<p>Use this because long biomedical abstracts behave differently from the clinical paragraph smoke.</p>
+<p>Strict seed generation:</p>
+<pre><code class="language-sh">python3 scripts/fetch_pubmed_paragraph_queries.py \
+  --topics config/pubmed_paragraph_topics.tsv \
+  --curation config/pubmed_literature_abstract_curation.tsv \
+  --strict-curation \
+  --output-dir build/pubmed_literature_benchmark_seed</code></pre>
+<p>Focused long-document slice:</p>
+<pre><code class="language-sh">python3 scripts/build_pubmed_long_document_slice.py
+
+PYTHONPATH=src:scripts python3 scripts/run_search_quality_experiment.py \
+  --queries build/pubmed_literature_benchmark_seed/pubmed_long_document_focused_queries.tsv \
+  --base-url http://127.0.0.1:8766 \
+  --scope umls_evidence \
+  --search-system api \
+  --run-family probe \
+  --label &quot;PubMed long-document focused slice&quot;</code></pre>
+<p>For timing probes, compare <code>--workers 1</code> against the default two-worker API path and inspect the run&#x27;s <code>query_timings.tsv</code>. If summed API response time grows while wall time stays flat, the next optimization target is server-side search work rather than runner scheduling.</p>
+<p>Candidate expansion:</p>
+<pre><code class="language-sh">python3 scripts/fetch_pubmed_paragraph_queries.py \
+  --topics config/pubmed_literature_candidate_topics.tsv \
+  --output-dir build/pubmed_literature_candidates</code></pre>
+<p>Verification:</p>
+<ul><li>Do not score fetched abstracts with inherited topic-level expected CUIs.</li><li>Tune on dev only.</li><li>Keep held-out rows separate from the clinical smoke headline.</li></ul>
+<h2>MedMentions Benchmark</h2>
+<p>Use this as an external linking stress test, separate from internal smoke.</p>
+<p>Prepare:</p>
+<pre><code class="language-sh">python3 scripts/run_medmentions_benchmark.py prepare \
+  --subset st21pv \
+  --split dev \
+  --category clinical_useful \
+  --query-style mention_only \
+  --mention-limit 1000 \
+  --document-limit 0 \
+  --output-dir build/medmentions/st21pv_dev_clinical_useful_mention_only</code></pre>
+<p>Evaluate:</p>
+<pre><code class="language-sh">python3 scripts/run_medmentions_benchmark.py evaluate \
+  build/medmentions/st21pv_dev_clinical_useful_mention_only/medmentions_st21pv_clinical_useful_mention_only_mention_queries.tsv \
+  --base-url http://127.0.0.1:8766 \
+  --top-k 10 \
+  --scope umls_evidence \
+  --linked \
+  --limit 100 \
+  --output-dir build/medmentions/st21pv_dev_clinical_useful_mention_only/eval_mentions_100</code></pre>
+<p>Verification:</p>
+<ul><li>Report category-specific metrics.</li><li>Do not optimize suppression-audit surfacing upward.</li><li>Account for UMLS 2017AA vs current-release CUI drift.</li></ul>
+<h2>TREC PM/CDS Document-Source Benchmark</h2>
+<p>Use this as an external document/source retrieval lane, separate from CUI linking benchmarks. Supply TREC topics and qrels locally; this workflow does not download track data.</p>
+<p>Prepare and report corpus coverage:</p>
+<pre><code class="language-sh">python3 scripts/run_trec_benchmark.py prepare \
+  --track precision_medicine \
+  --topics data/trec/precision_medicine/topics2019.xml \
+  --qrels data/trec/precision_medicine/qrels-treceval-abstracts.2019.txt \
+  --qrels data/trec/precision_medicine/qrels-treceval-trials.38.txt \
+  --output-dir build/trec/precision_medicine</code></pre>
+<p>If <code>--corpus</code> is omitted, the importer discovers local PubMed, Europe PMC, PMC OA, and ClinicalTrials.gov corpus artifacts under <code>build/</code>. Pass explicit <code>--corpus</code> values when a release run must be pinned to a known corpus set.</p>
+<p>Evaluate document/source retrieval:</p>
+<pre><code class="language-sh">python3 scripts/run_trec_benchmark.py evaluate \
+  build/trec/precision_medicine/trec_precision_medicine_resolved_document_queries.tsv \
+  --base-url http://127.0.0.1:8766 \
+  --top-k 10 \
+  --scope umls_evidence \
+  --output-dir build/trec/precision_medicine/eval</code></pre>
+<p>Inputs:</p>
+<ul><li>local TREC Precision Medicine or Clinical Decision Support topics</li><li>local TREC qrels</li><li>local PubMed/PMC and ClinicalTrials.gov corpus JSON/JSONL paths</li><li>running API for evaluation only</li></ul>
+<p>Outputs:</p>
+<ul><li>normalized topic TSV</li><li>normalized qrels TSV</li><li>corpus coverage TSV and manifest summary</li><li>all-judged-positive document-query TSV for corpus-expansion accounting</li><li>resolved-local judged-positive document-query TSV for retrieval scoring</li><li>evaluation rows, summary, and payloads</li></ul>
+<p>Verification:</p>
+<p>identifiers in hits or evidence items; public-output-only APIs may suppress PMID/NCT identifiers and produce zero document/source matches.</p>
+<ul><li>Review corpus coverage before scoring retrieval.</li><li>Evaluate document/source retrieval separately from CUI retrieval.</li><li>Treat qrels <code>relevance &gt; 0</code> rows as positives.</li><li>Treat unjudged returned documents as unknown, not false positives.</li><li>Run retrieval scoring against an internal/local API that exposes source</li></ul>
+<h2>Private Real-Query Workflows</h2>
+<p>Use this to inspect real query demand without publishing raw terms.</p>
+<p>Inventory only:</p>
+<pre><code class="language-sh">python3 scripts/build_real_query_inventory.py</code></pre>
+<p>Demand-prioritized review queue:</p>
+<pre><code class="language-sh">python3 scripts/build_real_query_inventory.py \
+  --sort demand \
+  --max-rows 5000 \
+  --out build/local_search_logs/query_inventory_demand_top5000.tsv \
+  --summary-out build/local_search_logs/query_inventory_demand_top5000_summary.json \
+  --review-queue-out build/local_search_logs/query_review_queue.tsv</code></pre>
+<p>Score a bounded batch:</p>
+<pre><code class="language-sh">python3 scripts/build_real_query_inventory.py \
+  --sort demand \
+  --max-rows 1000 \
+  --score-api \
+  --out build/local_search_logs/query_inventory_scored_top1000.tsv \
+  --summary-out build/local_search_logs/query_inventory_scored_top1000_summary.json \
+  --review-queue-out build/local_search_logs/query_review_queue.tsv</code></pre>
+<p>UMLS API comparison for private diagnostics:</p>
+<pre><code class="language-sh">python3 scripts/run_private_real_query_diagnostic.py \
+  --base-url http://127.0.0.1:8766 \
+  --scope umls \
+  --api-key &quot;$UMLS_API_KEY&quot;</code></pre>
+<p>Verification:</p>
+<ul><li>Raw exports remain under <code>data/local_search_logs/umls_query_exports/</code>.</li><li>Public configs receive only safe, manually reviewed query/CUI rows.</li></ul>
+<h2>Source Acquisition Planning</h2>
+<p>Use this to turn measured failures into source and relationship-edge review queues.</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py plan-source-acquisition \
+  --quality-summary build/improvements/&lt;run&gt;/paragraph_quality_summary.tsv \
+  --out-json build/source_acquisition/plan.json \
+  --out-tsv build/source_acquisition/recommendations.tsv \
+  --out-associations-tsv build/source_acquisition/association_candidates.tsv \
+  --out-association-review-tsv build/source_acquisition/association_review.tsv \
+  --out-bundle-dir build/source_acquisition/bundle \
+  --out-md build/source_acquisition/plan.md</code></pre>
+<p>After review:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-reviewed-association-edges \
+  --review build/source_acquisition/association_review.tsv \
+  --out build/source_acquisition/reviewed_relationship_edges.jsonl</code></pre>
+<p>Progression ledger:</p>
+<pre><code class="language-sh">python3 scripts/source_acquisition_progression.py \
+  --fail-on-regression \
+  --out-json build/source_acquisition/progression_manifest.json \
+  --out-md build/source_acquisition/progression_report.md</code></pre>
+<p>Fresh clone inspection:</p>
+<pre><code class="language-sh">python3 scripts/source_acquisition_progression.py \
+  --allow-missing-stage-metrics \
+  --out-json build/source_acquisition/progression_manifest.json \
+  --out-md build/source_acquisition/progression_report.md</code></pre>
+<p>Verification:</p>
+<ul><li>Approved stages do not regress deterministic gates.</li><li>Rejected diagnostic stages do not lower the next retained gate.</li></ul>
+<h2>Weakness-To-Promotion Gate</h2>
+<p>Use this for every search-quality change, whether the proposed fix is a code change or newly procured evidence.</p>
+<p>The loop is:</p>
+<p>source-code failure.</p>
+<ol><li>Determine the weakness from a real query, benchmark miss, audit row, or</li><li>Record the baseline result before changing anything.</li><li>Choose exactly one route:</li></ol>
+<p>benchmark handling;</p>
+<p>evidence targeted to the weakness.</p>
+<ul><li>code route: change parsing, ranking, filtering, source-code output, UI, or</li><li>evidence route: procure or integrate authoritative, license-compatible</li></ul>
+<p>regression in false positives, assertion status, source policy, code output, or held-out/standing smoke.</p>
+<ol><li>Rebuild/restart only what the route requires.</li><li>Re-run the same benchmark slice plus the required smoke tier.</li><li>Promote only if the target weakness improves and there is no unacceptable</li><li>If the route does not improve things, reject it:</li></ol>
+<p>and record the source/query/scope as a rejected acquisition so the same procurement is not repeated without a new hypothesis.</p>
+<ul><li>code route: revert or remove the change before it enters the shipped path;</li><li>evidence route: exclude the evidence from the default/search-ranking path</li></ul>
+<p>Required records:</p>
+<p><code>Decision: Keep</code>, <code>Decision: Revise</code>, or <code>Decision: Revert</code>.</p>
+<p>with <code>decision_rule</code> set to <code>promote</code>, <code>no_regression</code>, or <code>diagnostic</code>, and <code>decision</code> set to <code>accept</code>, <code>neutral</code>, or <code>reject</code>.</p>
+<p>be included in the promoted corpus, alias, routing, or default-ranking manifest.</p>
+<ul><li>For code changes, add or update a search-quality iteration entry with</li><li>For evidence changes, add or update <code>config/source_acquisition_progression.tsv</code></li><li>Rejected evidence can remain in <code>build/</code> as an audit artifact, but it must not</li></ul>
+<p>Practical rule: do not acquire broad evidence because it seems generally useful. Acquire evidence only to test a named weakness. If it fails the gate, preserve the negative result and stop reacquiring that same evidence shape.</p>
+<h2>Source Delta Checks</h2>
+<p>Use this before releasing source rebuilds.</p>
+<pre><code class="language-sh">python3 scripts/check_source_rebuild_delta.py \
+  --previous build/source_manifests/previous.json \
+  --current build/source_manifests/current.json \
+  --out build/source_manifests/source_delta_report.json</code></pre>
+<p>Verification:</p>
+<p>records changed, CUI gains/losses, relationship gains/losses, and benchmark source changes are present.</p>
+<ul><li>Source identity, source date/release, fetch date, hash, records fetched,</li><li>Unexpected source-count collapses block release unless explained and reviewed.</li></ul>
+<h2>Relationship Mining</h2>
+<p>Use this for public/shareable aggregate OHDSI artifacts, not patient-level EHR data.</p>
+<pre><code class="language-sh">python3 scripts/mine_ohdsi_relationships.py \
+  --atlas path/to/cohort_definition.json \
+  --cohort-diagnostics path/to/cohort_diagnostics.csv \
+  --estimation-results path/to/cohort_method_results.csv \
+  --plp-output path/to/plp_feature_importance.csv \
+  --literature-study path/to/published_ohdsi_results.csv \
+  --omop-cui-map path/to/omop_cui_map.tsv \
+  --code-index build/cui_code_index.sqlite \
+  --out build/ohdsi_relationship_edges.jsonl \
+  --unresolved-out build/ohdsi_unresolved.jsonl \
+  --summary-out build/ohdsi_relationship_summary.json
+
+python3 scripts/evidence_vectors.py build-relationship-edge-index \
+  --edges build/ohdsi_relationship_edges.jsonl \
+  --out build/relationship_edges.sqlite \
+  --replace</code></pre>
+<p>Verification:</p>
+<p>or <code>note_id</code> are rejected.</p>
+<p>normalized.</p>
+<ul><li>Inputs with patient-level fields such as <code>person_id</code>, <code>visit_occurrence_id</code>,</li><li>Quantitative fields stay in provenance/context even when display strength is</li></ul>
+<h2>Procedure Bundles</h2>
+<p>Use this for open/public procedure concepts and relations while keeping CPT out of public artifacts.</p>
+<pre><code class="language-sh">python3 scripts/build_procedure_bundles.py \
+  --input config/procedure_bundles.jsonl \
+  --out-concepts build/procedure_bundle_concepts.jsonl \
+  --out-relations build/procedure_bundle_relations.jsonl \
+  --out-registry build/procedure_bundle_registry.jsonl</code></pre>
+<p>Verification:</p>
+<p>permits them; use <code>--no-snomed</code> where needed.</p>
+<ul><li>CPT/CPT4 content is rejected for public bundles.</li><li>SNOMED CT anchors are allowed by default only where the deployment license</li></ul>
+<h2>Enrichment Builders</h2>
+<p>Use enrichment scripts for targeted add-on slices. These are not substitutes for primary source evidence or smoke tests.</p>
+<p>OpenAlex high-citation evidence:</p>
+<pre><code class="language-sh">python3 scripts/build_openalex_cited_evidence.py \
+  --out-dir build/source_acquisition/openalex_missing_high_citation \
+  --label-index build/public/indexes/umls_biomedicine_search_label_index.sqlite \
+  --semantic-type-index build/public/indexes/umls_semantic_types.sqlite \
+  --query-file config/openalex_missing_high_citation_queries.tsv \
+  --from-date 2021-05-14 \
+  --to-date 2026-05-14 \
+  --max-per-query 60 \
+  --per-page 60 \
+  --min-cited-by-count 500 \
+  --articles-tsv build/source_acquisition/openalex_missing_high_citation/articles.tsv</code></pre>
+<p>Other targeted builders:</p>
+<pre><code class="language-sh">python3 scripts/build_drug_enrichment.py
+python3 scripts/build_wikipedia_enrichment.py
+python3 scripts/build_open_image_enrichment.py</code></pre>
+<p>Verification:</p>
+<p>explicitly linked to source-quality claims by a benchmark.</p>
+<ul><li>Review generated manifests and source metadata.</li><li>Keep OpenAlex and image outputs as enrichment/metadata unless they are</li></ul>
+<h2>Reports And Dashboards</h2>
+<p>Use these to regenerate static operational reports.</p>
+<pre><code class="language-sh">python3 scripts/build_source_evidence_dashboard.py
+
+python3 scripts/scaling_status.py \
+  --plan config/full_pipeline.plan.json \
+  --out-json build/scaling_runs/full_pipeline/progress.json \
+  --out-markdown build/scaling_runs/full_pipeline/progress.md
+
+python3 scripts/reconcile_pubmed_shard_reviews.py
+
+python3 scripts/build_translation_benchmark_report.py</code></pre>
+<p>Inputs:</p>
+<ul><li>local artifacts under <code>build/</code></li><li>plan JSONs under <code>config/</code></li><li>translation lock <code>config/translation_benchmark_lock.json</code></li></ul>
+<p>Outputs:</p>
+<ul><li><code>docs/source_evidence_dashboard.html</code></li><li>progress JSON/Markdown</li><li>PubMed shard review/export reconciliation JSON/Markdown</li><li><code>docs/translation_benchmark_report.html</code></li><li>report-specific JSON outputs when configured</li></ul>
+<p>Verification:</p>
+<p><code>search_quality_judgments.csv</code> files before marking quality-review steps complete. Aggregate <code>search_quality_summary.json</code> files are not enough to reconstruct reviewed row judgments.</p>
+<p>artifacts as reconciliation findings that must be restored or regenerated before broader ingest/release decisions.</p>
+<p>a fresh clone has all historical <code>build/</code> inputs.</p>
+<ul><li>Run static syntax checks for embedded JavaScript when editing HTML reports.</li><li>For recent PubMed shard gates, require row-level</li><li>Treat load markers without matching Elasticsearch mapping/bulk export</li><li>Treat generated reports as snapshots of current local artifacts; do not assume</li></ul>
+<h2>Translation And Gold-Standard Comparison</h2>
+<p>Use this when comparing the current search API against locked translation slices or UMLS API behavior.</p>
+<pre><code class="language-sh">python3 scripts/compare_to_gold_standard.py \
+  --base-url http://127.0.0.1:8766
+
+python3 scripts/compare_umls_api.py \
+  --base-url http://127.0.0.1:8766 \
+  --api-key &quot;$UMLS_API_KEY&quot;</code></pre>
+<p>Verification:</p>
+<p>mapping coverage as separate slices.</p>
+<p>examples into a new dev iteration and replacing the held-out row.</p>
+<ul><li>Keep clinical smoke, PubMed literature, exact/UMLS API comparison, and code</li><li>Do not tune held-out rows from row-level misses without moving affected</li></ul>
+<h2>New-UMLS Existing-Data Iteration</h2>
+<p>Use this for bounded iterations that create or evaluate local <code>NEW#######</code> concept candidates using existing artifacts.</p>
+<pre><code class="language-sh">python3 scripts/run_existing_data_iteration.py \
+  --iteration iteration_003_search_quality \
+  --out-dir build/new_umls_iterations/iteration_003_search_quality</code></pre>
+<p>Inputs:</p>
+<ul><li>current UMLS indexes</li><li>local LOINC path when supplied at <code>data/local_sources/loinc/Loinc_2.82</code></li><li>prior extension concepts</li><li>query/evidence/source artifacts</li></ul>
+<p>Outputs:</p>
+<ul><li>iteration manifest</li><li>candidate review</li><li>promoted/deferred concept records</li><li>relation artifacts</li><li>iteration report</li></ul>
+<p>Verification:</p>
+<p>shipped unless the report records a blocker or a docs-only/local-layout exception.</p>
+<ul><li>Each iteration has one primary purpose.</li><li>Search-quality iterations run the required smoke tier before being marked</li></ul>
+<h2>Iteration Records</h2>
+<p>Create or update an iteration record when a change is meant to affect search-quality behavior, benchmark labels, source-code output, ranking, judgments, source acquisition, release gates, or the process itself.</p>
+<p>For each entry, record:</p>
+<ul><li>trigger</li><li>expected behavior</li><li>what changed</li><li>artifacts</li><li>verification</li><li>decision</li><li>next bounded step</li></ul>
+<p>Primary files:</p>
+<ul><li><code>docs/search_quality_iterations.html</code></li><li><code>docs/search_quality_iterations.html</code></li></ul>
+<p>Verification:</p>
+<ul><li>Markdown entry and HTML entry agree.</li><li>HTML inline JavaScript parses after edits.</li><li>Docs-only/process entries record why no live smoke was needed.</li></ul>
+<h2>Documentation Maintenance</h2>
+<p>When a process changes, update the nearest specialized doc and this report in the same change. Also update <code>docs/explain_like_im_5.html</code> when the user-facing mental model changes, a new canonical artifact appears, or the current status changes.</p>
+<p>Useful checks:</p>
+<pre><code class="language-sh">rg -n &quot;new command or artifact name&quot; docs README.md scripts config
+node --check /tmp/search_quality_iterations_inline.js
+python3 -m py_compile scripts/&lt;changed_script&gt;.py
+python3 -m pytest &lt;targeted_tests&gt; -q</code></pre>
+<p>Docs-only verification is static review and syntax checks. Live search smoke is not needed unless the docs change is coupled to runtime behavior, labels, ranking, benchmarks, judgments, or API output.</p>
+</main>
+<!-- Converted from docs/repeatable_processes.html. -->
+</body>
+</html>

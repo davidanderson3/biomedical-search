@@ -2043,18 +2043,23 @@ def repo_display_path(path: Path) -> str:
 def smoke_tier_decision(args: argparse.Namespace, iteration_types: list[str]) -> dict:
     docs_only = bool(getattr(args, "docs_only_change", False))
     ui_report_only = bool(getattr(args, "ui_report_only_change", False))
+    development_loop = bool(getattr(args, "development_loop", False))
     live_disabled_by_scope = docs_only or ui_report_only
     standing = bool(set(iteration_types) & STANDING_SMOKE_ITERATION_TYPES)
     rotating = bool(set(iteration_types) & ROTATING_SMOKE_ITERATION_TYPES)
     patient_portal = bool(set(iteration_types) & PATIENT_PORTAL_SMOKE_ITERATION_TYPES)
+    broad_or_release = bool(getattr(args, "broad_change", False) or getattr(args, "release_quality", False))
     if live_disabled_by_scope:
         standing = False
         rotating = False
         patient_portal = False
-    if getattr(args, "broad_change", False) or getattr(args, "release_quality", False):
+    if broad_or_release:
         standing = True
         rotating = True
         patient_portal = True
+    if development_loop and not live_disabled_by_scope and not broad_or_release:
+        rotating = False
+        patient_portal = False
     if getattr(args, "force_standing_smoke", False):
         standing = True
     if getattr(args, "force_rotating_smoke", False):
@@ -2084,6 +2089,8 @@ def smoke_tier_decision(args: argparse.Namespace, iteration_types: list[str]) ->
         reasons.append("broad-change flag requires standing, rotating, and patient portal smoke")
     if getattr(args, "release_quality", False):
         reasons.append("release-quality flag requires standing, rotating, and patient portal smoke")
+    if development_loop:
+        reasons.append("development-loop flag defers rotating and patient portal smoke unless forced or release-quality")
     if getattr(args, "skip_standing_smoke", False):
         reasons.append("standing smoke explicitly skipped")
     if getattr(args, "skip_rotating_smoke", False):
@@ -2869,7 +2876,7 @@ def translation_next_quality_work_html() -> str:
               <strong>External benchmark comparison:</strong>
               A first MedMentions lane is scaffolded in
               <code>scripts/run_medmentions_benchmark.py</code> and documented in
-              <a href="medmentions_benchmark.md">the MedMentions benchmark note</a>.
+              <a href="medmentions_benchmark.html">the MedMentions benchmark note</a>.
               It starts with the ST21pv information-retrieval subset, now splits
               pure <code>mention_only</code> linker scoring from context-heavy mention
               retrieval, and reports clinical-useful hits separately from low-value
@@ -3708,6 +3715,7 @@ def repeatable_run_panel() -> str:
   --iteration-smoke-gates \\
   --iteration-id SQI-YYYY-MM-DD-NNN \\
   --iteration-type ranking \\
+  --development-loop \\
   --focused-command "python3 -m pytest tests/test_evidence_vectors.py -k '<selector>' -q" \\
   --base-url http://127.0.0.1:8766"""
     smoke_command = """PYTHONPATH=src python3 scripts/run_search_quality_experiment.py \\
@@ -6061,6 +6069,15 @@ def parse_args() -> argparse.Namespace:
         "--ui-report-only-change",
         action="store_true",
         help="For --iteration-smoke-gates, record a UI/report-only decision and skip live smoke unless forced.",
+    )
+    parser.add_argument(
+        "--development-loop",
+        action="store_true",
+        help=(
+            "For --iteration-smoke-gates, run the fast development tier: static/focused checks "
+            "plus required standing smoke, while deferring rotating and patient-portal gates "
+            "unless forced or release-quality."
+        ),
     )
     parser.add_argument(
         "--broad-change",

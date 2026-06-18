@@ -76,11 +76,19 @@ DEFAULT_PUBLIC_EVIDENCE_SOURCE_PREFIXES = (
     "wikipedia",
     "wikimedia",
 )
+PUBLIC_OUTPUT_INTERNAL_EVIDENCE_SOURCE_PREFIXES = (
+    "code",
+    "resolver",
+    "system_code",
+    "umls_definition",
+    "umls_identifier",
+)
 
 PUBLIC_OUTPUT_DROP_FIELDS = {
     "codes",
     "source_asserted_codes",
     "mappings",
+    "matched_definition",
     "matched_label",
     "matched_sab",
     "matched_tty",
@@ -215,6 +223,15 @@ class PublicOutputMixin:
             normalized.startswith(f"{prefix}_") for prefix in prefixes
         )
 
+    def public_internal_evidence_source(self, source: object) -> bool:
+        normalized = normalize_public_evidence_source(source)
+        if not normalized:
+            return False
+        prefixes = PUBLIC_OUTPUT_INTERNAL_EVIDENCE_SOURCE_PREFIXES
+        return normalized in prefixes or any(
+            normalized.startswith(f"{prefix}_") for prefix in prefixes
+        )
+
     def public_evidence_sources_for_hit(self, hit: dict) -> list[str] | None:
         raw_sources = hit.get("sources")
         if raw_sources is None:
@@ -226,11 +243,13 @@ class PublicOutputMixin:
             sources = [source] if source else []
         if not sources:
             return []
-        public_sources = [
-            source for source in sources if self.public_evidence_source_allowed(source)
-        ]
-        if len(public_sources) != len(sources):
-            return None
+        public_sources = []
+        for source in sources:
+            if self.public_internal_evidence_source(source):
+                continue
+            if not self.public_evidence_source_allowed(source):
+                return None
+            public_sources.append(source)
         return public_sources
 
     def public_labels_for_cui(self, cui: str, *, limit: int = 8) -> list[str]:

@@ -22,6 +22,13 @@ def load_vectors(path: str | Path) -> list[VectorRecord]:
 
 
 def iter_vectors(path: str | Path):
+    path = Path(path)
+    if path.suffix == ".json" and path.name.endswith(".manifest.json"):
+        from .compact_vectors import iter_compact_vectors
+
+        yield from iter_compact_vectors(path)
+        return
+
     for payload in iter_jsonl(path):
         yield VectorRecord(
             doc_id=payload["doc_id"],

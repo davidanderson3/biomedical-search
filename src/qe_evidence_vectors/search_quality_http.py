@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import sys
+from copy import deepcopy
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -11,6 +12,10 @@ from urllib.parse import parse_qs, urlparse
 from qe_evidence_vectors.code_index import is_cui
 from qe_evidence_vectors.search_execution import SearchBackendUnavailable, normalize_search_scope
 from qe_evidence_vectors.search_service import SearchIndex
+from qe_evidence_vectors.umls_search_compat import (
+    UMLSSearchParameterError,
+    umls_search_response,
+)
 
 
 JUDGMENT_FIELDS = ["query", "doc_id", "cui", "view", "score", "grade", "labels"]
@@ -156,6 +161,63 @@ OPENAPI_SPEC = {
                 },
             }
         },
+        "/search/{version}": {
+            "get": {
+                "summary": "UMLS REST-compatible concept and source identifier search",
+                "parameters": [
+                    {"name": "version", "in": "path", "required": True, "schema": {"type": "string"}},
+                    {"name": "string", "in": "query", "required": True, "schema": {"type": "string"}},
+                    {
+                        "name": "inputType",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": ["atom", "code", "sourceConcept", "sourceDescriptor", "sourceUi", "tty"],
+                        },
+                    },
+                    {
+                        "name": "returnIdType",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": ["aui", "concept", "code", "sourceConcept", "sourceDescriptor", "sourceUi"],
+                        },
+                    },
+                    {"name": "sabs", "in": "query", "schema": {"type": "string"}},
+                    {
+                        "name": "searchType",
+                        "in": "query",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "exact",
+                                "words",
+                                "leftTruncation",
+                                "rightTruncation",
+                                "normalizedString",
+                                "normalizedWords",
+                            ],
+                        },
+                    },
+                    {"name": "semanticTypes", "in": "query", "schema": {"type": "string"}},
+                    {"name": "semanticGroups", "in": "query", "schema": {"type": "string"}},
+                    {"name": "partialSearch", "in": "query", "schema": {"type": "boolean"}},
+                    {"name": "includeObsolete", "in": "query", "schema": {"type": "boolean"}},
+                    {"name": "includeSuppressible", "in": "query", "schema": {"type": "boolean"}},
+                    {"name": "pageSize", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 200}},
+                ],
+                "responses": {
+                    "200": {"description": "UMLS-style searchResults response."},
+                    "400": {"description": "Validation error."},
+                },
+            }
+        },
+        "/api/umls/search": {
+            "get": {
+                "summary": "Alias for UMLS REST-compatible search using version=current",
+                "responses": {"200": {"description": "UMLS-style searchResults response."}},
+            }
+        },
         "/api/resolve": {
             "get": {
                 "summary": "Resolve direct CUI/code/text input before full search",
@@ -237,6 +299,12 @@ OPENAPI_SPEC = {
         }
     },
 }
+
+
+def public_openapi_spec() -> dict:
+    spec = deepcopy(OPENAPI_SPEC)
+    spec["paths"].pop("/api/judgments", None)
+    return spec
 
 SEARCH_PROFILE_DEFAULTS = {
     "product": {
@@ -425,9 +493,10 @@ def make_handler(
     *,
     plan_status_func: Callable[[dict], dict],
     resolve_path_func: Callable[[str], Path],
+    expose_builder_tools: bool = True,
 ):
-    search_quality_dir = html_path.parent / "search_quality"
     root_html_path = product_html_path or html_path
+    search_quality_dir = root_html_path.parent / "search_quality"
     static_assets = {
         "/search_quality_server.css": (search_quality_dir / "server.css", "text/css; charset=utf-8"),
         "/search_quality_app.js": (search_quality_dir / "app.js", "application/javascript; charset=utf-8"),
@@ -452,6 +521,10 @@ def make_handler(
             "application/json; charset=utf-8",
         ),
     }
+    static_binary_assets = {
+        "/search_quality_uts_banner.jpg": (search_quality_dir / "uts-banner.jpg", "image/jpeg"),
+        "/search_quality_nlm_logo.png": (search_quality_dir / "nih-nlm-logo.png", "image/png"),
+    }
 
     class Handler(BaseHTTPRequestHandler):
         def do_OPTIONS(self) -> None:
@@ -467,6 +540,9 @@ def make_handler(
                 self.send_html(root_html_path.read_text(encoding="utf-8"))
                 return
             if parsed.path in {"/review", "/review/", "/review.html"}:
+                if not expose_builder_tools:
+                    self.send_error_json("not_found", "not found", status=404)
+                    return
                 self.send_html(html_path.read_text(encoding="utf-8"))
                 return
             if parsed.path == "/api/health":
@@ -480,12 +556,30 @@ def make_handler(
                 )
                 return
             if parsed.path == "/api/openapi.json":
-                self.send_json(OPENAPI_SPEC)
+                self.send_json(OPENAPI_SPEC if expose_builder_tools else public_openapi_spec())
+                return
+            if parsed.path == "/api/umls/search" or parsed.path.startswith("/search/"):
+                params = parse_qs(parsed.query)
+                version = "current"
+                if parsed.path.startswith("/search/"):
+                    version = parsed.path.rsplit("/", 1)[-1].strip() or "current"
+                else:
+                    version = (params.get("version") or ["current"])[0].strip() or "current"
+                try:
+                    self.send_json(umls_search_response(index, params, version=version))
+                except UMLSSearchParameterError as exc:
+                    self.send_error_json("invalid_parameter", str(exc), status=400)
                 return
             if parsed.path == "/progress":
+                if not expose_builder_tools:
+                    self.send_error_json("not_found", "not found", status=404)
+                    return
                 self.send_html(progress_html_path.read_text(encoding="utf-8"))
                 return
             if parsed.path in {"/source-dashboard", "/evidence-dashboard"}:
+                if not expose_builder_tools:
+                    self.send_error_json("not_found", "not found", status=404)
+                    return
                 if not source_dashboard_html_path or not source_dashboard_html_path.exists():
                     self.send_error_json("not_found", "source dashboard has not been generated", status=404)
                     return
@@ -498,13 +592,24 @@ def make_handler(
                     return
                 self.send_text(asset_path.read_text(encoding="utf-8"), content_type=content_type)
                 return
+            if parsed.path in static_binary_assets:
+                asset_path, content_type = static_binary_assets[parsed.path]
+                if not asset_path.exists():
+                    self.send_error_json("not_found", "not found", status=404)
+                    return
+                self.send_binary(asset_path.read_bytes(), content_type=content_type)
+                return
             if parsed.path == "/api/status":
                 status = index.status()
-                status["judgments_path"] = str(judgments_path)
-                status["judgments_count"] = len(read_judgments(judgments_path))
+                if expose_builder_tools:
+                    status["judgments_path"] = str(judgments_path)
+                    status["judgments_count"] = len(read_judgments(judgments_path))
                 self.send_json(status)
                 return
             if parsed.path == "/api/judgments":
+                if not expose_builder_tools:
+                    self.send_error_json("not_found", "not found", status=404)
+                    return
                 rows = read_judgments(judgments_path)
                 self.send_json(
                     {
@@ -515,10 +620,16 @@ def make_handler(
                 )
                 return
             if parsed.path == "/api/progress":
+                if not expose_builder_tools:
+                    self.send_error_json("not_found", "not found", status=404)
+                    return
                 plan = json.loads(resolve_path_func(str(progress_plan_path)).read_text(encoding="utf-8"))
                 self.send_json(plan_status_func(plan))
                 return
             if parsed.path == "/api/full-progress":
+                if not expose_builder_tools:
+                    self.send_error_json("not_found", "not found", status=404)
+                    return
                 plan = json.loads(resolve_path_func(str(full_progress_plan_path)).read_text(encoding="utf-8"))
                 self.send_json(plan_status_func(plan))
                 return
@@ -747,6 +858,9 @@ def make_handler(
 
         def do_POST(self) -> None:
             parsed = urlparse(self.path)
+            if not expose_builder_tools:
+                self.send_error_json("not_found", "not found", status=404)
+                return
             if parsed.path != "/api/judgments":
                 self.send_error_json("not_found", "not found", status=404)
                 return
@@ -789,6 +903,14 @@ def make_handler(
 
         def send_text(self, body: str, *, status: int = 200, content_type: str = "text/plain; charset=utf-8") -> None:
             payload = body.encode("utf-8")
+            self.send_response(status)
+            self.send_common_headers()
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def send_binary(self, payload: bytes, *, status: int = 200, content_type: str = "application/octet-stream") -> None:
             self.send_response(status)
             self.send_common_headers()
             self.send_header("Content-Type", content_type)

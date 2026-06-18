@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UMLS 2.0 Product Plan</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>UMLS 2.0 Product Plan</h1>
+<h2>Position</h2>
+<p>The UMLS Semantic Evidence Index is a successor architecture to the traditional UMLS search experience. It does not discard UMLS. It uses UMLS CUIs as the identity layer, then adds real-world biomedical language, semantic embeddings, provenance, and evaluation on top.</p>
+<p>Traditional UMLS artifacts answer:</p>
+<ul><li>What strings and source vocabulary records are attached to this concept?</li><li>How do concepts relate inside source vocabularies?</li></ul>
+<p>The successor product should answer:</p>
+<ul><li>What UMLS concept best matches this biomedical query?</li><li>Why did the system retrieve it?</li><li>Which real-world evidence supports that match?</li><li>How well does the retrieval layer perform on reviewed queries?</li></ul>
+<p>This project is not an official NLM UMLS release. It is a release design for a UMLS 2.0-style product built on top of licensed UMLS inputs and public or credentialed real-world evidence.</p>
+<h2>Product Thesis</h2>
+<p>The next UMLS should be a semantic evidence index, not a bigger synonym table. Search should be driven by biomedical BERT vectors, lexical signals, source provenance, and measured relevance. Synonyms still matter, but they should serve as anchors and metadata rather than the entire retrieval model.</p>
+<h2>Core Release Artifacts</h2>
+<h3>1. CUI/View Embedding Pack</h3>
+<p>One CUI should have multiple view vectors when the evidence language differs. Examples:</p>
+<ul><li><code>pubmed_clinical_context</code></li><li><code>europepmc_clinical_context</code></li><li><code>pubmed_labs_measurements_context</code></li><li><code>pubmed_procedures_devices_context</code></li><li><code>open_guideline_context</code>, optional when source terms permit it</li><li><code>labels_only</code>, optional baseline</li></ul>
+<p>Each vector record should include:</p>
+<ul><li><code>doc_id</code></li><li><code>cui</code></li><li><code>view</code></li><li>vector dimensions and precision</li><li>embedding model</li><li>pooling method</li><li>evidence count</li><li>source list</li><li>UMLS release</li></ul>
+<p>The current preferred embedding path is SapBERT/CLS:</p>
+<pre><code class="language-text">model: cambridgeltl/SapBERT-from-PubMedBERT-fulltext
+pooling: CLS
+dimensions: 768</code></pre>
+<h3>2. Search Index Bundle</h3>
+<p>Release an Elasticsearch/OpenSearch-ready bundle and, later, a compact ANN index for offline deployments.</p>
+<p>Current index shape:</p>
+<pre><code class="language-text">dense_vector: 768 dimensions
+similarity: cosine
+metadata: CUI, view, labels, sources, evidence count, model</code></pre>
+<p>The index bundle should be loadable without rebuilding the source evidence.</p>
+<h3>3. Evidence Provenance Pack</h3>
+<p>Release provenance pointers, not uncontrolled full-text dumps. Public literature provenance can include:</p>
+<ul><li>PMID</li><li>PMCID</li><li>DOI</li><li>source system</li><li>matched UMLS label</li><li>CUI</li><li>evidence view</li><li>evidence weight</li><li>corpus document id</li></ul>
+<p>For credentialed clinical sources, release only what licensing and privacy review allow. Raw patient text should not be part of a public artifact.</p>
+<h3>4. Related Concept Graph Pack</h3>
+<p>Search results should expose nearby concepts from UMLS relationships, not just ranked vector hits. A compact graph pack can be derived from <code>MRREL.RRF</code> and <code>MRCONSO.RRF</code>, restricted to CUIs present in the search product.</p>
+<p>Each related-concept row should include:</p>
+<ul><li>source CUI</li><li>related CUI</li><li>relationship code and RELA when available</li><li>source vocabulary abbreviation</li><li>direction</li><li>display label</li><li>rank within the source CUI</li></ul>
+<p>This is a navigation and review aid. It should not replace search relevance judgments, and it should stay small enough to ship with the searchable product.</p>
+<p>The search UI now also has a narrower research relation pack built from <code>MRREL.RRF</code>, <code>MRCONSO.RRF</code>, <code>MRSTY.RRF</code>, and staged HPO annotation files. It keeps cross-semantic-type links that researchers are likely to ask for directly: conditions to drugs, genes or proteins, procedures or tests, phenotypes, organisms, devices, safety causes, and the inverse directions for drug, gene, and procedure searches. The current local build uses UMLS 2025AB plus HPO annotations and stores <code>152,326</code> links in <code>build/umls_research_relations.sqlite</code>.</p>
+<h3>5. Extension Concept Registry</h3>
+<p>The successor product can include provisional extension concepts when evidence shows a useful biomedical idea that UMLS does not cover cleanly. These records must not be presented as official NLM UMLS CUIs. They use local <code>NEW#######</code> CUIs and carry explicit governance metadata.</p>
+<p>Each extension concept should include:</p>
+<ul><li>local <code>NEW#######</code> CUI</li><li>preferred label and useful aliases</li><li>semantic type or local semantic class</li><li>definition</li><li>status: <code>candidate</code>, <code>reviewed</code>, <code>promoted</code>, <code>rejected</code>, or <code>deprecated</code></li><li>evidence count and provenance pointers</li><li>broader, related, or close-match UMLS CUIs where available</li><li>reviewer/rationale metadata</li></ul>
+<p>Extension concepts are useful only if they improve retrieval or coverage. They should be embedded, searched, and judged through the same quality loop as UMLS CUI/view documents. Human feedback can tune the loop, but human approval is not required before creating a high-confidence local CUI.</p>
+<h3>6. Evaluation Benchmark</h3>
+<p>The benchmark is part of the product, not a side file. It should contain:</p>
+<p>lab/procedure/device, rare disease, organism, gene/protein</p>
+<ul><li>reviewed biomedical queries</li><li>expected CUI when known</li><li>result judgments: relevant, partial, wrong</li><li>query type: abbreviation, lay phrase, clinical phrase, literature phrase,</li><li>metrics: P@5, MRR, recall@k</li></ul>
+<p>No release should be considered good solely because the pipeline ran. It needs reviewed search quality.</p>
+<h3>7. Build Manifest</h3>
+<p>Every release should include a manifest with:</p>
+<ul><li>UMLS release version</li><li>source corpora and harvest dates</li><li>query/topic files used for literature harvests</li><li>model name, model hash if available, pooling method</li><li>build command versions</li><li>row counts</li><li>file sizes</li><li>file hashes</li><li>known exclusions and restricted artifacts</li><li>related-concept graph source and build parameters</li><li>extension concept registry version and review policy</li></ul>
+<h3>8. Delta Packs</h3>
+<p>The product should update through deltas:</p>
+<ul><li>new corpus documents</li><li>new linked evidence</li><li>changed CUI/view documents</li><li>changed vectors</li><li>deleted or superseded records</li><li>index alias updates</li></ul>
+<p>Users should not need to rebuild all of PubMed to accept a monthly update.</p>
+<h2>Current Prototype Status</h2>
+<p>The living technical status is maintained in <code>docs/technical_pipeline.html</code>; the plain-language status is maintained in <code>docs/explain_like_im_5.html</code>.</p>
+<p>As of 2026-05-01, the current local prototype has five topic chunks plus seven reviewed PubMed bulk baseline pilots loaded through the cumulative Elasticsearch alias:</p>
+<pre><code class="language-text">qe-scaling-chunk-001-gap-topics-sapbert-cls
+qe-scaling-chunk-002-common-clinical-sapbert-cls
+qe-scaling-chunk-003-abbreviation-language-sapbert-cls
+qe-scaling-chunk-004-drug-safety-therapeutics-sapbert-cls
+qe-scaling-chunk-005-diagnostics-procedures-devices-sapbert-cls
+pubmed bulk recent baseline vectors loaded into qe-scaling-sapbert-cls
+pubmed bulk recent next-two vectors loaded into qe-scaling-sapbert-cls
+pubmed bulk recent 1331/1330 vectors loaded into qe-scaling-sapbert-cls
+pubmed bulk recent 1329/1328 vectors loaded into qe-scaling-sapbert-cls
+pubmed bulk recent 1327/1326 vectors loaded into qe-scaling-sapbert-cls
+pubmed bulk recent 1325/1324 vectors loaded into qe-scaling-sapbert-cls
+pubmed bulk recent 1323/1322 vectors loaded into qe-scaling-sapbert-cls
+pubmed bulk recent 1321/1320 vectors loaded into qe-scaling-sapbert-cls</code></pre>
+<p>The latest two-file pilot, <code>pubmed_bulk_recent_1321_1320</code>, is loaded and reviewed:</p>
+<pre><code class="language-text">corpus documents: 59,881
+linked evidence rows: 821,042
+CUI/view documents: 55,371
+SapBERT vectors: 55,371
+compact float32 vector export: build/compact_vectors/pubmed_bulk_recent_1321_1320_sapbert_cls.manifest.json
+Elasticsearch bulk export: 12 part files for qe-scaling-pubmed-bulk-recent-1321-1320-sapbert-cls
+quality gate: 8 queries, 40 judgments, mean weighted P@5 0.750, mean MRR 1.0, relevant top-1 8 / 8</code></pre>
+<p>The cumulative assessment alias is:</p>
+<pre><code class="language-text">qe-scaling-sapbert-cls</code></pre>
+<p>Current cumulative scale:</p>
+<pre><code class="language-text">vector records loaded by latest assessment server: 533,540
+Elasticsearch cumulative alias records: 535,683
+full-tracker CUI/view document rows represented by artifacts: 516,028
+indexed display provenance refs: 1,531,116
+raw linked evidence rows in current artifacts: 10,093,683
+embedding model: SapBERT-from-PubMedBERT-fulltext
+pooling: CLS
+dimensions: 768
+search label index rows: 7,049,993
+related-concept links: 483,677
+assessment startup: 97.263s with indexed provenance and related-concept index, down from the earlier 134.309s eager-provenance path</code></pre>
+<p>The prototype now has an extension-concept lane. It can emit local <code>NEW#######</code> concept documents, matching evidence records, and a registry for concepts that UMLS does not cover cleanly. No extension concepts are loaded into the current cumulative alias yet.</p>
+<p>Last reviewed quality sample:</p>
+<pre><code class="language-text">queries: 8
+judgments: 40
+mean weighted P@5: 0.750
+mean MRR: 1.0
+relevant top-1 queries: 8 / 8</code></pre>
+<p>The latest reviewed chunk is <code>pubmed_bulk_recent_1321_1320</code>. The post-chunk efficiency gate remains in place: the prototype has indexed display provenance and compact float32 vector exports. The next processing step is targeted PubMed weakness acquisition and promotion, not broad baseline expansion. The latest reviewed batch matches the prior <code>1323/1322</code> quality gate (<code>0.750</code> mean weighted P@5, MRR <code>1.0</code>, <code>8 / 8</code> relevant top-1). A harder 10-query mixed clinical smoke pass also kept relevant top-1 for all 10 queries, but its mean weighted P@5 was <code>0.570</code> because lower ranks still contain generic follow-up, anatomy, and denied-positive concepts. Remaining cleanup is mostly related-concept specificity below rank 1 and composite drug/adverse-event or diagnosis/lab queries where component concepts still outrank the combined concept, so scale alone should not be treated as quality improvement.</p>
+<h2>Release Boundaries</h2>
+<p>Public release candidate:</p>
+<ul><li>literature-derived vectors</li><li>public provenance pointers</li><li>index mappings and bulk exports</li><li>benchmark queries and judgments</li><li>build manifests</li><li>reviewed extension concept registry, clearly marked as local/non-official</li></ul>
+<p>Restricted release candidate:</p>
+<p>review approves</p>
+<ul><li>credentialed-source vectors or aggregate evidence, only if licensing/privacy</li><li>reproducible scripts for credentialed users to build local-only artifacts</li></ul>
+<p>Do not release:</p>
+<ul><li>raw patient text</li><li>raw copyrighted full text unless licensing is settled</li><li>hashing vectors as product quality vectors</li><li>unreviewed synonym dumps presented as new terminology</li><li>provisional extension concepts presented as official UMLS CUIs</li></ul>
+<h2>Success Criteria</h2>
+<p>The successor product is ready when:</p>
+<ul><li>query review shows clear improvement over lexical UMLS search</li><li>every result can show why it was retrieved</li><li>evidence sources are traceable</li><li>release artifacts can be loaded without running the whole pipeline</li><li>updates can be applied incrementally</li><li>noisy chunks are gated by evaluation, not blindly merged</li></ul>
+</main>
+<!-- Converted from docs/umls_2_product.html. -->
+</body>
+</html>

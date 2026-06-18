@@ -353,12 +353,12 @@
           <a class="primary" href="search_quality_test_runs.html">Tests Over Time</a>
           <a href="#how-to-read">How To Read</a>
           <a href="search_quality_experiments.html">Detailed Run Data</a>
-          <a href="search_quality_wrong_first_noise_ledger.md">Wrong-First Ledger</a>
+          <a href="search_quality_wrong_first_noise_ledger.html">Wrong-First Ledger</a>
           <a href="search_quality_daily_accomplishments.html">Daily Accomplishments</a>
           <a href="search_quality_evidence_buckets.html">Evidence Buckets</a>
           <a href="source_contribution_report.html">Contributions</a>
           <a href="#whole-product-quality">Product Quality</a>
-          <a href="search_quality_test_suite.md">Suite Runbook</a>
+          <a href="search_quality_test_suite.html">Suite Runbook</a>
           <a href="http://127.0.0.1:8766/">Live Search Interface</a>
         </nav>
       </div>
@@ -367,73 +367,81 @@
   <main>
     <section class="panel">
       <h2>Current Quality Snapshot</h2>
-      <p class="muted small">Top cards show the latest user-facing quality signals. A row is "good" only when the local search API returns the expected medical concept IDs near the top and avoids known bad first answers. The next section defines the repeated terms.</p>
+      <p class="muted small">This is not a percent-complete progress report. These eight cards are separate workflow diagnostics, and the category count intentionally stays at eight. Each percentage answers a narrower question: in this lane, how often does search return the expected concept cleanly or put the right answer first? The evidence under each card now also calls out near-miss severity, page cleanliness, role/context accuracy, gate status, stability, or runtime risk when those signals matter.</p>
       <div class="summary-grid">
-        <div class="metric good">
-          <strong>413 passed</strong>
-          <span>static suite guard</span>
-          <small>Code-level regression tests that do not need the live API. Latest static-only suite result: 413 passed and 1 skipped.</small>
-          <small class="stamp">Ran 2026-06-15 17:44 UTC, 3.1s</small>
-        </div>
         <div class="metric warn">
-          <strong>148/168</strong>
-          <span>full clinical coverage</span>
-          <small>Clinical paragraph benchmark. A row passes only if every expected concept ID appears in the first 10 answers. Current result: 844/874 expected concepts found, 20 rows still missing something, and 0 wrong first answers.</small>
-          <small class="stamp">Ran 2026-06-11 17:52 UTC, 58.3s</small>
-        </div>
-        <div class="metric warn">
-          <strong>41/50</strong>
-          <span>cycling regression</span>
-          <small>Fast rotating sample from the clinical benchmark. It catches regressions without rerunning all 168 rows every time. Latest sample passed release checks with 0 wrong first answers.</small>
-          <small class="stamp">Ran 2026-06-11 19:18 UTC</small>
-        </div>
-        <div class="metric warn">
-          <strong>0 reviewed</strong>
-          <span>open wrong-first rows</span>
-          <small>A wrong-first row is a test where the intended concept is present but another concept is ranked first. Reviewed rows through WFN-014 are closed; the current full clinical run and latest rotating sample both have 0.</small>
-          <small class="stamp">Updated 2026-06-11 18:53 UTC</small>
-        </div>
-        <div class="metric good">
-          <strong>36/36</strong>
-          <span>focused PubMed recall</span>
-          <small>Seven reviewed PubMed title+abstract texts are sent as long queries to the local search API. All 36 expected medical concepts appear in the first 10 answers. The broader 13-abstract reviewed suite is now 13/13 top-on-target with 0 wrong first answers, while 4 rows still miss at least one expected concept in the first 10.</small>
-          <small class="stamp">Approved suite reran 2026-06-12 16:00 UTC</small>
-        </div>
-        <div class="metric warn">
-          <strong>5/12</strong>
-          <span>clinical text formats</span>
-          <small>Realistic English note formats such as radiology, pathology, lab, and nursing text. First live run found 52/60 expected concepts in the first 10 answers, with 7 rows missing something and 0 wrong first answers.</small>
-          <small class="stamp">Ran 2026-06-11 15:03 UTC</small>
+          <strong>88%</strong>
+          <span>clinical paragraphs</span>
+          <small>Broad clinician-written paragraph queries mostly find every expected concept near the top. This is the large clinical recall benchmark, and it is strong but not complete.</small>
+          <small>Evidence: 148/168 rows strict top 10; 844/874 expected concepts found in the first 10; 20 rows still miss at least one concept; 0 wrong-first rows. Near-miss severity: 28/30 top-10 misses are recovered by top 20, 1 more by top 60, and 1 is absent by top 60.</small>
+          <small class="stamp">Ran 2026-06-11 17:52 UTC</small>
         </div>
         <div class="metric bad">
-          <strong>5/13</strong>
-          <span>consumer lay-language test</span>
-          <small>Short patient wording such as "water pill" or "heart tracing." Only 5/13 intended concepts appeared in the first 10 answers, and 10 rows ranked the wrong concept first.</small>
-          <small class="stamp">Ran 2026-06-12 14:45 UTC, 4.4s API</small>
+          <strong>33%</strong>
+          <span>realistic note formats</span>
+          <small>Radiology, pathology, lab, nursing, and other real-world note styles remain the weakest clinical-text lane. The latest uncached routing iteration keeps the first answer clean and removes configured first-page drift, but required secondary concepts are often missing.</small>
+          <small>Evidence: 8/24 rows strict top 10; 94/115 expected concepts found at top 10, 102/115 at top 20, and 105/115 at top 60; 16 rows still miss at top 10 and 10 still miss at top 20; 0 wrong-first rows; 0 disallowed-at-10 rows and 1 disallowed-at-20 row. Status: diagnostic, not promotion-ready.</small>
+          <small class="stamp">Uncached lane reran 2026-06-17 21:26 UTC</small>
         </div>
         <div class="metric good">
-          <strong>12/12</strong>
-          <span>workflow intent</span>
-          <small>Long patient-portal messages still rank the active/current issue ahead of copied-forward history or old medications, with 0 wrong first answers.</small>
+          <strong>100%</strong>
+          <span>short clinical searches</span>
+          <small>Reviewed terse clinician searches such as hypertension, stroke, diabetes, atrial fibrillation, and heart failure are stable in the release gate.</small>
+          <small>Evidence: 20/20 rows passed, with 20/20 concepts found at top 10/top 20, 0 wrong-first rows, 0 missing rows, and 0 configured disallowed rows. Stability: a larger 26-row candidate expansion failed and is not counted in this release metric.</small>
+          <small class="stamp">20-row release check ran 2026-06-11 18:06 UTC</small>
+        </div>
+        <div class="metric good">
+          <strong>100%</strong>
+          <span>patient wording clean pages</span>
+          <small>Patient phrases now find the right concept without the known literal, anatomy, device, or gene drift in the first page. The lane is still awaiting a gate-promotion decision.</small>
+          <small>Evidence: 13/13 expected concepts found at top 10/top 20, 13/13 clean first pages, 0 configured disallowed concepts at top 10/top 20, and 0 wrong-first rows. Status: green candidate lane awaiting blocking-versus-diagnostic policy.</small>
+          <small class="stamp">Consumer lane reran 2026-06-16 20:13 UTC</small>
+        </div>
+        <div class="metric good">
+          <strong>100%</strong>
+          <span>portal current issue</span>
+          <small>Long portal messages that mix today's concern with copied-forward history or old medications still rank the active/current issue first.</small>
+          <small>Evidence: 12/12 rows top-on-target; 0 wrong-first rows. Role/context metric: current issue beats copied-forward history. Full copied-detail recall remains separate at 73/88 expected concepts at top 10 and 80/88 at top 20.</small>
           <small class="stamp">Ran 2026-06-11 19:18 UTC</small>
         </div>
-        <div class="metric good">
-          <strong>20</strong>
-          <span>short-query test passed</span>
-          <small>Reviewed short user searches such as hypertension, stroke, diabetes, atrial fibrillation, and heart failure passed live API checks at 20/20. A larger 26-row candidate set failed and was not added to the release gate.</small>
-          <small class="stamp">20-row release check ran 2026-06-11 18:06 UTC; expansion candidate ran 2026-06-12 14:00 UTC</small>
+        <div class="metric bad">
+          <strong>30%</strong>
+          <span>PubMed long abstracts</span>
+          <small>The approved PubMed suite has expanded from 13 to 23 reviewed title-plus-abstract rows. First answers are clean after the post-fix rerun, but long-document recall is still weak.</small>
+          <small>Evidence: 7/23 rows strict top 10; 77/106 expected concepts found at top 10, 81/106 at top 20, and 89/106 at top 60; 23/23 top-on-target; 0 wrong-first rows; 16 rows still miss at top 10 and 12 still miss at top 20. Runtime is tracked separately because long-document extraction dominates uncached probes.</small>
+          <small class="stamp">Expanded suite reran 2026-06-17 20:40 UTC</small>
         </div>
         <div class="metric good">
-          <strong>9/9</strong>
-          <span>core source-specific test</span>
-          <small>Checks whether specific public sources still help: DailyMed drug labels, MedlinePlus lay pages, and PubMed/PMC literature. The pruned set now finds 20/20 expected concepts with 0 wrong-first rows.</small>
-          <small class="stamp">Ran 2026-06-15 17:46 UTC; source layer passed blocking gates</small>
+          <strong>100%</strong>
+          <span>core public sources</span>
+          <small>DailyMed, MedlinePlus, and PubMed/PMC source-specific checks are currently green after the DailyMed warning-context fix.</small>
+          <small>Evidence: 9/9 rows strict top 10; 20/20 expected concepts found at top 10/top 20; 0 wrong-first rows; 0 configured disallowed rows. Source-status metric: core public-source gate is green, while expanded DailyMed section coverage is still future work.</small>
+          <small class="stamp">Ran 2026-06-15 17:47 UTC</small>
         </div>
-        <div class="metric warn">
-          <strong>609 CUIs</strong>
-          <span>evaluation target coverage</span>
-          <small>Static audit of asserted search-quality targets found 2,210 target mentions across 609 unique target CUIs. Disorders account for 48.3% of target mentions; Anatomy, Phenomena, and Physiology are thin.</small>
-          <small class="stamp">Ran 2026-06-15 16:04 UTC</small>
+        <div class="metric good">
+          <strong>100%</strong>
+          <span>reviewed first answers</span>
+          <small>Across the current reviewed product lanes, the first result is intended or accepted. This is a trust signal, not a guarantee that the rest of the first page is complete or clean.</small>
+          <small>Evidence: 269/269 current reviewed product rows have an intended or accepted first answer. Stability watch: the latest 50-query rotating smoke has 50/50 top-on-target, 0 wrong-first rows, 41/50 strict top 10, 48/50 strict top 20, and 257/268 expected concepts at top 10.</small>
+          <small class="stamp">Computed through 2026-06-17 20:40 UTC</small>
+        </div>
+      </div>
+      <div class="story-grid section-note">
+        <div class="story-item good">
+          <strong>What Is Working</strong>
+          <p>The system is currently good at avoiding bad first answers in the reviewed product lanes. Short clinical searches, patient wording, portal-current-issue behavior, and core source-specific evidence are the strongest areas.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>What Is Still Weak</strong>
+          <p>The main visible weaknesses are expanded realistic note formats at 8/24 strict top 10 and expanded PubMed abstracts at 7/23 strict top 10. Consumer wording is clean in the latest lane run, but its blocking/diagnostic policy still needs a decision. Wrong-first mining stays in watch mode for new rows.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>Why There Are Eight Cards</strong>
+          <p>Each card is a workflow users would recognize. New measurements such as near-miss severity, role accuracy, first-page cleanliness, gate status, stability, and runtime are embedded inside those cards instead of becoming separate top-level categories.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>Guardrails And Coverage</strong>
+          <p>Static checks and the latest required rotating smoke are passing, with 0 wrong-first rows in the 50-query sample. Coverage is still uneven: the audit found 609 unique target CUIs, but Disorders dominate while Anatomy, Phenomena, and Physiology remain thin. The product scorecard now tracks these coverage and stability signals without changing the eight-category snapshot.</p>
         </div>
       </div>
     </section>
@@ -517,9 +525,9 @@
       <h2>Whole Product Quality Over Time</h2>
       <p class="muted small">This is the "how close are we to a dependable search interface" tracker. It is broader than recall. The score can stay flat after a useful audit if the actual ranked answers did not improve, and it can drop when a fresh run reveals more visible bad answers.</p>
       <div class="result-row">
-        <div class="result warn"><strong>74%</strong><span>current whole-product estimate</span></div>
+        <div class="result warn"><strong>76%</strong><span>current whole-product estimate</span></div>
         <div class="result neutral"><strong>starts here</strong><span>no older percentage was backfilled</span></div>
-        <div class="result warn"><strong>update</strong><span>after product-impacting shipped iterations</span></div>
+        <div class="result warn"><strong>computed</strong><span>from latest lane artifacts</span></div>
       </div>
       <div class="table-wrap">
         <table>
@@ -533,6 +541,55 @@
             </tr>
           </thead>
           <tbody>
+            <tr>
+              <td>2026-06-17 21:26 UTC</td>
+              <td class="score warn">76%</td>
+              <td>Unchanged; scoped note-format routing fix improved first-page cleanliness but not strict recall.</td>
+              <td>The note-format lane now uses the uncached routing/ranking run and has 0 wrong-first rows plus 0 disallowed-at-10 rows, but it remains 8/24 strict at top 10. The score stays capped while realistic note formats and approved PubMed long abstracts are both below 60.</td>
+              <td><code>scripts/build_whole_product_quality_scorecard.py</code> computed raw weighted score 76.0 and capped score 76. Inputs: broad clinical 91.5, realistic note formats 52.4 (8/24 strict top 10; 94/115 expected at top 10), approved PubMed long abstracts 49.9 (7/23 strict top 10; 77/106 expected at top 10), short clinical 100, consumer 100, portal current issue 100 top-on-target, core public sources 100, and rotating regression watch 87.2.</td>
+            </tr>
+            <tr>
+              <td>2026-06-17 20:41 UTC</td>
+              <td class="score warn">76%</td>
+              <td>Down 5 points; expanded known-weakness baselines replace the narrower estimate.</td>
+              <td>The 81% score was directionally useful after the wrong-first cleanup, but it was too optimistic as a current product estimate once the realistic-note and approved PubMed lanes expanded. The scorecard now weights latest lane artifacts and caps the estimate while both major known-weakness lanes are below 60.</td>
+              <td><code>scripts/build_whole_product_quality_scorecard.py</code> computed raw weighted score 76.1 and capped score 76. Inputs: broad clinical 91.5, realistic note formats 52.5 (8/24 strict top 10; 96/115 expected at top 10), approved PubMed long abstracts 49.9 (7/23 strict top 10; 77/106 expected at top 10), short clinical 100, consumer 100, portal current issue 100 top-on-target, core public sources 100, and rotating regression watch 87.2.</td>
+            </tr>
+            <tr>
+              <td>2026-06-17 15:01 UTC</td>
+              <td class="score warn">81%</td>
+              <td>Up 2 points; fresh rotating wrong-first rows closed.</td>
+              <td>The two wrong-first rows exposed by the prior rotating smoke now rank the intended clinical concepts first. The score moves modestly because realistic note-format recall and full approved PubMed long-document recall are still weak, but first-answer trust is clean again in the latest smoke.</td>
+              <td>SQI-2026-06-17-001 required gates passed: py_compile, 3 focused ranking regressions, standing clinical API smoke, and rotating 50-query smoke. The rotating smoke had 41/50 strict top 10, 48/50 strict top 20, 50/50 top-on-target, 0 wrong-first rows, 46 good rows, and 4 mixed rows. The benchmark also judged <code>NEW4840890</code> acute deep vein thrombosis as valid for <code>paragraph_02</code>.</td>
+            </tr>
+            <tr>
+              <td>2026-06-16 20:14 UTC</td>
+              <td class="score warn">79%</td>
+              <td>Up 2 points; consumer first-page literal drift is clean.</td>
+              <td>The consumer lay-language lane now finds every intended concept and removes the configured first-page literal/anatomy/device/gene drift. The score moves modestly because the latest required rotating smoke surfaced 2 unrelated wrong-first rows and realistic note-format recall is still weak.</td>
+              <td>SQI-2026-06-16-002 consumer rerun: 13/13 rows complete in the first 10, 13/13 top-on-target, 0 missing rows, 0 wrong-first rows, 0 disallowed-at-10 rows, 0 disallowed-at-20 rows, and suite score 100.0. Required smoke gates passed standing clinical API smoke and rotating 50-query smoke; rotating had 42/50 strict top 10, 47/50 strict top 20, 48/50 top-on-target, 2 wrong-first rows, 44 good rows, and 6 mixed rows.</td>
+            </tr>
+            <tr>
+              <td>2026-06-16 13:57 UTC</td>
+              <td class="score warn">77%</td>
+              <td>Up 2 points; consumer expected-concept recall and top answers are fixed.</td>
+              <td>The consumer lay-language lane no longer misses expected concepts or puts bad concepts first. The score moves modestly, not dramatically, because 7 consumer rows still include configured disallowed concepts in the first 10 answers and the latest required rotating smoke surfaced 1 wrong-first row that needs triage.</td>
+              <td>SQI-2026-06-16-001 consumer rerun: 13/13 rows complete in the first 10, 13/13 top-on-target, 0 missing rows, 0 wrong-first rows, and 7 disallowed-at-10 rows. Required smoke gates passed standing clinical API smoke and rotating 50-query smoke; rotating had 43/50 strict top 10, 49/50 top-on-target, and 1 wrong-first row.</td>
+            </tr>
+            <tr>
+              <td>2026-06-15 20:10 UTC</td>
+              <td class="score warn">75%</td>
+              <td>Up 1 point; one approved PubMed recall miss is green in a targeted live rerun.</td>
+              <td>The fidaxomicin-versus-vancomycin C. difficile trial row now brings the central infection concept into the first 10 answers without introducing configured disallowed antibiotic false positives. The score moves modestly because the full 13-row approved PubMed lane was not rerun yet and three known long-document recall rows remain.</td>
+              <td>SQI-2026-06-15-005 targeted PubMed rerun: <code>pubmed_cdiff_antibiotic_diarrhea_21288078</code> is 3/3 expected CUIs at top 10, <code>C0343386</code> Clostridium difficile infection ranks 10, top-on-target is preserved, and disallowed configured antibiotic concepts remain 0. Standing clinical API smoke passed.</td>
+            </tr>
+            <tr>
+              <td>2026-06-15 18:17 UTC</td>
+              <td class="score warn">74%</td>
+              <td>Unchanged score; molecular opt-in is visible, live examples still pending.</td>
+              <td>The search UI now exposes a default-off <code>Explore genes/proteins</code> mode and shows whether relation-derived molecular associations are enabled. The whole-product score stays flat because this iteration changed the product affordance and static guardrails, not the live ranked-answer benchmarks.</td>
+              <td>SQI-2026-06-15-004 UI/process pass: the search UI has a default-off molecular checkbox, sends <code>molecular_associations=0/1</code> for single-search and query-set runs, records <code>molecular_associations_enabled</code>, and renders a separate Molecular Associations panel only when opted in. Focused static UI tests passed.</td>
+            </tr>
             <tr>
               <td>2026-06-15 17:46 UTC</td>
               <td class="score warn">74%</td>
@@ -699,12 +756,16 @@
       </div>
       <div class="story-grid">
         <div class="story-item warn">
-          <strong>Scoring Rubric</strong>
-          <p>Coverage and recall: 30 points. Precision and trust: 25 points. User-interface and workflow fit: 20 points. Test reliability: 15 points. Evidence and source transparency: 10 points.</p>
+          <strong>Scorecard Mechanism</strong>
+          <p><code>scripts/build_whole_product_quality_scorecard.py</code> reads the latest saved run artifacts selected by <code>config/whole_product_quality_scorecard.json</code>. Current weights are broad clinical paragraphs 20, realistic note formats 22, PubMed long abstracts 22, short clinical searches 8, consumer lay language 8, patient-portal current issue 7, core public sources 7, and rotating regression watch 6. The config keeps those eight lanes fixed while adding per-lane measurement focus for near-miss severity, page cleanliness, role/context accuracy, coverage, stability, and operational risk.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>Cap Rule</strong>
+          <p>Do not report stronger than 76% while both realistic note formats and approved PubMed long abstracts score below 60. This keeps green short-query, source, consumer, and top-answer lanes from hiding major breadth failures.</p>
         </div>
         <div class="story-item warn">
           <strong>Update Rule</strong>
-          <p>Append a row whenever a shipped iteration changes user-visible behavior, a major benchmark, a routine regression check, source transparency, or a top known quality risk. Do not raise the percentage for a narrow recall win if visible noise or wrong first answers get worse.</p>
+          <p>Append a row whenever a shipped iteration changes user-visible behavior, a major benchmark, a routine regression check, source transparency, or a top known quality risk. Rerun the scorecard, record the raw weighted score and any active cap, and do not raise the percentage for a narrow recall win if visible noise or wrong first answers get worse.</p>
         </div>
       </div>
     </section>
@@ -714,14 +775,24 @@
       <p class="muted small">Plain-language day-by-day accomplishments now live in a separate file so this progress log can stay focused on current status, risks, and chronology.</p>
       <div class="result-row">
         <div class="result good"><strong><a href="search_quality_daily_accomplishments.html">open file</a></strong><span>daily accomplishment summaries</span></div>
-        <div class="result good"><strong><a href="search_quality_daily_accomplishments.html#2026-06-12">Jun 12</a></strong><span>latest completed daily summary</span></div>
+        <div class="result good"><strong><a href="search_quality_daily_accomplishments.html#2026-06-16">Jun 16</a></strong><span>latest completed daily summary</span></div>
         <div class="result neutral"><strong>linked</strong><span>from top navigation and this section</span></div>
       </div>
     </section>
 
     <section class="panel">
       <h2>Prioritized Backlog</h2>
-      <p class="muted small">Updated 2026-06-15 17:46 UTC. Each row is a concrete task. <code>P0</code> means a high-priority quality blocker, <code>P1</code> means important but not first in line, and <code>P2</code> means useful supporting work. "Next diff to ship" means the smallest code, data, or benchmark change that would make measurable progress.</p>
+      <p class="muted small">Updated 2026-06-17 21:26 UTC after the SQB-015 realistic note-format routing iteration. <code>P0</code> now means a visible user-quality failure or fresh first-answer trust risk. <code>P1</code> means important work that improves breadth, speed, governance, or future gates but is not the clearest current product failure. <code>P2</code> means useful supporting work. "Next diff to ship" means the smallest code, data, or benchmark change that would make measurable progress.</p>
+      <div class="story-grid section-note">
+        <div class="story-item bad">
+          <strong>Top Assessment</strong>
+          <p>The weakest current lanes are expanded realistic note formats at 8/24 strict top 10 and expanded PubMed long abstracts at 7/23 strict top 10. The latest rotating wrong-first rows are closed, so active P0 implementation should move to note-format recall and long-document recall while bad-result mining remains a standing watch.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>What Moved Down</strong>
+          <p>Short clinical searches, consumer wording, portal current-issue behavior, and core public source evidence are green in the current snapshot. Expansion, gating policy, source breadth, molecular examples, and speed work still matter, but they should not outrank the visible broken lanes unless they block a P0 fix.</p>
+        </div>
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -736,76 +807,92 @@
           </thead>
           <tbody>
             <tr>
-              <td class="score warn">P1</td>
+              <td class="score bad">P0</td>
               <td><strong>SQB-001 Bad-result mining</strong></td>
-              <td>The reviewed wrong-first list is clean through <code>WFN-014</code>. The rotating 50-row check has 0 wrong first answers. There is still recall work: <code>paragraph_112</code> does not show Opioid Use Disorder in the first 10 or 20 answers, and we do not yet have enough negative controls for every kind of bad result.</td>
-              <td>Keep sampling first-page results and related panels for bad generic fragments, standalone answer values, stale history, protocol-only evidence, source metadata concepts, and wrong medication roles. Treat the missing Opioid Use Disorder concept as a recall follow-up, not as an open wrong-first issue.</td>
+              <td>The current reviewed product-lane rollup has 269/269 intended or accepted first answers, and the latest required rotating smoke for <code>SQI-2026-06-17-001</code> has 50/50 top-on-target with 0 wrong-first rows. Fresh wrong-first rows still preempt most recall work when they appear because they directly damage trust.</td>
+              <td>Keep the closed WFN rows in regression coverage and continue first-page bad-result mining across consumer wording, long documents, source-specific rows, related panels, medication-role cases, and fresh rotating samples. Reopen an active WFN row only when a reviewed first-answer trust failure appears.</td>
               <td><code>config/search_quality_wrong_first_noise_ledger.tsv</code><br><code>config/search_quality_judgments.tsv</code></td>
-              <td>No open reviewed wrong-first rows, and each release lane has negative controls or an explicit reason they do not apply.</td>
+              <td>No open reviewed wrong-first rows, latest required rotating smoke has 0 wrong-first rows, and each release lane has negative controls or an explicit reason they do not apply.</td>
+            </tr>
+            <tr>
+              <td class="score bad">P0</td>
+              <td><strong>SQB-015 Realistic note-format recall</strong></td>
+              <td>This is the weakest clinical-text lane in the current snapshot: expanded realistic note formats are only 8/24 rows complete at strict top 10. The SQI-2026-06-17-005 uncached rerun fixed source-code misrouting and removed the lane's live wrong-first result, but 16/24 examples still miss at least one expected secondary concept.</td>
+              <td>Work the remaining note-format misses as focused batches by failure class. Start with the rows where note headers, abbreviations, objective-data formatting, procedure/result context, or rank displacement suppress expected secondary concepts. Preserve the new source-code routing guard and keep the broad clinical paragraph gate unchanged.</td>
+              <td><code>config/search_quality_clinical_text_variety_queries.tsv</code><br><code>config/search_quality_suite.json</code><br><code>src/qe_evidence_vectors/search_hydration.py</code><br><code>src/qe_evidence_vectors/search_ranking.py</code><br><code>src/qe_evidence_vectors/search_rerank.py</code></td>
+              <td>The clinical text variety lane moves from 8/24 to at least 20/24 strict top 10 with 0 wrong-first rows and 0 configured disallowed concepts, and each remaining miss has a reviewed reason or targeted follow-up.</td>
+            </tr>
+            <tr>
+              <td class="score warn">P1</td>
+              <td><strong>SQB-004 Consumer lay-language lane</strong></td>
+              <td>The live lane is now green for the measured ranking problem: 13/13 rows complete at top 10, 13/13 top-on-target, 0 wrong-first rows, and 0 configured disallowed concepts at top 10/top 20. The remaining gap is policy, not a known bad answer: the suite still marks the lane nonblocking/known-weakness until promotion is decided.</td>
+              <td>Decide whether <code>consumer_lay_language</code> becomes a blocking release gate or stays diagnostic with explicit thresholds. If promoted, update <code>config/search_quality_suite.json</code> and rerun the suite in blocking mode.</td>
+              <td><code>config/search_quality_consumer_lay_queries.tsv</code><br><code>src/qe_evidence_vectors/search_ranking.py</code><br><code>src/qe_evidence_vectors/search_rerank.py</code><br><code>src/qe_evidence_vectors/search_service.py</code><br><code>build/search_quality_suite/SQI-2026-06-16-002-consumer-lay-literal-drift/suite.md</code></td>
+              <td>The consumer lay-language lane has an explicit blocking or diagnostic decision, with thresholds recorded and a passing run under that decision.</td>
             </tr>
             <tr>
               <td class="score bad">P0</td>
               <td><strong>SQB-002 Long-document survival</strong></td>
-              <td>The seven-abstract PubMed practice set passes: every expected concept appears in the first 10 answers. The broader 13-abstract reviewed set is now 13/13 top-on-target with 0 wrong first rows, but only 9/13 rows are complete in the first 10 answers. Remaining misses are C. difficile infection, EGFR/progression-free-survival/platinum/regimen concepts, and hypocomplementemia/Complement 3.</td>
-              <td>Work the remaining recall misses one at a time, starting with C. difficile infection in the fidaxomicin versus vancomycin abstract or the EGFR row's progression-free-survival/regimen vocabulary. Preserve the status-migrainosus corticosteroid-class guard and direct corticosteroid lookup behavior.</td>
-              <td><code>build/pubmed_literature_benchmark_seed/pubmed_literature_approved_queries.tsv</code></td>
-              <td>The approved PubMed suite is 13/13 complete in the first 10 answers, or every remaining miss has a reviewed acceptable-equivalence decision and a regression row.</td>
+              <td>The seven-abstract PubMed practice set passes, and the expanded 23-row approved set is now 23/23 top-on-target with 0 wrong-first rows. The lane is still only 7/23 strict rows, with 77/106 expected concepts found in the first 10.</td>
+              <td>Work the expanded approved PubMed misses as a batch. Start with high-signal secondary-concept losses such as EGFR progression-free-survival/regimen vocabulary, status-migrainosus aura variants, hypocomplementemia/Complement 3, and remaining infection/treatment carry-forward issues. Preserve the status-migrainosus corticosteroid-class guard and direct corticosteroid lookup behavior.</td>
+              <td><code>build/pubmed_literature_benchmark_seed/pubmed_literature_approved_queries.tsv</code><br><code>src/qe_evidence_vectors/search_ranking.py</code><br><code>tests/test_evidence_vectors.py</code></td>
+              <td>The expanded approved PubMed suite is 23/23 complete in the first 10 answers, or every remaining miss has a reviewed acceptable-equivalence decision and a regression row. The C. difficile heldout row stays protected with 0 configured disallowed concepts.</td>
             </tr>
             <tr>
-              <td class="score bad">P0</td>
-              <td><strong>SQB-013 Iteration speed mitigation</strong></td>
-              <td>Server-side timing now shows where the seven-row focused PubMed loop spends time. The fresh uncached run took 148.291s wall time with 0 cache hits. Of 148.059s server time, 108.329s was long-document mention extraction, 34.326s was ranking/support/filtering outside that extractor, 1.479s was embedding, 0.214s was base vector search, and 0.626s was long-document chunk vector search.</td>
-              <td>Reduce <code>query_entity_mentions</code> cost in the long-document path first. Candidate fixes: prefilter label indexes by document tokens, cap repeated span expansion, reuse exact-label spans from earlier ranking work, or add a cheaper final-only speed tier when ranking code did not touch long-document mention logic.</td>
-              <td><code>src/qe_evidence_vectors/search_execution.py</code><br><code>src/qe_evidence_vectors/search_rerank.py</code><br><code>scripts/run_search_quality_experiment.py</code><br><code>build/search_quality_experiments/runs/SQI-2026-06-12-006_pubmed_server_timing_sqi-2026-06-12-006-focused-pubmed-server-timing</code></td>
-              <td>Focused long-document wall time drops materially below the 140s floor on uncached runs while preserving 7/7 focused PubMed strict top 10, and the timing report shows the dominant stage moved or shrank.</td>
-            </tr>
-            <tr>
-              <td class="score bad">P0</td>
+              <td class="score warn">P1</td>
               <td><strong>SQB-003 Real short-query expansion</strong></td>
-              <td>The current reviewed short-query gate has 20 common searches and passed live checks on 2026-06-11. A proposed 26-row expansion failed at 19/26 with 7 wrong first answers, which means obvious directly mentioned concepts are not always making it into the main ranked list.</td>
+              <td>The current reviewed short-query gate has 20 common searches and passed live checks on 2026-06-11. A proposed 26-row expansion failed at 19/26 with 7 wrong-first answers, so short-query breadth is not ready to expand even though the current release lane is green.</td>
               <td>Fix carryover for exact linked or directly mentioned short clinical labels, then rerun the rejected 26-row batch. Add only rows that pass live checks without weakening the current 20-row gate.</td>
               <td><code>config/search_quality_real_query_regression.tsv</code><br><code>build/private_real_query_diagnostics/</code></td>
               <td>The short-query test covers the highest-demand safe queries plus a reviewed sample of misses, no raw exports are served by the app, and candidate expansions pass live checks before thresholds move.</td>
             </tr>
             <tr>
-              <td class="score bad">P0</td>
+              <td class="score warn">P1</td>
               <td><strong>SQB-014 Representative concept coverage</strong></td>
-              <td>The new coverage audit shows that the current tests target 609 unique CUIs and 2,210 target mentions, but the set is still driven by reviewed failures and focused probes rather than clinical prevalence or workflow quotas. <code>DISO</code> accounts for 48.3% of target mentions, while <code>ANAT</code>, <code>PHEN</code>, and <code>PHYS</code> have fewer than 5 unique target CUIs.</td>
+              <td>The coverage audit shows that the current tests target 609 unique CUIs and 2,210 target mentions, but the set is still driven by reviewed failures and focused probes rather than clinical prevalence or workflow quotas. <code>DISO</code> accounts for 48.3% of target mentions, while <code>ANAT</code>, <code>PHEN</code>, and <code>PHYS</code> have fewer than 5 unique target CUIs.</td>
               <td>Add a separate reviewed common-clinical target list by semantic group and workflow: common diagnoses, drugs/classes, labs, procedures, anatomy, organisms, devices, physiology/phenomena, and patient wording. Keep it separate from one-off regression rows and do not raise broad quality claims until quotas are visible.</td>
               <td><code>scripts/build_search_quality_coverage_audit.py</code><br><code>build/search_quality_coverage_audit/SQI-2026-06-15-001-coverage-audit/coverage_summary.md</code><br><code>config/search_quality_suite.json</code></td>
               <td>The suite has a reviewed representative target layer with visible quotas and a held-out slice; green reports can cite both pass/fail status and target distribution.</td>
             </tr>
             <tr>
-              <td class="score bad">P0</td>
-              <td><strong>SQB-004 Consumer lay-language lane</strong></td>
-              <td>The 13-row patient-wording test exists and currently fails from the last live run: only 5/13 intended concepts appeared in the first 10 answers, only 3/13 rows had an intended first answer, 8 rows showed a known bad concept, and 10 rows put the wrong concept first. Governed aliases are now configured for 10 lay phrases, and in-process checks put the intended CUIs first without vectors; the live API lane has not yet been rerun with a freshly loaded server.</td>
-              <td>Restart the search API with the updated active-label supplement and rerun <code>consumer_lay_language</code>. If expected CUIs are now present but disallowed literal/anatomy/device/gene concepts remain visible, add targeted suppression or ranking guards for those reusable drift classes.</td>
-              <td><code>config/search_quality_consumer_lay_queries.tsv</code><br><code>config/active_label_supplement.tsv</code><br><code>tests/test_evidence_vectors.py</code></td>
-              <td>The consumer lay-language test is 13/13 complete in the first 10 answers with 0 disallowed concepts and 0 wrong first rows, then promoted from diagnostic to blocking or folded into an existing release gate.</td>
+              <td class="score warn">P1</td>
+              <td><strong>SQB-013 Iteration speed mitigation</strong></td>
+              <td>Server-side timing now shows where the seven-row focused PubMed loop spends time. The fresh uncached run took 148.291s wall time with 0 cache hits. Of 148.059s server time, 108.329s was long-document mention extraction, 34.326s was ranking/support/filtering outside that extractor, 1.479s was embedding, 0.214s was base vector search, and 0.626s was long-document chunk vector search.</td>
+              <td>Reduce <code>query_entity_mentions</code> cost in the long-document path when it blocks P0 long-document iteration. Candidate fixes: prefilter label indexes by document tokens, cap repeated span expansion, reuse exact-label spans from earlier ranking work, or add a cheaper final-only speed tier when ranking code did not touch long-document mention logic.</td>
+              <td><code>src/qe_evidence_vectors/search_execution.py</code><br><code>src/qe_evidence_vectors/search_rerank.py</code><br><code>scripts/run_search_quality_experiment.py</code><br><code>build/search_quality_experiments/runs/SQI-2026-06-12-006_pubmed_server_timing_sqi-2026-06-12-006-focused-pubmed-server-timing</code></td>
+              <td>Focused long-document wall time drops materially below the 140s floor on uncached runs while preserving 7/7 focused PubMed strict top 10, and the timing report shows the dominant stage moved or shrank.</td>
             </tr>
             <tr>
-              <td class="score bad">P0</td>
-              <td><strong>SQB-005 Source strategy and opt-in probes</strong></td>
-              <td>The default source policy is now narrowed to durable source evidence, and the 9-row core source-specific lane passes: 9/9 rows complete, 20/20 expected CUIs at top 10, and 0 wrong-first rows. DailyMed, MedlinePlus, and PubMed/PMC are core public evidence. ClinicalTrials.gov, PubTator3 sampled relations, and external embedding-neighbor files remain opt-in probes.</td>
-              <td>Add DailyMed checks that verify section-aware relationships such as indication, adverse event, warning, contraindication, interaction, population, and pharmacology before expanding labels. Keep the new warning-context supplement gated so bare <code>warning</code> does not become a generic result.</td>
-              <td><code>config/search_quality_source_strategy_audit.tsv</code><br><code>config/search_quality_external_embedding_neighbor_probe.tsv</code><br><code>config/search_quality_source_specific_queries.tsv</code><br><code>build/search_quality_suite/SQI-2026-06-15-003-dailymed-warning-context/suite.md</code></td>
-              <td>Default source evidence is DailyMed, MedlinePlus, and PubMed/PMC, the core source-specific lane stays green, ClinicalTrials.gov is an explicit posted-results-only mode, PubTator3 stays a sampled relation candidate source, CUI2Vec/BioConceptVec stay optional association probes, SapBERT remains the active text-embedding model, and DailyMed section-aware checks exist before label expansion.</td>
-            </tr>
-            <tr>
-              <td class="score bad">P0</td>
+              <td class="score warn">P1</td>
               <td><strong>SQB-006 Gene/protein default gating</strong></td>
-              <td>The backend now hides gene/protein candidates that are inferred only from relation data unless <code>molecular_associations=true</code>. Genes, proteins, mutations, and variants that are directly mentioned in the query still stay visible. The UI still needs a separate molecular-exploration control and live examples.</td>
-              <td>Add an <code>Explore genes/proteins</code> control that opens a provenance-heavy association panel. Then add live examples where default cardiology, infection, and medication searches should not show genes, while EGFR, BRCA1, and CYP2C19 searches should still work.</td>
-              <td><code>src/qe_evidence_vectors/search_ranking.py</code><br><code>src/qe_evidence_vectors/search_quality_http.py</code><br><code>docs/search_quality/app.js</code></td>
+              <td>The backend now hides gene/protein candidates that are inferred only from relation data unless <code>molecular_associations=true</code>. Genes, proteins, mutations, and variants that are directly mentioned in the query still stay visible. The UI now has a default-off <code>Explore genes/proteins</code> control plus a separate Molecular Associations panel, but live positive/negative examples are still missing.</td>
+              <td>Add live examples where default cardiology, infection, and medication searches should not show genes, while EGFR, BRCA1, and CYP2C19 searches should still work. If the compact panel is not enough, add a richer provenance drill-in for relation-derived molecular candidates.</td>
+              <td><code>src/qe_evidence_vectors/search_ranking.py</code><br><code>src/qe_evidence_vectors/search_quality_http.py</code><br><code>docs/search_quality_server.html</code><br><code>docs/search_quality/app.js</code><br><code>docs/search_quality/server.css</code><br><code>tests/test_public_search_docker.py</code></td>
               <td>Default cardiology, infection, and medication searches do not surface unrelated genes; explicit EGFR, BRCA1, and CYP2C19 searches still work; the UI separates molecular associations from the main result list.</td>
             </tr>
             <tr>
               <td class="score warn">P1</td>
               <td><strong>SQB-007 Promote new lanes into gates</strong></td>
-              <td>The short-query set is a blocking release check and passes. The pruned 9-row source-specific set now passes after the DailyMed warning-context fix. The consumer lay-language set is measured and still needs a fresh live rerun after governed aliases were added.</td>
-              <td>Keep short-query and source-specific evidence as blocking gates. Rerun and fix the consumer lay-language failures, and decide which realistic clinical text-format checks should block release versus stay diagnostic.</td>
+              <td>The short-query set is a blocking release check and passes. The pruned 9-row source-specific set passes after the DailyMed warning-context fix. Consumer lay-language is green in the latest live run but still diagnostic by configuration; realistic note formats are still diagnostic because they expose current weaknesses.</td>
+              <td>Keep short-query and source-specific evidence as blocking gates. Decide whether the now-green consumer lay-language lane should block release or stay as a monitored diagnostic with thresholds. Do not promote realistic note formats until their P0 recall fix lands.</td>
               <td><code>config/search_quality_suite.json</code></td>
-              <td>Every high-signal test group has a fresh run, a threshold, and a documented decision about whether it blocks release or remains diagnostic. Source-specific evidence stays stable, and consumer lay-language is either promoted after passing or explicitly kept diagnostic.</td>
+              <td>Every high-signal test group has a fresh run, a threshold, and a documented decision about whether it blocks release or remains diagnostic. Source-specific evidence stays stable, consumer lay-language has a gate decision after its green run, and note formats are either promoted after passing or explicitly kept diagnostic.</td>
+            </tr>
+            <tr>
+              <td class="score warn">P1</td>
+              <td><strong>SQB-010 Clinical context as scoring signal</strong></td>
+              <td>The UI can display roles such as current concern, active assessment, objective data, plan, watch-for guidance, history, handoff, and follow-up. The API/ranker does not yet emit those roles as first-class fields. This is relevant to note-format and portal-message robustness, but portal current-issue behavior is currently green.</td>
+              <td>Add role buckets to API output and use them in ranking only where they solve measured misses: protect active assessments, demote copied-forward history, separate watch-for complications, and prevent planned medications from outranking the problems they treat.</td>
+              <td><code>src/qe_evidence_vectors/search_quality_http.py</code><br><code>src/qe_evidence_vectors/search_ranking.py</code></td>
+              <td>Patient-message and long-form note tests show active/current concepts ahead of stale history and plan-only treatments.</td>
+            </tr>
+            <tr>
+              <td class="score warn">P1</td>
+              <td><strong>SQB-011 Medication role split</strong></td>
+              <td>The current Drugs bucket mixes too many roles: identity lookup, current medications, administered medications, home medication history, held/stopped medications, adverse reactions, trial interventions, drug classes, and formulations.</td>
+              <td>Add role buckets such as <code>drug_identity</code>, <code>prescribed_current</code>, <code>administered_given</code>, <code>home_med_history</code>, <code>held_stopped</code>, <code>allergy_or_adverse_reaction</code>, <code>trial_or_literature_intervention</code>, and <code>formulation_or_dose_form</code>.</td>
+              <td><code>src/qe_evidence_vectors/search_semantic_buckets.py</code></td>
+              <td>Simple exact lookups such as <code>prozac</code>, <code>fluoxetine</code>, <code>metformin</code>, and <code>tylenol</code> stay direct, while context-specific medication roles are labeled separately.</td>
             </tr>
             <tr>
               <td class="score warn">P1</td>
@@ -824,20 +911,12 @@
               <td>Base, early-onset, late-onset, familial, focal, and aphasia-in-Alzheimer variants have explicit expected behavior and regression rows.</td>
             </tr>
             <tr>
-              <td class="score warn">P1</td>
-              <td><strong>SQB-010 Clinical context as scoring signal</strong></td>
-              <td>The UI can display roles such as current concern, active assessment, objective data, plan, watch-for guidance, history, handoff, and follow-up. The API/ranker does not yet emit those roles as first-class fields.</td>
-              <td>Add role buckets to API output and use them in ranking: protect active assessments, demote copied-forward history, separate watch-for complications, and prevent planned medications from outranking the problems they treat.</td>
-              <td><code>src/qe_evidence_vectors/search_quality_http.py</code><br><code>src/qe_evidence_vectors/search_ranking.py</code></td>
-              <td>Patient-message and long-form note tests show active/current concepts ahead of stale history and plan-only treatments.</td>
-            </tr>
-            <tr>
-              <td class="score warn">P1</td>
-              <td><strong>SQB-011 Medication role split</strong></td>
-              <td>The current Drugs bucket mixes too many roles: identity lookup, current medications, administered medications, home medication history, held/stopped medications, adverse reactions, trial interventions, drug classes, and formulations.</td>
-              <td>Add role buckets such as <code>drug_identity</code>, <code>prescribed_current</code>, <code>administered_given</code>, <code>home_med_history</code>, <code>held_stopped</code>, <code>allergy_or_adverse_reaction</code>, <code>trial_or_literature_intervention</code>, and <code>formulation_or_dose_form</code>.</td>
-              <td><code>src/qe_evidence_vectors/search_semantic_buckets.py</code></td>
-              <td>Simple exact lookups such as <code>prozac</code>, <code>fluoxetine</code>, <code>metformin</code>, and <code>tylenol</code> stay direct, while context-specific medication roles are labeled separately.</td>
+              <td class="score neutral">P2</td>
+              <td><strong>SQB-005 Source strategy and opt-in probes</strong></td>
+              <td>The default source policy is now narrowed to durable source evidence, and the 9-row core source-specific lane passes: 9/9 rows complete, 20/20 expected CUIs at top 10, and 0 wrong-first rows. DailyMed, MedlinePlus, and PubMed/PMC are core public evidence. ClinicalTrials.gov, PubTator3 sampled relations, and external embedding-neighbor files remain opt-in probes.</td>
+              <td>Add DailyMed checks that verify section-aware relationships such as indication, adverse event, warning, contraindication, interaction, population, and pharmacology before expanding labels. Keep the new warning-context supplement gated so bare <code>warning</code> does not become a generic result.</td>
+              <td><code>config/search_quality_source_strategy_audit.tsv</code><br><code>config/search_quality_external_embedding_neighbor_probe.tsv</code><br><code>config/search_quality_source_specific_queries.tsv</code><br><code>build/search_quality_suite/SQI-2026-06-15-003-dailymed-warning-context/suite.md</code></td>
+              <td>Default source evidence is DailyMed, MedlinePlus, and PubMed/PMC, the core source-specific lane stays green, ClinicalTrials.gov is an explicit posted-results-only mode, PubTator3 stays a sampled relation candidate source, CUI2Vec/BioConceptVec stay optional association probes, SapBERT remains the active text-embedding model, and DailyMed section-aware checks exist before label expansion.</td>
             </tr>
             <tr>
               <td class="score neutral">P2</td>
@@ -853,7 +932,7 @@
       <div class="story-grid section-note">
         <div class="story-item warn">
           <strong>Backlog Churn Rule</strong>
-          <p>Cycle across the first several active backlog rows instead of repeatedly picking the first high-priority task. The current rotation window is <code>SQB-002</code>, <code>SQB-013</code>, <code>SQB-003</code>, <code>SQB-014</code>, <code>SQB-004</code>, <code>SQB-005</code>, and <code>SQB-006</code>, with <code>SQB-001</code> as continuous bad-result mining. A shipped iteration must say whether the touched row is closed, downgraded, blocked, or still next, and it must include measured evidence.</p>
+          <p>Work the P0 queue first: <code>SQB-001</code> in watch mode, <code>SQB-015</code>, then <code>SQB-002</code>. <code>SQB-004</code> has moved to a P1 gate-policy decision after the green consumer run. Rotate into P1 only when a P0 row is blocked, needs a long rerun, or depends on P1 infrastructure such as speed, coverage, or gate policy. A shipped iteration must say whether the touched row is closed, downgraded, blocked, or still next, and it must include measured evidence.</p>
         </div>
       </div>
     </section>
@@ -862,6 +941,162 @@
       <h2>Progression Timeline, Latest First</h2>
       <p class="muted small">Timeline entries are written as: what failed, what changed, what was rerun, and what remains. When an entry says "the fix shipped," it means the code/config/test change landed locally and the listed checks passed; it does not always mean the broader product problem is fully closed.</p>
       <div class="timeline">
+        <article class="event">
+          <div class="event-date">Jun 17, 2026 21:26 UTC</div>
+          <div class="event-body">
+            <div>
+              <h3>Realistic note-format routing is no longer suppressing search.</h3>
+              <span class="status-pill warn">SQB-015 partial routing/ranking fix shipped</span>
+              <p>Fresh uncached checks showed that several clinical note strings with headers and numeric values were being routed into source-code mode, returning no normal search hits. The source-code query detector now rejects note-style <code>system: prose with spaces</code> values, while still allowing true code lookups such as <code>MEDDRA:10021099</code>, <code>ICD-10-CM:E11.9</code>, and bare source codes. A contained-finding penalty also prevents an exact finding such as reduced ejection fraction from outranking the fuller HFrEF condition when both are supported.</p>
+            </div>
+            <div class="story-grid">
+              <div class="story-item good">
+                <strong>Result</strong>
+                <p>The final uncached <code>clinical_text_type_variety</code> run had 24/24 top-on-target rows, 0 wrong-first rows, 0 configured disallowed concepts, and 0 cache hits. Operative, MAR, and prior-authorization note headers now use normal Elasticsearch search instead of source-code fallback.</p>
+              </div>
+              <div class="story-item warn">
+                <strong>Still Needed</strong>
+                <p><code>SQB-015</code> remains a P0 recall problem: the lane is still 8/24 complete at strict top 10 with 94/115 expected concepts found. The next batch should target secondary-concept misses by note type rather than first-answer trust.</p>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result warn"><strong>8/24</strong><span>strict note rows complete</span></div>
+              <div class="result warn"><strong>94/115</strong><span>expected concepts at top 10</span></div>
+              <div class="result good"><strong>0</strong><span>wrong-first rows</span></div>
+            </div>
+            <p class="muted small">Artifacts: <code>src/qe_evidence_vectors/search_hydration.py</code>, <code>src/qe_evidence_vectors/search_ranking.py</code>, <code>tests/test_evidence_vectors.py</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-17-005-note-format-routing-and-contained-finding-clinical_text_type_variety_search-quality-test-suite-clinical-text-type-variety/run.json</code>, and <code>improvements/2026-06-17_note_format_source_code_routing_and_contained_finding.md</code>. Validation: focused pytest passed with 8 tests, direct API checks confirmed note headers no longer use source-code mode, and the live uncached note-format lane rerun completed with 0 cache hits.</p>
+          </div>
+        </article>
+        <article class="event">
+          <div class="event-date">Jun 17, 2026 15:01 UTC</div>
+          <div class="event-body">
+            <div>
+              <h3>Fresh rotating wrong-first rows are closed.</h3>
+              <span class="status-pill good">SQB-001 WFN-015/WFN-016 cleanup shipped</span>
+              <p>Added the fresh rows from the SQI-2026-06-16-002 rotating smoke to the wrong-first ledger, then introduced a scoped presentation-problem ranking signal and localized numeric-specificity penalties so presenting diabetic foot ulcer outranks background Type 2 diabetes without promoting generic foot ulcer. The Lyme row is protected by a focused diagnosis-statement regression.</p>
+            </div>
+            <div class="story-grid">
+              <div class="story-item good">
+                <strong>Result</strong>
+                <p><code>paragraph_03</code> now ranks <code>C1456868</code> Diabetic foot ulcer first, and <code>paragraph_62</code> ranks <code>C0024198</code> Lyme Disease first. The latest rotating smoke has 50/50 top-on-target and 0 wrong-first rows.</p>
+              </div>
+              <div class="story-item warn">
+                <strong>Still Needed</strong>
+                <p><code>SQB-001</code> moves back to watch mode for new first-answer trust failures. Active P0 implementation should continue with <code>SQB-015</code> realistic note-format recall, then <code>SQB-002</code> approved PubMed long-document recall.</p>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result good"><strong>50/50</strong><span>rotating top-on-target</span></div>
+              <div class="result good"><strong>0</strong><span>rotating wrong-first rows</span></div>
+              <div class="result warn"><strong>41/50</strong><span>strict top 10</span></div>
+            </div>
+            <p class="muted small">Artifacts: <code>src/qe_evidence_vectors/search_ranking.py</code>, <code>tests/test_evidence_vectors.py</code>, <code>config/search_quality_wrong_first_noise_ledger.tsv</code>, <code>config/search_quality_paragraph_queries.tsv</code>, <code>docs/search_quality_wrong_first_noise_ledger.html</code>, <code>build/search_quality_experiments/iteration_smoke_gates/SQI-2026-06-17-001/verification.md</code>, and <code>improvements/2026-06-17_rotating_wrong_first_presentation_diagnosis.md</code>. Validation: py_compile, focused ranker pytest, direct API checks for <code>paragraph_03</code> and <code>paragraph_62</code>, standing clinical API smoke, and rotating 50-query smoke passed. Patient-portal smoke was explicitly skipped.</p>
+          </div>
+        </article>
+        <article class="event">
+          <div class="event-date">Jun 16, 2026 20:14 UTC</div>
+          <div class="event-body">
+            <div>
+              <h3>Consumer lay-language first-page drift is clean.</h3>
+              <span class="status-pill good">SQB-004 ranking cleanup shipped</span>
+              <p>Propagated consumer-health active-label metadata through hydration and reranking, then added a bounded short-query filter that suppresses literal subspans, same-phrase legacy duplicates, and abbreviation drift only when a reviewed consumer active-label hit is already present.</p>
+            </div>
+            <div class="story-grid">
+              <div class="story-item good">
+                <strong>Result</strong>
+                <p><code>consumer_lay_language</code> passed with 13/13 rows complete in the first 10 answers, 13/13 top-on-target, 0 missing rows, 0 wrong-first rows, and 0 configured disallowed concepts at top 10/top 20.</p>
+              </div>
+              <div class="story-item warn">
+                <strong>Still Needed</strong>
+                <p>The lane remains nonblocking/known-weakness by configuration until the gate-promotion decision is made. This iteration's required rotating smoke also surfaced 2 unrelated wrong-first rows; they were later closed by <code>SQI-2026-06-17-001</code>.</p>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result good"><strong>13/13</strong><span>consumer rows good</span></div>
+              <div class="result good"><strong>0</strong><span>disallowed-at-10 rows</span></div>
+              <div class="result good"><strong>100.0</strong><span>consumer suite score</span></div>
+            </div>
+            <p class="muted small">Artifacts: <code>src/qe_evidence_vectors/search_service.py</code>, <code>src/qe_evidence_vectors/search_rerank.py</code>, <code>src/qe_evidence_vectors/search_ranking.py</code>, <code>tests/test_evidence_vectors.py</code>, <code>build/search_quality_suite/SQI-2026-06-16-002-consumer-lay-literal-drift/suite.md</code>, <code>build/search_quality_experiments/iteration_smoke_gates/SQI-2026-06-16-002/verification.md</code>, and <code>improvements/2026-06-16_consumer_lay_language_literal_drift.md</code>. Validation: py_compile, focused consumer/active-label pytest, direct API checks for the formerly noisy rows, live consumer lane, standing clinical API smoke, and rotating 50-query smoke passed. Patient-portal smoke was explicitly skipped.</p>
+          </div>
+        </article>
+        <article class="event">
+          <div class="event-date">Jun 16, 2026 13:57 UTC</div>
+          <div class="event-body">
+            <div>
+              <h3>Consumer lay-language recall is now complete, but first-page drift remains.</h3>
+              <span class="status-pill warn">SQB-004 recall fixed, disallowed drift pending</span>
+              <p>Reran the live consumer wording lane on a freshly loaded API, added the missing abdominal-pain active label, and fixed public output so internally definition-supported active-label hits are not dropped just because <code>umls_definition</code> appeared as a ranking signal source.</p>
+            </div>
+            <div class="story-grid">
+              <div class="story-item good">
+                <strong>Recall Result</strong>
+                <p><code>consumer_lay_language</code> now has 13/13 rows complete in the first 10 answers, 13/13 top-on-target, and 0 wrong-first rows. The direct <code>blood thinner</code> API check returns <code>C0003280</code> Anticoagulants as a normal public hit.</p>
+              </div>
+              <div class="story-item warn">
+                <strong>Still Needed</strong>
+                <p>Seven rows still expose configured bad first-page concepts: literal water/hydrotherapy, sugar/carbohydrate, heart/TRAC, colon/stomach anatomy, and device drift. The lane stays diagnostic until disallowed-at-10 reaches 0.</p>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result good"><strong>13/13</strong><span>consumer rows expected-at-10</span></div>
+              <div class="result good"><strong>0</strong><span>wrong-first rows</span></div>
+              <div class="result warn"><strong>7</strong><span>rows with disallowed-at-10</span></div>
+            </div>
+            <p class="muted small">Artifacts: <code>config/active_label_supplement.tsv</code>, <code>src/qe_evidence_vectors/search_rerank.py</code>, <code>src/qe_evidence_vectors/public_output.py</code>, <code>tests/test_public_output.py</code>, <code>tests/test_evidence_vectors.py</code>, <code>build/search_quality_suite/SQI-2026-06-16-001-consumer-lay-public-definition-source/suite.md</code>, <code>build/search_quality_experiments/iteration_smoke_gates/SQI-2026-06-16-001-required-gates/verification.md</code>, and <code>improvements/2026-06-16_consumer_lay_language_live_recall.md</code>. Validation: active-label supplement validator, py_compile, public-output pytest, focused active-label/rankable pytest, live consumer lane, standing clinical API smoke, and rotating 50-query smoke passed. An optional patient-portal smoke attempt stayed 12/12 top-on-target and 0 wrong-first but failed its stricter regression gate, so the required verification records patient portal as skipped.</p>
+          </div>
+        </article>
+        <article class="event">
+          <div class="event-date">Jun 15, 2026 20:10 UTC</div>
+          <div class="event-body">
+            <div>
+              <h3>C. difficile infection survived the long-document first page.</h3>
+              <span class="status-pill good">Targeted SQB-002 row passed</span>
+              <p>Relaxed the long-document first-page recall gate only for strongly supported exact disease/finding mentions that have both chunk-vector and dictionary mention support. This brought <code>C0343386</code> Clostridium difficile infection into the first 10 answers for the fidaxomicin-versus-vancomycin trial row.</p>
+            </div>
+            <div class="story-grid">
+              <div class="story-item good">
+                <strong>Target Row</strong>
+                <p><code>pubmed_cdiff_antibiotic_diarrhea_21288078</code> now has 3/3 expected CUIs in the first 10 answers. <code>C0343386</code> ranks 10, top-on-target is preserved, and configured disallowed antibiotic concepts remain absent.</p>
+              </div>
+              <div class="story-item warn">
+                <strong>Still Needed</strong>
+                <p>The full 13-row approved PubMed lane was not rerun in this iteration. Rerun it next, then work the remaining status-migrainosus, EGFR/progression-free-survival/regimen, and hypocomplementemia/Complement 3 misses.</p>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result good"><strong>3/3</strong><span>C. difficile row expected CUIs at top 10</span></div>
+              <div class="result good"><strong>rank 10</strong><span>C0343386 infection concept</span></div>
+              <div class="result good"><strong>0</strong><span>configured disallowed concepts</span></div>
+            </div>
+            <p class="muted small">Artifacts: <code>src/qe_evidence_vectors/search_ranking.py</code>, <code>tests/test_evidence_vectors.py</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-15-005_cdiff_exact_infection_recall_sqi-2026-06-15-005-cdiff-exact-infection-recall</code>, <code>build/search_quality_experiments/iteration_smoke_gates/SQI-2026-06-15-005/verification.md</code>, and <code>improvements/2026-06-15_cdiff_long_document_exact_infection_recall.md</code>. Validation: py_compile passed, focused long-document pytest passed with 10 tests, the targeted live PubMed row passed, and standing clinical API smoke passed on the fresh <code>http://127.0.0.1:8768</code> server. Rotating and patient-portal smoke were explicitly skipped because this was a scoped long-document recall change.</p>
+          </div>
+        </article>
+        <article class="event">
+          <div class="event-date">Jun 15, 2026 18:17 UTC</div>
+          <div class="event-body">
+            <div>
+              <h3>Molecular association exploration is now an explicit UI opt-in.</h3>
+              <span class="status-pill warn">SQB-006 UI gap closed, live examples pending</span>
+              <p>Added a default-off <code>Explore genes/proteins</code> control to Search settings. The UI now sends <code>molecular_associations=0/1</code>, reports the active molecular mode in System Metrics, and shows opted-in relation-derived gene/protein candidates in a separate provenance-oriented panel.</p>
+            </div>
+            <div class="story-grid">
+              <div class="story-item good">
+                <strong>Default Boundary</strong>
+                <p>The default clinical search surface still runs with molecular associations off. Directly mentioned genes and proteins remain handled by the backend gate from <code>SQI-2026-06-12-004</code>.</p>
+              </div>
+              <div class="story-item warn">
+                <strong>Still Needed</strong>
+                <p>Seed live negative and positive examples: default cardiology, infection, and medication searches should not show unrelated genes, while explicit EGFR, BRCA1, and CYP2C19 searches should still work.</p>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result good"><strong>off</strong><span>default molecular mode</span></div>
+              <div class="result good"><strong>2</strong><span>UI search paths send the flag</span></div>
+              <div class="result warn"><strong>pending</strong><span>live molecular examples</span></div>
+            </div>
+            <p class="muted small">Artifacts: <code>docs/search_quality_server.html</code>, <code>docs/search_quality/app.js</code>, <code>docs/search_quality/server.css</code>, <code>tests/test_public_search_docker.py</code>, and <code>improvements/2026-06-15_molecular_association_ui_opt_in.md</code>. Validation: JavaScript syntax, HTML parser checks, py_compile, focused static UI pytest, touched static test file, iteration-ledger JavaScript syntax, and diff whitespace checks passed.</p>
+          </div>
+        </article>
         <article class="event">
           <div class="event-date">Jun 15, 2026 17:46 UTC</div>
           <div class="event-body">
@@ -885,7 +1120,7 @@
               <div class="result good"><strong>20/20</strong><span>expected source CUIs at top 10</span></div>
               <div class="result good"><strong>0</strong><span>wrong-first rows</span></div>
             </div>
-            <p class="muted small">Artifacts: <code>config/active_label_supplement.tsv</code>, <code>tests/test_evidence_vectors.py</code>, <code>build/search_quality_suite/SQI-2026-06-15-003-dailymed-warning-context/suite.md</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-15-003-dailymed-warning-context-source_specific_evidence_search-quality-test-suite-source-specific-evidence</code>, and <code>improvements/2026-06-15_dailymed_warning_context_recall.md</code>. Validation: active-label supplement validator passed, py_compile passed, focused pytest passed, and the live <code>source_specific_evidence</code> suite passed with blocking gates enabled.</p>
+            <p class="muted small">Artifacts: <code>config/active_label_supplement.tsv</code>, <code>tests/test_evidence_vectors.py</code>, <code>build/search_quality_suite/SQI-2026-06-15-003-dailymed-warning-context/suite.md</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-15-003-dailymed-warning-context-source_specific_evidence_search-quality-test-suite-source-specific-evidence</code>, <code>build/search_quality_experiments/iteration_smoke_gates/SQI-2026-06-15-003/verification.md</code>, and <code>improvements/2026-06-15_dailymed_warning_context_recall.md</code>. Validation: active-label supplement validator passed, py_compile passed, focused pytest passed, the live <code>source_specific_evidence</code> suite passed with blocking gates enabled, and the formal smoke helper passed standing clinical API smoke.</p>
           </div>
         </article>
         <article class="event">
@@ -911,7 +1146,7 @@
               <div class="result good"><strong>4/4</strong><span>focused pytest slice passed</span></div>
               <div class="result warn"><strong>pending</strong><span>live consumer rerun</span></div>
             </div>
-            <p class="muted small">Artifacts: <code>config/active_label_supplement.tsv</code>, <code>tests/test_evidence_vectors.py</code>, <code>docs/search_rule_inventory.md</code>, and <code>improvements/2026-06-15_consumer_lay_language_active_aliases.md</code>. Validation: active-label supplement validator passed, py_compile passed, and focused pytest passed. Runtime server reload was attempted but did not finish loading before shutdown.</p>
+            <p class="muted small">Artifacts: <code>config/active_label_supplement.tsv</code>, <code>tests/test_evidence_vectors.py</code>, <code>docs/search_rule_inventory.html</code>, and <code>improvements/2026-06-15_consumer_lay_language_active_aliases.md</code>. Validation: active-label supplement validator passed, py_compile passed, and focused pytest passed. Runtime server reload was attempted but did not finish loading before shutdown.</p>
           </div>
         </article>
         <article class="event">
@@ -1007,7 +1242,7 @@
               </div>
               <div class="story-item warn">
                 <strong>Remaining Product Work</strong>
-                <p>The API flag exists, but the UI still needs a clear <code>Explore genes/proteins</code> control and a panel that shows where each association came from. Live examples are still needed for "do not show genes by default" and "do show EGFR/BRCA1/CYP2C19 when asked."</p>
+                <p>The UI now has a default-off <code>Explore genes/proteins</code> control and a separate molecular association panel. Live examples are still needed for "do not show genes by default" and "do show EGFR/BRCA1/CYP2C19 when asked."</p>
               </div>
             </div>
             <div class="result-row">
@@ -1329,7 +1564,7 @@
               <div class="result good"><strong>0/50</strong><span>wrong-first on latest rotating sample</span></div>
               <div class="result good"><strong>0/168</strong><span>wrong-first on current full clinical run</span></div>
             </div>
-            <p class="muted small">Artifacts: <code>build/search_quality_verification/SQI-2026-06-11-017.md</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-11-017_full_clinical_objective_condition_alt_sqi-2026-06-11-017-full-clinical-objective-confirmed-condition-a</code>, and <code>docs/search_quality_wrong_first_noise_ledger.md</code>.</p>
+            <p class="muted small">Artifacts: <code>build/search_quality_verification/SQI-2026-06-11-017.md</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-11-017_full_clinical_objective_condition_alt_sqi-2026-06-11-017-full-clinical-objective-confirmed-condition-a</code>, and <code>docs/search_quality_wrong_first_noise_ledger.html</code>.</p>
           </div>
         </article>
 
@@ -1364,7 +1599,7 @@
               <div class="result good"><strong>0/50</strong><span>wrong-first on latest rotating sample</span></div>
               <div class="result warn"><strong>1/168</strong><span>wrong-first on current full clinical run</span></div>
             </div>
-            <p class="muted small">Artifacts: <code>build/search_quality_verification/SQI-2026-06-11-016.md</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-11-016_full_clinical_reaction_diagnosis_sqi-2026-06-11-016-full-clinical-reaction-diagnosis-check</code>, and <code>docs/search_quality_wrong_first_noise_ledger.md</code>.</p>
+            <p class="muted small">Artifacts: <code>build/search_quality_verification/SQI-2026-06-11-016.md</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-11-016_full_clinical_reaction_diagnosis_sqi-2026-06-11-016-full-clinical-reaction-diagnosis-check</code>, and <code>docs/search_quality_wrong_first_noise_ledger.html</code>.</p>
           </div>
         </article>
 
@@ -1399,7 +1634,7 @@
               <div class="result warn"><strong>1/50</strong><span>wrong-first on latest rotating sample</span></div>
               <div class="result warn"><strong>2/168</strong><span>wrong-first on current full clinical run</span></div>
             </div>
-            <p class="muted small">Artifacts: <code>build/search_quality_verification/SQI-2026-06-11-015.md</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-11-015_full_clinical_active_diagnosis_sqi-2026-06-11-015-full-clinical-active-diagnosis-check</code>, and <code>docs/search_quality_wrong_first_noise_ledger.md</code>.</p>
+            <p class="muted small">Artifacts: <code>build/search_quality_verification/SQI-2026-06-11-015.md</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-11-015_full_clinical_active_diagnosis_sqi-2026-06-11-015-full-clinical-active-diagnosis-check</code>, and <code>docs/search_quality_wrong_first_noise_ledger.html</code>.</p>
           </div>
         </article>
 
@@ -1434,7 +1669,7 @@
               <div class="result warn"><strong>2/50</strong><span>wrong-first on latest rotating sample</span></div>
               <div class="result warn"><strong>3/168</strong><span>wrong-first on current full clinical run</span></div>
             </div>
-            <p class="muted small">Artifacts: <code>build/search_quality_verification/SQI-2026-06-11-014.md</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-11-014_full_clinical_asserted_diagnosis_sqi-2026-06-11-014-full-clinical-asserted-diagnosis-check</code>, and <code>docs/search_quality_wrong_first_noise_ledger.md</code>.</p>
+            <p class="muted small">Artifacts: <code>build/search_quality_verification/SQI-2026-06-11-014.md</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-11-014_full_clinical_asserted_diagnosis_sqi-2026-06-11-014-full-clinical-asserted-diagnosis-check</code>, and <code>docs/search_quality_wrong_first_noise_ledger.html</code>.</p>
           </div>
         </article>
 
@@ -1469,7 +1704,7 @@
               <div class="result warn"><strong>2/50</strong><span>wrong-first on latest rotating sample</span></div>
               <div class="result warn"><strong>5/168</strong><span>wrong-first on current full clinical run</span></div>
             </div>
-            <p class="muted small">Artifacts: <code>build/search_quality_verification/SQI-2026-06-11-013.md</code>, <code>improvements/2026-06-11_diagnosis_statement_over_test_result.md</code>, and <code>docs/search_quality_wrong_first_noise_ledger.md</code>.</p>
+            <p class="muted small">Artifacts: <code>build/search_quality_verification/SQI-2026-06-11-013.md</code>, <code>improvements/2026-06-11_diagnosis_statement_over_test_result.md</code>, and <code>docs/search_quality_wrong_first_noise_ledger.html</code>.</p>
           </div>
         </article>
 
@@ -1486,7 +1721,7 @@
               <div class="result good"><strong>2</strong><span>protected closed regressions</span></div>
               <div class="result neutral"><strong>0</strong><span>runtime ranking changes</span></div>
             </div>
-            <p class="muted small">Artifacts: <code>docs/search_quality_wrong_first_noise_ledger.md</code>, <code>config/search_quality_wrong_first_noise_ledger.tsv</code>, and <code>improvements/2026-06-11_wrong_first_noise_ledger_seed.md</code>. Live smoke was not needed because this was an audit/process-only iteration.</p>
+            <p class="muted small">Artifacts: <code>docs/search_quality_wrong_first_noise_ledger.html</code>, <code>config/search_quality_wrong_first_noise_ledger.tsv</code>, and <code>improvements/2026-06-11_wrong_first_noise_ledger_seed.md</code>. Live smoke was not needed because this was an audit/process-only iteration.</p>
           </div>
         </article>
 
@@ -1614,7 +1849,7 @@
               </div>
               <div class="story-item good">
                 <strong>Prospectus</strong>
-                <p><code>docs/structured_clinical_context_buckets_prospectus.md</code> defines the target role list, status fields, API shape, and benchmark plan for moving this from client-side text cues to structured annotations returned by the API.</p>
+                <p><code>docs/structured_clinical_context_buckets_prospectus.html</code> defines the target role list, status fields, API shape, and benchmark plan for moving this from client-side text cues to structured annotations returned by the API.</p>
               </div>
             </div>
             <div class="result-row">
@@ -1622,7 +1857,7 @@
               <div class="result good"><strong>below results</strong><span>bucketed snippets and CUI chips in UI</span></div>
               <div class="result neutral"><strong>prospectus</strong><span>referenced from iteration ledger</span></div>
             </div>
-            <p class="muted small">Artifacts: <code>docs/structured_clinical_context_buckets_prospectus.md</code>, <code>docs/search_quality/app.js</code>, <code>docs/search_quality/server.css</code>, <code>docs/search_quality_server.html</code>, <code>docs/search_quality_iterations.md</code>, and <code>docs/search_quality_iterations.html</code>.</p>
+            <p class="muted small">Artifacts: <code>docs/structured_clinical_context_buckets_prospectus.html</code>, <code>docs/search_quality/app.js</code>, <code>docs/search_quality/server.css</code>, <code>docs/search_quality_server.html</code>, <code>docs/search_quality_iterations.html</code>, and <code>docs/search_quality_iterations.html</code>.</p>
           </div>
         </article>
 
@@ -1653,7 +1888,7 @@
               <div class="result warn"><strong>52/60</strong><span>expected concepts found at top 10</span></div>
               <div class="result good"><strong>0</strong><span>wrong first results</span></div>
             </div>
-            <p class="muted small">Artifacts: <code>config/search_quality_clinical_text_variety_queries.tsv</code>, <code>config/search_quality_suite.json</code>, <code>tests/test_search_quality_suite.py</code>, <code>docs/search_quality_test_suite.md</code>, and <code>build/search_quality_suite/SQS-clinical-text-variety-live/suite.md</code>.</p>
+            <p class="muted small">Artifacts: <code>config/search_quality_clinical_text_variety_queries.tsv</code>, <code>config/search_quality_suite.json</code>, <code>tests/test_search_quality_suite.py</code>, <code>docs/search_quality_test_suite.html</code>, and <code>build/search_quality_suite/SQS-clinical-text-variety-live/suite.md</code>.</p>
           </div>
         </article>
 
@@ -1845,7 +2080,7 @@
               <div class="result neutral"><strong>SQI-2026-06-11-002</strong><span>process entry added to the ledger</span></div>
               <div class="result good"><strong>updated</strong><span>this page now reflects the latest patient-message run</span></div>
             </div>
-            <p class="muted small">Updated process docs: <code>docs/search_quality_sustainable_improvements.md</code>, <code>docs/search_quality_iterations.md</code>, and <code>docs/search_quality_iterations.html</code>.</p>
+            <p class="muted small">Updated process docs: <code>docs/search_quality_sustainable_improvements.html</code>, <code>docs/search_quality_iterations.html</code>, and <code>docs/search_quality_iterations.html</code>.</p>
           </div>
         </article>
 
@@ -1950,7 +2185,7 @@
               <div class="result neutral"><strong>allowed</strong><span>new test, better test, tighter threshold, or explicit no-change reason</span></div>
               <div class="result good"><strong>ongoing</strong><span>applies to future iterations</span></div>
             </div>
-            <p class="muted small">Updated process docs: <code>docs/search_quality_sustainable_improvements.md</code> and <code>docs/search_quality_test_suite.md</code>.</p>
+            <p class="muted small">Updated process docs: <code>docs/search_quality_sustainable_improvements.html</code> and <code>docs/search_quality_test_suite.html</code>.</p>
           </div>
         </article>
 
@@ -1981,7 +2216,7 @@
               <div class="result neutral"><strong>15</strong><span>source-specific queries added to the suite</span></div>
               <div class="result warn"><strong>pending</strong><span>live API retest</span></div>
             </div>
-            <p class="muted small">Artifacts: <code>config/search_quality_suite.json</code>, <code>config/search_quality_real_query_regression.tsv</code>, <code>config/search_quality_source_specific_queries.tsv</code>, and <code>docs/search_quality_test_suite.md</code>.</p>
+            <p class="muted small">Artifacts: <code>config/search_quality_suite.json</code>, <code>config/search_quality_real_query_regression.tsv</code>, <code>config/search_quality_source_specific_queries.tsv</code>, and <code>docs/search_quality_test_suite.html</code>.</p>
           </div>
         </article>
 
@@ -2322,6 +2557,41 @@
           </thead>
           <tbody>
             <tr>
+              <td>2026-06-17 21:26</td>
+              <td>Realistic note-format source-code routing and contained-finding cleanup</td>
+              <td class="score warn">Clinical note-format lane rerun: 8/24 rows complete at top 10, 94/115 expected concepts at top 10, 24/24 top-on-target, 0 wrong-first rows, 0 configured disallowed concepts, and 0 cache hits.</td>
+              <td>Clinical-note strings such as operative notes, MAR notes, and prior-authorization drafts were being mistaken for source-code lookups when a header before a colon was followed by prose and numeric values. A separate HFrEF row could rank the contained reduced-ejection-fraction finding above the fuller condition.</td>
+              <td class="score warn"><code>SQB-015</code> routing/first-answer part shipped. The lane remains P0 because secondary-concept recall is still weak.</td>
+            </tr>
+            <tr>
+              <td>2026-06-17 15:01</td>
+              <td>Rotating wrong-first presentation/diagnosis cleanup</td>
+              <td class="score good">Required ranking gates passed: standing clinical API smoke plus rotating 50-query smoke with 50/50 top-on-target, 0 wrong-first rows, 41/50 strict top 10, and 48/50 strict top 20.</td>
+              <td>The prior rotating smoke exposed background Type 2 diabetes above presenting diabetic foot ulcer and generic erythema above diagnosed Lyme disease. The rerun also required judging local <code>NEW4840890</code> acute deep vein thrombosis as valid for <code>paragraph_02</code>.</td>
+              <td class="score good"><code>SQB-001</code> fresh WFN batch closed. Continue with <code>SQB-015</code> and <code>SQB-002</code>.</td>
+            </tr>
+            <tr>
+              <td>2026-06-16 20:14</td>
+              <td>Consumer lay-language literal drift cleanup</td>
+              <td class="score good">Consumer lane passed: 13/13 rows complete at top 10, 13/13 top-on-target, 0 missing rows, 0 wrong-first rows, 0 disallowed-at-10 rows, 0 disallowed-at-20 rows, and overall score 100.0.</td>
+              <td>Governed aliases fixed recall, but literal/anatomy/device/gene exact subspans still filled the first page for water pill, sugar diabetes, heart tracing, EKG, and scope wording.</td>
+              <td class="score good"><code>SQB-004</code> ranking cleanup shipped. Gate-promotion decision remains.</td>
+            </tr>
+            <tr>
+              <td>2026-06-16 13:54</td>
+              <td>Consumer lay-language live recall</td>
+              <td class="score warn">Consumer lane improved to 13/13 rows complete at top 10, 13/13 top-on-target, 0 missing rows, and 0 wrong-first rows; 7 rows still have disallowed concepts in the first 10.</td>
+              <td>Governed aliases were configured, but active-label promotions could still disappear from public hits when internal definition support added <code>umls_definition</code> as a source.</td>
+              <td class="score warn">Recall/top-answer part of <code>SQB-004</code> shipped. The lane remains diagnostic until disallowed-at-10 is 0.</td>
+            </tr>
+            <tr>
+              <td>2026-06-15 20:10</td>
+              <td>C. difficile long-document exact infection recall</td>
+              <td class="score good">Targeted PubMed row passed: 3/3 expected CUIs in the first 10 answers, <code>C0343386</code> rank 10, 0 wrong-first rows, and 0 configured disallowed concepts.</td>
+              <td>The fidaxomicin-versus-vancomycin trial repeatedly mentions C. difficile infection, but the disease CUI had been held below the first page by drug/product, organism, toxin, and generic infection concepts.</td>
+              <td class="score warn">Scoped <code>SQB-002</code> fix shipped. Full approved PubMed suite rerun is still pending before the headline 9/13 card moves.</td>
+            </tr>
+            <tr>
               <td>2026-06-15 17:46</td>
               <td>DailyMed warning-context recall</td>
               <td class="score good">Core source-specific lane passed: 9/9 rows complete in the first 10 answers, 20/20 expected CUIs found, 0 missing rows, and 0 wrong-first rows.</td>
@@ -2590,7 +2860,7 @@
       <div class="open-list">
         <div class="open-item">
           <h3>Cycle through the top backlog window.</h3>
-          <p class="muted">The canonical backlog is the Prioritized Backlog table above. Rotate across <code>SQB-002</code> long-document PubMed behavior, <code>SQB-013</code> server-side speed, <code>SQB-003</code> reviewed short-query expansion, <code>SQB-014</code> representative coverage, <code>SQB-004</code> consumer lay-language coverage, <code>SQB-005</code> source strategy, and <code>SQB-006</code> gene/protein default behavior, while keeping <code>SQB-001</code> as ongoing bad-result mining. Skip a row only for an explicit blocker or release-critical regression, and record why.</p>
+          <p class="muted">The canonical backlog is the Prioritized Backlog table above. The fresh <code>SQB-001</code> wrong-first batch is closed and now stays in watch mode; work the active P0 queue first: <code>SQB-015</code> realistic note-format recall, then <code>SQB-002</code> long-document PubMed recall. <code>SQB-004</code> now needs a P1 gate-policy decision after the green consumer first-page cleanup. Rotate into P1 only when a P0 row is blocked, waiting on a long rerun, or depends on P1 infrastructure such as speed, representative coverage, or gate policy.</p>
         </div>
         <div class="open-item">
           <h3>Add representative common-clinical coverage.</h3>
@@ -2598,23 +2868,27 @@
         </div>
         <div class="open-item">
           <h3>Add negative controls to every lane.</h3>
-          <p class="muted">This is tracked by <code>SQB-001</code>. Reviewed wrong-first rows through <code>WFN-014</code> are closed, and the latest rotating sample has 0 wrong first rows. Continue adding likely-bad concepts and pattern-level bad-result audits to short-query, source-specific, lay-language, long-document, patient-message, gene/protein, medication-role, and related-panel test groups.</p>
+          <p class="muted">This is tracked by <code>SQB-001</code>. Reviewed wrong-first rows through <code>WFN-016</code> are closed, and the latest required rotating smoke has 50/50 top-on-target with 0 wrong-first rows. Continue adding likely-bad concepts and pattern-level bad-result audits to short-query, source-specific, lay-language, long-document, patient-message, gene/protein, medication-role, and related-panel test groups.</p>
         </div>
         <div class="open-item">
-          <h3>Fix the consumer lay-language probe.</h3>
-          <p class="muted"><code>SQB-004</code> has a 13-row known-weakness test. The last live API run still stands at 5/13 expected concepts in the first 10 answers, 8 rows with disallowed concepts, and 10 wrong-first rows. Governed active-label aliases now cover the main lay phrases and pass in-process checks; next, restart the API, rerun the live consumer lane, and then suppress any remaining literal drift for water, anatomy, device, sugar, or gene concepts.</p>
+          <h3>Fix realistic clinical note formats.</h3>
+          <p class="muted"><code>SQB-015</code> is a P0 because it is the weakest clinical-text snapshot lane. The latest uncached iteration removed source-code misrouting and wrong-first behavior, but the expanded clinical text variety suite is still 8/24 strict top 10 with 94/115 expected concepts found. Work the remaining radiology, pathology, operative, nursing, lab, therapy, and prior-authorization recall misses as focused batches before broadening note-format claims.</p>
+        </div>
+        <div class="open-item">
+          <h3>Decide the consumer lay-language gate policy.</h3>
+          <p class="muted"><code>SQB-004</code> now has a green 13-row live run: 13/13 expected concepts in the first 10 answers, 0 wrong-first rows, and 0 configured disallowed concepts at top 10/top 20. Next, decide whether the lane becomes blocking or stays diagnostic with explicit thresholds.</p>
         </div>
         <div class="open-item">
           <h3>Make genes/proteins an opt-in molecular exploration mode.</h3>
-          <p class="muted">The backend/API now defaults <code>molecular_associations</code> off. It keeps directly mentioned genes, proteins, mutations, and variants, but hides molecular associations inferred only from relationship data in the main ranked list. Next add a clear <code>Explore genes/proteins</code> control that opens a separate source-heavy panel, then seed live examples for default-negative and explicit-positive behavior.</p>
+          <p class="muted">The backend/API now defaults <code>molecular_associations</code> off, and the UI exposes a default-off <code>Explore genes/proteins</code> control with a separate Molecular Associations panel. It keeps directly mentioned genes, proteins, mutations, and variants, but hides molecular associations inferred only from relationship data in the main ranked list. Next seed live examples for default-negative and explicit-positive behavior.</p>
         </div>
         <div class="open-item">
           <h3>Add section-aware DailyMed relationship checks.</h3>
           <p class="muted">The short-query test passed live release checks, and the source-specific default test has been narrowed to 9 core DailyMed, MedlinePlus, and PubMed/PMC rows. The pruned source test now passes at 9/9 complete with 20/20 expected concepts in the first 10 answers and 0 wrong first answers. Keep the new <code>C1550014</code> warning-context supplement gated, keep <code>WFN-013</code> protected, and add section-aware checks for DailyMed indications, warnings, contraindications, interactions, populations, and pharmacology before expanding label coverage.</p>
         </div>
         <div class="open-item">
-          <h3>Long-document PubMed recall is the main quality gap.</h3>
-          <p class="muted">The 7-abstract PubMed practice slice improved to 36/36 expected concepts in the first 10 answers and 7/7 good rows. The broader 13-abstract reviewed suite has been rerun with current code: 9/13 rows complete in the first 10, 11/13 complete in the first 20, 53/60 expected concepts in the first 10, 57/60 in the first 20 and first 60, 13/13 top-on-target, and 0 wrong first rows. The next implementation should work the remaining recall misses, starting with C. difficile infection or the EGFR/progression-free-survival/platinum/regimen row.</p>
+          <h3>Long-document PubMed recall is still a P0 quality gap.</h3>
+          <p class="muted">The 7-abstract PubMed practice slice improved to 36/36 expected concepts in the first 10 answers and 7/7 good rows. The expanded 23-abstract approved suite is 7/23 strict top 10, 77/106 expected concepts in the first 10, 23/23 top-on-target, and 0 wrong-first rows. Work the EGFR/progression-free-survival/regimen, status-migrainosus aura-variant, hypocomplementemia/Complement 3, and remaining secondary-concept misses against the expanded lane.</p>
         </div>
         <div class="open-item">
           <h3>The 168-example full benchmark needs to become the stable baseline.</h3>
@@ -2666,7 +2940,7 @@
             </tr>
             <tr>
               <td>Runnable test suite</td>
-              <td><a href="search_quality_test_suite.md">docs/search_quality_test_suite.md</a></td>
+              <td><a href="search_quality_test_suite.html">docs/search_quality_test_suite.html</a></td>
               <td>Suite command, layers, blocking status, known weaknesses, and output locations.</td>
             </tr>
             <tr>
@@ -2696,7 +2970,7 @@
             </tr>
             <tr>
               <td>External entity-linking parity</td>
-              <td><a href="medmentions_benchmark.md">docs/medmentions_benchmark.md</a> and <code>scripts/run_medmentions_benchmark.py</code></td>
+              <td><a href="medmentions_benchmark.html">docs/medmentions_benchmark.html</a> and <code>scripts/run_medmentions_benchmark.py</code></td>
               <td>MedMentions ST21pv preparation, mention-only/context/document scoring, category metrics, and suppression-audit guardrails.</td>
             </tr>
             <tr>

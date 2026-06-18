@@ -29,11 +29,6 @@ CREATE TABLE IF NOT EXISTS metadata (
 );
 """
 
-INDEX_SCHEMA = """
-CREATE INDEX IF NOT EXISTS idx_provenance_lookup
-ON provenance(doc_id, text_hash);
-"""
-
 WEIGHT_RE = re.compile(r" \(weight ([0-9.]+)\)$")
 
 
@@ -91,7 +86,6 @@ def init_store(conn: sqlite3.Connection, *, replace: bool = False) -> None:
 
 
 def create_indexes(conn: sqlite3.Connection) -> None:
-    conn.executescript(INDEX_SCHEMA)
     conn.commit()
 
 

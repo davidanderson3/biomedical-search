@@ -5,7 +5,7 @@
 - Updated `src/qe_evidence_vectors/search_semantic_buckets.py` so backend precomputed buckets load that JSON spec.
 - Added `/search_quality_semantic_buckets.json` to the search quality server.
 - Updated `docs/search_quality/app.js` so the browser loads the same bucket spec before rendering results, with the prior embedded list kept only as a fallback.
-- Updated `docs/search_quality/README.md` to document the new route.
+- Updated `docs/search_quality/README.html` to document the new route.
 
 ## Improvement
 - Reduces drift risk between backend bucket precomputation and browser fallback rendering.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from qe_evidence_vectors.lexical_normalization import lexical_token_key
 from qe_evidence_vectors.text import normalized_key
 
 
@@ -111,8 +112,5 @@ def content_tokens(text: str) -> list[str]:
 
 def canonical_token(token: str) -> str:
     token = TOKEN_ALIASES.get(token, token)
-    if token.endswith("ies") and len(token) > 4:
-        token = f"{token[:-3]}y"
-    elif token.endswith("s") and len(token) > 4 and not token.endswith("ss") and token not in SINGULAR_S_TOKENS:
-        token = token[:-1]
+    token = lexical_token_key(token)
     return TOKEN_ALIASES.get(token, token)

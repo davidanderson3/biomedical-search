@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Search Quality UI Assets</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>Search Quality UI Assets</h1>
+<p>This directory contains static assets served by <code>scripts/search_quality_server.py</code>.</p>
+<p>The browser-facing routes stay stable:</p>
+<ul><li><code>/search_quality_app.js</code> -&gt; <code>docs/search_quality/app.js</code></li><li><code>/search_quality_server.css</code> -&gt; <code>docs/search_quality/server.css</code></li><li><code>/search_quality_suggestions.json</code> -&gt; <code>docs/search_quality/suggestions.json</code></li><li><code>/search_quality_paragraphs.json</code> -&gt; <code>docs/search_quality/paragraphs.json</code></li><li><code>/search_quality_real_short_queries.json</code> -&gt; <code>docs/search_quality/real_short_queries.json</code></li><li><code>/search_quality_expansion_profiles.json</code> -&gt; <code>docs/search_quality/expansion_profiles.json</code></li><li><code>/search_quality_semantic_buckets.json</code> -&gt; <code>config/search_quality_semantic_buckets.json</code></li></ul>
+<p><code>paragraphs.json</code> includes the generated full-page samples from <code>config/full_page_sample_queries.tsv</code>; the UI&#x27;s <strong>Long sample</strong> button filters for those long entries. It also includes short PubMed excerpt samples from <code>config/pubmed_ui_sample_queries.tsv</code>. <code>real_short_queries.json</code> contains only reviewed/de-identified short queries promoted from <code>config/search_quality_real_query_regression.tsv</code>; raw UMLS query exports stay under ignored local paths and are not served by the app.</p>
+<p>Radiology sample queries in <code>suggestions.json</code> and <code>paragraphs.json</code> are short report-style summaries based on the local OpenI / Indiana University Chest X-ray samples under <code>data/external/openi/sample_reports/</code>. The XML source identifies the collection as CC BY-NC-ND 4.0; keep long verbatim report text out of tracked UI assets unless attribution and redistribution constraints are handled explicitly.</p>
+<p>Keep <code>docs/search_quality_server.html</code> at its current path unless the server default HTML path is updated at the same time.</p>
+</main>
+<!-- Converted from docs/search_quality/README.html. -->
+</body>
+</html>

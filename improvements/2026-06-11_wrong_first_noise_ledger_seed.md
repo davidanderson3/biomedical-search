@@ -12,7 +12,7 @@ regression query.
 
 - Added `config/search_quality_wrong_first_noise_ledger.tsv` as the
   machine-readable ledger.
-- Added `docs/search_quality_wrong_first_noise_ledger.md` as the readable audit
+- Added `docs/search_quality_wrong_first_noise_ledger.html` as the readable audit
   summary.
 - Seeded the ledger from the latest rotating 50-query smoke and the full
   clinical 168-row rerun.

@@ -9,7 +9,12 @@ __pycache__/
 
 # Generated indexes, evidence corpora, and local source vocabulary drops.
 build/
+build_dev_archive/
 data/
+# Local Kaggle clinical-text drop. Keep raw third-party text out of commits;
+# derive private diagnostics under build/ instead.
+clinical-text/
+clinical-text.zip
 # Legacy root LOINC drops; prefer data/local_sources/loinc/.
 Loinc_2.82/
 SnomedCT_*.zip

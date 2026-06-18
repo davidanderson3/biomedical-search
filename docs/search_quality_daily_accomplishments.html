@@ -192,6 +192,70 @@
       <p class="muted">At the first search-quality iteration of a new calendar day, add a short plain-language summary of the previous day's shipped improvements here. Keep technical CUIs, test internals, and long artifact lists in the iteration ledger; this page should answer what changed in human terms.</p>
     </section>
 
+    <section class="panel" id="2026-06-16">
+      <h2>June 16, 2026 Accomplishments</h2>
+      <p class="muted small">Added 2026-06-17. This translates the June 16 iteration run into the practical story: patient wording became clean enough to trust in the measured lane, and the next wrong-first risks were made visible.</p>
+      <div class="story-grid">
+        <div class="story-item good">
+          <strong>Made Patient Wording Recall Complete</strong>
+          <p>Every reviewed short patient phrase in the consumer wording lane now finds the intended medical concept in the first 10 answers. This includes everyday phrases such as blood thinner, belly pain, pee test, EKG, and scope wording.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Removed First-Page Literal Drift</strong>
+          <p>The same patient-wording lane no longer shows the configured literal or anatomy/device drift in the first page. Water-pill wording no longer brings in water or hydrotherapy noise, sugar-diabetes wording no longer brings in generic sugar concepts, and scope wording no longer surfaces unrelated anatomy/device answers.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Improved Public Result Hygiene</strong>
+          <p>Internal definition-support signals are now stripped from public result sources instead of leaking implementation details into returned hits. Active-label hits that are supported by reviewed patient wording can stay visible as normal public answers.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>Also Left Clear Gaps</strong>
+          <p>June 16 did not finish search quality. The consumer lane still needs a gate-policy decision, the latest rotating smoke found two fresh wrong-first rows outside the reviewed product lanes, and realistic note-format recall remains the weakest measured workflow.</p>
+        </div>
+      </div>
+      <div class="result-row">
+        <div class="result good"><strong>13/13</strong><span>consumer rows complete at top 10</span></div>
+        <div class="result good"><strong>0</strong><span>consumer disallowed concepts at top 10</span></div>
+        <div class="result warn"><strong>2</strong><span>fresh rotating wrong-first rows</span></div>
+      </div>
+    </section>
+
+    <section class="panel" id="2026-06-15">
+      <h2>June 15, 2026 Accomplishments</h2>
+      <p class="muted small">Added 2026-06-16. This translates the June 15 iteration run into the practical story: the work made coverage risk visible, improved patient wording support, closed the core source-specific gate, added a molecular exploration opt-in, and fixed one held-out PubMed recall miss.</p>
+      <div class="story-grid">
+        <div class="story-item good">
+          <strong>Measured What The Tests Actually Cover</strong>
+          <p>The suite now reports which medical concepts it is testing instead of treating a green run as proof of broad clinical coverage. The audit found that the test set is still heavily weighted toward disorders, with thin anatomy, physiology, and phenomena coverage.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Added Governed Patient-Wording Aliases</strong>
+          <p>Common phrases such as water pill, pee test, belly pain, sugar diabetes, heart tracing, EKG, colon scope, stomach scope, and blood thinner now have reviewed alias support. The live consumer lane still needs a fresh rerun before the headline score can move.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Closed The Core Source-Specific Gate</strong>
+          <p>The DailyMed warning-context miss was fixed without globally promoting the generic word warning. The core source-specific lane for DailyMed, MedlinePlus, and PubMed/PMC reached 9/9 rows with all expected concepts in the first 10 answers.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Made Gene And Protein Exploration Explicit</strong>
+          <p>The search UI now has a default-off Explore genes/proteins control. Normal clinical searches keep relation-derived molecular associations out of the main result list unless the user asks for that exploration mode.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Fixed One Held-Out PubMed Recall Miss</strong>
+          <p>The fidaxomicin-versus-vancomycin abstract now surfaces the C. difficile infection concept in the first 10 answers on the targeted live rerun. The full approved PubMed suite still needs a fresh rerun before the broader PubMed card can improve.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>Also Left Clear Gaps</strong>
+          <p>June 15 did not finish search quality. Consumer wording still needs a live rerun, the approved PubMed suite still has long-document recall misses, and representative concept coverage still needs reviewed quotas rather than only an audit.</p>
+        </div>
+      </div>
+      <div class="result-row">
+        <div class="result good"><strong>9/9</strong><span>core source-specific rows passed</span></div>
+        <div class="result good"><strong>3/3</strong><span>C. difficile PubMed row concepts at top 10</span></div>
+        <div class="result warn"><strong>609</strong><span>unique target CUIs audited</span></div>
+      </div>
+    </section>
+
     <section class="panel" id="2026-06-12">
       <h2>June 12, 2026 Accomplishments</h2>
       <p class="muted small">Added 2026-06-15. This translates the June 12 iteration run into the practical story: the work rotated across several high-priority risks, made weak spots measurable, narrowed the source strategy, and closed the last reviewed PubMed wrong-first issue.</p>

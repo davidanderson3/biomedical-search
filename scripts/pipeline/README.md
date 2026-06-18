@@ -10,4 +10,4 @@ existing command references keep working.
 - `../source_acquisition_progression.py` - source acquisition progression checks.
 - `../check_source_rebuild_delta.py` - source rebuild delta check.
 - `../scaling_status.py` - scaling/build status summary.
-- `../sitecustomize.py` - local script import-path helper.
+- `../sitecustomize.py` - local Python startup hook that suppresses urllib3 LibreSSL warnings for direct script runs.

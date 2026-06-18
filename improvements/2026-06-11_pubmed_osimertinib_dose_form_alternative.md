@@ -39,7 +39,7 @@ at zero.
   `config/search_quality_acceptable_cui_alternatives.tsv`.
 - Added a focused evaluator regression test proving the checked-in alternative
   counts `osimertinib 80 MG` as satisfying the `Osimertinib` benchmark target.
-- Regenerated `docs/search_rule_inventory.md`.
+- Regenerated `docs/search_rule_inventory.html`.
 
 ## Result
 

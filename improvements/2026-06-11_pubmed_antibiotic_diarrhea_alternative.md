@@ -30,7 +30,7 @@ top-10 count from 32/36 to 33/36 without changing runtime ranking.
 - Added a focused evaluator regression test proving that a first-page
   `Antibiotic-associated diarrhea` hit can satisfy the broader `Diarrhea`
   target while still counting as its own expected concept.
-- Regenerated `docs/search_rule_inventory.md`.
+- Regenerated `docs/search_rule_inventory.html`.
 
 ## Result
 

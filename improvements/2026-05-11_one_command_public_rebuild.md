@@ -4,7 +4,7 @@
 
 - Added `scripts/run_public_rebuild.py`, an orchestrator for the public-first reproducible build path.
 - Added `requirements-public.txt`, intentionally empty except for comments because the hashing rebuild path uses the Python standard library.
-- Updated `docs/reproducibility.md` and `README.md` to point external users at the wrapper.
+- Updated `docs/reproducibility.html` and `README.md` to point external users at the wrapper.
 
 ## What The Wrapper Does
 

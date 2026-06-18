@@ -28,7 +28,7 @@ rule class as the already-blocked `Too little`. Suppressing standalone
 - Added `C3843660` to `BLOCKED_GENERIC_CUIS`.
 - Added unit coverage that blocks standalone `Too much` and `too much`, while
   preserving `too much insulin` as a non-blocked query phrase.
-- Regenerated `docs/search_rule_inventory.md`.
+- Regenerated `docs/search_rule_inventory.html`.
 
 ## Result
 

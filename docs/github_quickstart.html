@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GitHub Quickstart</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>GitHub Quickstart</h1>
+<p>This repository is usable from a fresh clone, but a full rebuild needs local UMLS files that cannot be committed here. Public corpora can be fetched from their upstream sources; UMLS-derived indexes must be rebuilt from your licensed UMLS Metathesaurus download.</p>
+<h2>Clone And Check The Public Tooling</h2>
+<pre><code class="language-sh">git clone &lt;repo-url&gt;
+cd query-expansion
+python3 -m pip install -r requirements-public.txt</code></pre>
+<p>Install the small dev requirements file if you want to run the test checks:</p>
+<pre><code class="language-sh">python3 -m pip install -r requirements-dev.txt
+python3 -m pytest tests/test_openalex_cited_evidence.py tests/test_source_acquisition_progression.py -q</code></pre>
+<p>The public hashing path uses the Python standard library. Optional transformer embeddings require extra packages such as <code>torch</code> and <code>transformers</code>.</p>
+<h2>Plan A Public Rebuild</h2>
+<p>Use <code>--dry-run</code> first. It prints every command without network calls or file writes, so it works before your local source files are in place:</p>
+<pre><code class="language-sh">python3 scripts/run_public_rebuild.py \
+  --umls-meta /path/to/UMLS/META \
+  --out-dir build/public \
+  --provider hashing \
+  --dry-run</code></pre>
+<p>For a real build, <code>/path/to/UMLS/META</code> must contain at least <code>MRCONSO.RRF</code>, <code>MRSTY.RRF</code>, <code>MRREL.RRF</code>, <code>MRDEF.RRF</code>, and <code>MRSAB.RRF</code> from your UMLS release:</p>
+<pre><code class="language-sh">python3 scripts/run_public_rebuild.py \
+  --umls-meta /path/to/UMLS/META \
+  --out-dir build/public \
+  --provider hashing</code></pre>
+<p>The wrapper fetches bounded public corpora, builds local UMLS-derived indexes, links text to CUIs, writes concept documents/vectors, runs paragraph quality evaluation, writes <code>build/public/reproducibility_manifest.json</code>, and writes the server command to <code>build/public/server_command.txt</code>.</p>
+<h2>Acquire Missing High-Citation Articles</h2>
+<p>After the public rebuild has created the label and semantic-type indexes, you can reproduce the recent high-citation OpenAlex acquisition:</p>
+<pre><code class="language-sh">python3 scripts/build_openalex_cited_evidence.py \
+  --out-dir build/source_acquisition/openalex_missing_high_citation \
+  --label-index build/public/indexes/umls_biomedicine_search_label_index.sqlite \
+  --semantic-type-index build/public/indexes/umls_semantic_types.sqlite \
+  --query-file config/openalex_missing_high_citation_queries.tsv \
+  --from-date 2021-05-14 \
+  --to-date 2026-05-14 \
+  --max-per-query 60 \
+  --per-page 60 \
+  --min-cited-by-count 500 \
+  --exclude-corpus build/openalex_cited_evidence/openalex_top_cited_corpus.jsonl \
+  --exclude-corpus build/pubmed_bulk_recent_baseline_corpus.jsonl \
+  --exclude-corpus build/pubmed_bulk_recent_next2_corpus.jsonl \
+  --articles-tsv build/source_acquisition/openalex_missing_high_citation/articles.tsv</code></pre>
+<p>Missing <code>--exclude-corpus</code> files are ignored, so the same command works whether or not you have the local historical corpora. The output includes an article TSV, corpus JSONL, evidence JSONL, concept documents, vectors, and a manifest.</p>
+<h2>Inspect Historical Progression</h2>
+<p>The checked-in progression ledger references local <code>build/</code> artifacts from the measured acquisition rounds. A fresh clone can still inspect the ledger shape:</p>
+<pre><code class="language-sh">python3 scripts/source_acquisition_progression.py \
+  --allow-missing-stage-metrics \
+  --out-json build/source_acquisition/progression_manifest.json \
+  --out-md build/source_acquisition/progression_report.md</code></pre>
+<p>After you have rebuilt or recreated the referenced artifacts, use strict mode:</p>
+<pre><code class="language-sh">python3 scripts/source_acquisition_progression.py --fail-on-regression</code></pre>
+<p>Strict mode fails if any listed artifact is missing or if a retained stage regresses its deterministic gate.</p>
+<h2>License Boundary</h2>
+<p>Source data licenses are separate from this repository&#x27;s code. UMLS, LOINC, SNOMED CT, external CUI vectors, and credentialed clinical datasets must not be redistributed unless your license permits it. Before publishing this repository publicly, add a project-level <code>LICENSE</code> file so GitHub users have clear rights for the code itself.</p>
+</main>
+<!-- Converted from docs/github_quickstart.html. -->
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sustainable Search Quality Improvements</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>Sustainable Search Quality Improvements</h1>
+<p>This project should improve search quality without turning into an unreviewable pile of one-off fixes. Prefer durable changes in this order:</p>
+<ol><li>Improve source coverage or structured evidence when a concept class is broadly underrepresented.</li><li>Add or revise semantic bucket/profile configuration when the problem is display, grouping, or source routing.</li><li>Add active-label supplement rows only when an existing CUI is known, the phrase is explicitly useful in clinical/research text, and default indexing or ranking loses it.</li><li>Add ranker rules only for reusable error classes, not for a single CUI unless the same pattern is expected to recur.</li><li>Add new CUIs only when the concept is clinically relevant and not represented by an existing UMLS concept or acceptable alternative.</li></ol>
+<h2>Rule Inventory</h2>
+<p>Use <code>docs/search_rule_inventory.html</code> and <code>docs/search_rule_inventory.html</code> as the review surfaces for heuristic changes. Regenerate them whenever you add, remove, or reclassify suppression rules, assertion cues, portal meta-language rules, benchmark rows, precision audit rows, or active-label supplement rows:</p>
+<pre><code class="language-sh">python3 scripts/build_search_rule_inventory.py</code></pre>
+<p>The inventory explains each rule class and answers three questions before a new rule lands:</p>
+<ul><li>Which rule class does this belong to?</li><li>What should this class handle, and what should it not handle?</li><li>Which benchmark row, audit row, or unit test explains why it exists?</li></ul>
+<h2>Active Label Supplement Rules</h2>
+<p><code>config/active_label_supplement.tsv</code> is a high-leverage but high-risk file. Each row must include:</p>
+<ul><li>A valid existing or new CUI.</li><li>A clear <code>semantic_type</code> and local <code>field</code>.</li><li>A <code>why</code> value explaining the clinical/retrieval reason.</li><li><code>context_any</code> for non-preferred short labels, abbreviations, and risky aliases unless the row is a drug roll-up alias.</li><li><code>block_any</code> when a known wrong expansion is likely, such as <code>STEMI</code> versus <code>NSTEMI</code>.</li></ul>
+<p>Validate the file after edits:</p>
+<pre><code class="language-sh">python3 scripts/validate_active_label_supplement.py</code></pre>
+<p>The unit suite also checks this validation so unsafe rows fail fast:</p>
+<pre><code class="language-sh">python3 -m pytest tests/test_evidence_vectors.py -k active_label_supplement -q</code></pre>
+<h2>Ranking Rule Rules</h2>
+<p>Ranker changes should be pattern-based. A good rule names an error class, such as:</p>
+<ul><li>generic status words outranking clinical entities,</li><li>care-setting words such as <code>emergency department</code> becoming disease/finding concepts,</li><li>ambiguous surface forms such as <code>cervical</code>,</li><li>broad related concepts leaking into semantic group cards.</li></ul>
+<p>Each ranking rule should have at least one positive test and one protection against the obvious false positive.</p>
+<h2>Evaluation Loop</h2>
+<p>When the request is &quot;run a loop&quot; or &quot;do an iteration&quot;, use this process.</p>
+<p>Daily preflight: if this is the first iteration started on a new calendar day, summarize the previous day&#x27;s shipped improvements in lay language before choosing the next failure. Add that summary to <code>docs/search_quality_daily_accomplishments.html</code> so the daily log explains what changed without requiring the reader to understand CUI IDs, benchmark internals, or iteration numbers. Keep <code>docs/search_quality_progress_log.html</code> linked to that daily-accomplishments file. If the previous day already has a plain-language summary, leave it in place and continue.</p>
+<p>For every improvement:</p>
+<p>benchmark row, promote a recurring miss into a suite lane, tighten a threshold, or explicitly record why no test change was appropriate.</p>
+<ol><li>Identify the failure from a stored benchmark, user example, or focused query.</li><li>State the hypothesis and expected measurable movement before changing code or evidence.</li><li>Make the smallest durable change.</li><li>Add or update tests.</li><li>Improve the test suite itself: add a missing focused test, refine an existing</li><li>Run focused evaluation for the affected rows when practical.</li><li>Document the measured effect in <code>improvements/</code>, including the exact query file, output directory, command, before/after metrics, test-suite change, and decision.</li><li>Periodically run the full paragraph benchmark to catch regressions outside the focused set.</li></ol>
+<p>Record every bounded search-quality pass in <code>docs/search_quality_iterations.html</code>. Use <code>docs/search_quality_iterations.html</code> as the filterable review surface by iteration type, status, and text search. Also update <code>docs/search_quality_progress_log.html</code> in the same iteration whenever the headline status, latest-result cards, open-work list, or readable chronology changes. Do not mark an iteration shipped while the progress log still describes the previous result as current.</p>
+<p>Refresh the backlog in <code>docs/search_quality_progress_log.html</code> on every iteration. Move completed items out, add new weaknesses discovered during the work, update priorities when evidence changes, and explicitly leave it unchanged only when the current backlog is still accurate after the iteration.</p>
+<p>Track the whole-product quality percentage in <code>docs/search_quality_progress_log.html#whole-product-quality</code>. Update the score history whenever a shipped iteration changes user-visible behavior, a major benchmark/smoke signal, source transparency, or a top known quality risk. Run <code>python3 scripts/build_whole_product_quality_scorecard.py</code> or explicitly reconcile why a saved lane artifact is not the current reference. The score uses <code>config/whole_product_quality_scorecard.json</code> weights plus the documented major-weakness cap. Do not raise the percentage for a narrow recall win if visible noise, wrong-first behavior, source trust, or a capped weak lane gets worse.</p>
+<p>Track evidence approval status in <code>docs/search_quality_evidence_buckets.html</code>. When an iteration acquires evidence, tests a source shard, promotes an acquisition, rejects a source path, adds source-specific benchmark rows, or changes source routing, update the bucket page in the same iteration. A build artifact existing under <code>build/</code> does not mean the evidence is approved; it must be bucketed as promoted, tested-neutral, rejected, configured-pending, benchmarked-not-ready, inventory-only, or diagnostic.</p>
+<p>Use focused evaluation for known misses:</p>
+<pre><code class="language-sh">python3 scripts/evaluate_paragraph_quality.py --queries /path/to/focused_queries.tsv --output-dir build/improvements/&lt;run_name&gt; --top-k 60</code></pre>
+<p>Use the full benchmark periodically:</p>
+<pre><code class="language-sh">python3 scripts/evaluate_paragraph_quality.py --output-dir build/improvements/&lt;run_name&gt; --top-k 60</code></pre>
+<h2>Progression Records</h2>
+<p>Source-acquisition work has an executable progression ledger:</p>
+<pre><code class="language-sh">python3 scripts/source_acquisition_progression.py --fail-on-regression</code></pre>
+<p>This reads <code>config/source_acquisition_progression.tsv</code> and writes <code>build/source_acquisition/progression_manifest.json</code> plus <code>build/source_acquisition/progression_report.md</code>. Treat this as the model for other result-improvement progressions: every retained stage should have a hypothesis, artifact inventory, measured metrics, a deterministic gate, and a decision. Rejected diagnostic stages may be recorded for learning, but they must not lower the reference bar for the next accepted or neutral stage.</p>
+</main>
+<!-- Converted from docs/search_quality_sustainable_improvements.html. -->
+</body>
+</html>

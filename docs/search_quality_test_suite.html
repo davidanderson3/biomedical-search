@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Search Quality Test Suite</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>Search Quality Test Suite</h1>
+<p>This is the repeatable suite for the current search app. Its job is to catch weaknesses, verify fixes on the same examples, and prevent regressions.</p>
+<h2>Run It</h2>
+<p>Start the search API first in one terminal:</p>
+<pre><code class="language-sh">PORT=8766 scripts/start_search_quality_server.sh</code></pre>
+<p>Then run the suite in another terminal:</p>
+<pre><code class="language-sh">python3 scripts/run_search_quality_suite.py --base-url http://127.0.0.1:8766</code></pre>
+<p>Dry-run the suite plan without calling the API:</p>
+<pre><code class="language-sh">python3 scripts/run_search_quality_suite.py --dry-run</code></pre>
+<p>Suite outputs are written under <code>build/search_quality_suite/&lt;suite-id&gt;/</code>. Benchmark run artifacts still go under <code>build/search_quality_experiments/runs/</code>. Each suite report records the layer result, the weakness it is meant to catch, the recommended solution, and whether that layer is blocking.</p>
+<h2>Current Layers</h2>
+<table><thead><tr><th>Layer</th><th>Role</th><th>Blocking?</th><th>What It Catches</th></tr></thead><tbody><tr><td><code>unit_static_regressions</code></td><td>code regression guard</td><td>yes</td><td>Unit/static failures before live benchmark results are trusted.</td></tr><tr><td><code>coverage_representativeness_audit</code></td><td>static concept-target coverage audit</td><td>no, known weakness</td><td>Expected and disallowed CUIs concentrating in a few semantic groups or source files even when the suite is otherwise green.</td></tr><tr><td><code>real_short_query_regression</code></td><td>real short-query guard</td><td>yes</td><td>Simple high-demand searches such as <code>hypertension</code>, <code>heart failure</code>, and <code>type 2 diabetes mellitus</code> failing despite being reviewed safe queries.</td></tr><tr><td><code>full_clinical_benchmark</code></td><td>broad coverage baseline</td><td>yes</td><td>Regression from the current 168-example clinical suite.</td></tr><tr><td><code>cycling_clinical_regression</code></td><td>rotating regression guard</td><td>yes</td><td>Failures hidden by a fixed smoke set.</td></tr><tr><td><code>clinical_text_type_variety</code></td><td>realistic clinical text format probe</td><td>no, known weakness</td><td>Whether discharge summaries, radiology reports, pathology reports, operative notes, nursing notes, lab flowsheets, medication administration records, therapy notes, home health notes, telephone triage, consult notes, and prior authorization text still map to the expected concepts.</td></tr><tr><td><code>consumer_lay_language</code></td><td>consumer lay-language probe</td><td>no, known weakness</td><td>Terse patient wording such as <code>water pill</code>, <code>pee test</code>, <code>belly pain</code>, <code>sugar diabetes</code>, <code>heart tracing</code>, scopes, and <code>blood thinner</code> drifting to literal/noise concepts.</td></tr><tr><td><code>patient_portal_intent</code></td><td>current-vs-history workflow guard</td><td>yes</td><td>Copied-forward history outranking the current portal concern, plus evidence-source loss.</td></tr><tr><td><code>pubmed_approved_long_documents</code></td><td>held-out long-document weakness probe</td><td>no, known weakness</td><td>Long PubMed abstracts dropping secondary concepts or ranking the wrong concept first.</td></tr><tr><td><code>precision_safety</code></td><td>wrong-result and reviewed precision guard</td><td>yes</td><td>Recall changes promoting reviewed false positives, disallowed IDs, or bad source contributions.</td></tr><tr><td><code>external_embedding_neighbor_probe</code></td><td>opt-in external embedding-neighbor probe</td><td>no</td><td>CUI2Vec/BioConceptVec staying measurable as bounded association signals without becoming default source evidence.</td></tr><tr><td><code>source_specific_evidence</code></td><td>core source-specific evidence guard</td><td>yes</td><td>DailyMed, MedlinePlus, or PubMed/PMC evidence behavior quietly regressing.</td></tr><tr><td><code>pubmed_focused_long_documents</code></td><td>fast long-document tuning probe</td><td>no, known weakness</td><td>Whether long-document fixes improve the same focused PubMed failures.</td></tr></tbody></table>
+<p>The suite definition is <code>config/search_quality_suite.json</code>.</p>
+<h2>Holistic View</h2>
+<p>The best current suite is not one giant score. It is a set of lanes with different jobs:</p>
+<p>terms should return the expected concept.</p>
+<p>so green runs are not mistaken for proof of prevalence-weighted clinical coverage.</p>
+<p>documents than polished benchmark paragraphs.</p>
+<p>or source regressions.</p>
+<p>probes. They are not source text, not trusted evidence, and not loaded by the default search server unless explicitly requested.</p>
+<ul><li>Real short queries protect the obvious product experience: common medical</li><li>Full clinical and cycling clinical runs protect broad judged coverage.</li><li>Coverage representativeness audits show which CUIs the tests actually assert,</li><li>Realistic note-format probes test clinical text that looks more like source</li><li>Patient messages protect current-user intent against copied-forward history.</li><li>PubMed long-document runs intentionally expose the strongest open weakness.</li><li>Precision and source-specific lanes keep recall fixes from hiding wrong results</li><li>CUI2Vec and BioConceptVec stay in the loop as opt-in association-signal</li></ul>
+<p>Document-retrieval benchmarks are not active suite layers for this app. The current product returns medical concepts with evidence, so source quality is tested through source-specific concept searches and evidence-source checks.</p>
+<p>Every search-quality loop should improve this suite, not only the app. In this project, &quot;run a loop&quot; and &quot;do an iteration&quot; mean the same thing: run tests, find a weakness, mitigate it, rerun the same checks, record how long it took, and document what changed in the tests. A loop should add a focused regression test, refine a benchmark row, promote a repeated miss into a suite lane, tighten a threshold, or explicitly document why the existing tests already cover the weakness.</p>
+<h2>Expected Status Today</h2>
+<p>The suite is not expected to be fully green yet. That is intentional:</p>
+<p><code>build/search_quality_suite/SQS-20260615-static-guard-green/suite.md</code> with 413 passed and 1 skipped.</p>
+<p>The latest audit found 609 unique target CUIs and 2,210 target mentions, with Disorders at 48.3% of target mentions and thin Anatomy, Phenomena, and Physiology coverage. This is not a prevalence-weighted target model yet; it is the repeatable measurement that should drive the next representative coverage work.</p>
+<p>suite layers. The real short-query lane remains at the 20 reviewed rows that passed on 2026-06-11; the 2026-06-12 three-word expansion probe found new exact-mention carryover failures and was not promoted. The source-specific lane is intentionally narrowed to DailyMed, MedlinePlus, and PubMed/PMC and passed on 2026-06-15 with 9/9 rows complete, 20/20 expected CUIs at top 10, and 0 wrong-first rows after the DailyMed warning-context fix. ClinicalTrials.gov posted outcomes are opt-in only, and PubTator3 stays a sampled relation-candidate stub unless a measured gap validates it against PubMed/PMC.</p>
+<p>measured loop as opt-in subset candidates with drift guards. SapBERT remains the active query/document embedding baseline.</p>
+<p>covers reviewed patient wording such as <code>water pill</code>, <code>pee test</code>, <code>belly pain</code>, <code>sugar diabetes</code>, <code>heart tracing</code>, <code>colon scope</code>, <code>stomach scope</code>, and <code>blood thinner</code>, with explicit disallowed literal-drift CUIs where relevant. Governed active-label supplement aliases and the bounded literal-drift filter now cover the main lay phrases in the latest live lane run: 13/13 rows complete at top 10, 0 wrong-first rows, and 0 configured disallowed concepts at top 10/top 20. The suite still marks this layer nonblocking/known-weakness until the gate-promotion decision is made.</p>
+<p>a stable green baseline. The first live run was 5/12 rows fully found at top 10, 52/60 expected concepts found, 7 rows missing at least one expected concept, and 0 wrong first results. It is strict: all 12 English-only note-format rows and 60 expected concepts must be found at top 10 before it turns green.</p>
+<p>and missing evidence-source issue are fixed.</p>
+<p>blocking the default <code>--fail-on blocking</code> exit mode.</p>
+<ul><li>The static layer is green in this worktree. The latest static-only suite run is</li><li>The coverage representativeness audit is a nonblocking known-weakness layer.</li><li>The real short-query and core source-specific evidence lanes are now first-class</li><li>The external embedding-neighbor probe keeps CUI2Vec and BioConceptVec in the</li><li>The consumer lay-language lane is now a first-class known-weakness probe. It</li><li>The clinical text type variety probe is intentionally nonblocking until it has</li><li>The patient-portal layer is blocking and should fail until the 11/12 regression</li><li>The PubMed layers are marked as known weaknesses, so they report failure without</li></ul>
+<p>Use <code>--fail-on any</code> when you want known weaknesses to make the command fail too. Use <code>--only &lt;layer-id&gt;</code> to rerun one layer after fixing a specific weakness.</p>
+</main>
+<!-- Converted from docs/search_quality_test_suite.html. -->
+</body>
+</html>

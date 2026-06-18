@@ -13,7 +13,7 @@ set easier to scan without changing any command paths.
 - If a script implementation moves later, leave a compatibility wrapper at the
   old path and test both the old command path and the new implementation path.
 - Update this index, the matching category README, and
-  `docs/repeatable_processes.md` when adding or moving a repeatable entrypoint.
+  `docs/repeatable_processes.html` when adding or moving a repeatable entrypoint.
 - Prefer imports that work from the repository root with `PYTHONPATH=src:scripts`.
 
 ## Pipeline And Rebuild
@@ -27,7 +27,7 @@ set easier to scan without changing any command paths.
 | `source_acquisition_progression.py` | Validates source acquisition progression and regression status. |
 | `check_source_rebuild_delta.py` | Compares source rebuild outputs. |
 | `scaling_status.py` | Summarizes scaling/build status artifacts. |
-| `sitecustomize.py` | Local Python path helper for script execution contexts. |
+| `sitecustomize.py` | Local Python startup hook that suppresses urllib3 LibreSSL warnings for direct script runs. |
 
 See `pipeline/README.md`.
 
@@ -53,7 +53,7 @@ See `serve/README.md`.
 | `build_precision_audit_report.py` | Reviewed precision-audit report generation. |
 | `analyze_search_judgments.py` | Judgment file analysis. |
 | `search_quality_shadow_reranker.py` | Feature extraction, shadow reranker training, and current-vs-ML rank report. |
-| `build_search_rule_inventory.py` | Static rule and heuristic inventory report. |
+| `build_search_rule_inventory.py` | Static rule and heuristic inventory Markdown/HTML reports. |
 | `validate_active_label_supplement.py` | Active label supplement validation. |
 
 See `quality/README.md`.

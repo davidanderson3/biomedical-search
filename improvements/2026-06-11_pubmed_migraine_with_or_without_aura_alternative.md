@@ -39,7 +39,7 @@ at zero.
   review abstracts.
 - Added a focused evaluator regression test proving one first-page
   `C3808875` hit satisfies both aura subtype expectations.
-- Regenerated `docs/search_rule_inventory.md`.
+- Regenerated `docs/search_rule_inventory.html`.
 
 ## Result
 

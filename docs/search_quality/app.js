@@ -1,3 +1,7 @@
+    if (window.location.hash === "#source-attribution" && window.history?.replaceState) {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
+
     const state = {
       status: null,
       lastQuery: "",
@@ -12,12 +16,15 @@
       lastRelatedResultBuckets: [],
       lastScoring: null,
       includeRelated: true,
+      includeMolecularAssociations: false,
       searchMode: "balanced",
       searchScope: "umls_evidence",
       sourceCodeSabs: "none",
       selectedSemanticBucketKeys: [],
       searchRequestSeq: 0,
       searchAbortController: null,
+      relatedView: null,
+      relatedViewRequestSeq: 0,
       setRows: [],
       detailCache: new Map(),
       judgments: {},
@@ -498,6 +505,14 @@
       return `&scope=${encodeURIComponent(value || "umls_evidence")}`;
     }
 
+    function selectedMolecularAssociations() {
+      return Boolean(els.molecularAssociations?.checked);
+    }
+
+    function molecularAssociationQueryParam(value = selectedMolecularAssociations()) {
+      return `&molecular_associations=${value ? "1" : "0"}`;
+    }
+
     function includeRelatedForSearch(searchMode, searchScope) {
       return searchMode === "exact" || searchScope === "umls" ? "0" : "1";
     }
@@ -563,12 +578,57 @@
 
     const els = {};
     for (const id of [
-      "status", "query", "topK", "searchMode", "searchScope", "semanticGroupFilter", "sourceCodes", "searchBtn", "randomQueryBtn", "shortQueryBtn", "longQueryBtn", "sampleStatus", "querySet", "runSetBtn",
+      "status", "query", "topK", "searchMode", "searchScope", "semanticGroupFilter", "sourceCodes", "molecularAssociations", "searchBtn", "randomQueryBtn", "shortQueryBtn", "longQueryBtn", "sampleStatus", "querySet", "runSetBtn",
       "sourceCodesHint", "saveJudgmentsBtn", "clearJudgmentsBtn", "exportBtn", "metrics", "results", "setResults",
-      "searchProgress", "searchFeedback", "querySetFeedback",
+      "searchProgress", "searchSubmittedQuery", "searchFeedback", "querySetFeedback",
       "snomedLicenseDialog", "snomedLicenseCheckbox", "snomedLicenseAcceptBtn"
     ]) {
       els[id] = document.getElementById(id);
+    }
+    const ENABLE_JUDGMENTS = Boolean(els.saveJudgmentsBtn && els.clearJudgmentsBtn && els.exportBtn);
+    const ENABLE_QUERY_SET = Boolean(els.querySet && els.runSetBtn && els.setResults);
+
+    function setupUtsNavDropdowns() {
+      const nav = document.querySelector(".uts-main-nav");
+      if (!nav) return;
+      const dropdowns = Array.from(nav.querySelectorAll("details.uts-nav-dropdown"));
+      if (!dropdowns.length) return;
+
+      function closeOtherDropdowns(activeDropdown) {
+        for (const dropdown of dropdowns) {
+          if (dropdown !== activeDropdown) dropdown.open = false;
+        }
+      }
+
+      function closeAllDropdowns() {
+        for (const dropdown of dropdowns) dropdown.open = false;
+      }
+
+      for (const dropdown of dropdowns) {
+        const summary = dropdown.querySelector("summary");
+        summary?.addEventListener("click", () => {
+          if (!dropdown.open) closeOtherDropdowns(dropdown);
+        });
+        dropdown.addEventListener("toggle", () => {
+          if (dropdown.open) closeOtherDropdowns(dropdown);
+        });
+      }
+
+      nav.addEventListener("click", (event) => {
+        if (event.target.closest(".uts-menu-dropdown a")) closeAllDropdowns();
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!nav.contains(event.target)) closeAllDropdowns();
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        const openDropdown = dropdowns.find((dropdown) => dropdown.open);
+        if (!openDropdown) return;
+        closeAllDropdowns();
+        openDropdown.querySelector("summary")?.focus();
+      });
     }
 
     function setBrandStatus() {
@@ -578,6 +638,15 @@
     function setSearchInFlight(active) {
       if (els.searchProgress) els.searchProgress.hidden = !active;
       if (els.results) els.results.setAttribute("aria-busy", active ? "true" : "false");
+    }
+
+    function setSubmittedSearchQuery(query = "") {
+      if (!els.searchSubmittedQuery) return;
+      const text = String(query || "").trim();
+      els.searchSubmittedQuery.innerHTML = text
+        ? `<span class="search-progress-query-label">Query</span><span class="search-progress-query-text">${esc(text)}</span>`
+        : "";
+      els.searchSubmittedQuery.hidden = !text;
     }
 
     function setSearchFeedback(message = "", kind = "") {
@@ -606,10 +675,12 @@
       state.lastRelatedResultBuckets = [];
       state.lastScoring = null;
       state.includeRelated = options.includeRelated === "1";
+      state.includeMolecularAssociations = Boolean(options.includeMolecularAssociations);
       state.searchMode = options.searchMode || state.searchMode;
       state.searchScope = options.searchScope || state.searchScope;
       state.sourceCodeSabs = options.sourceCodes || state.sourceCodeSabs;
       state.selectedSemanticBucketKeys = options.semanticBucketKeys || [];
+      state.relatedView = null;
       state.detailCache.clear();
       setResultsPlaceholder("Searching...");
       renderMetrics();
@@ -838,6 +909,7 @@
     }
 
     async function loadServerJudgments() {
+      if (!ENABLE_JUDGMENTS) return;
       try {
         const payload = await api("/api/judgments");
         applyServerJudgments(payload);
@@ -852,6 +924,7 @@
     }
 
     async function persistJudgmentsToServer(body = { judgments: Object.values(state.judgments) }) {
+      if (!ENABLE_JUDGMENTS) throw new Error("Judgments are not available in this view");
       const payload = await api("/api/judgments", {
         method: "POST",
         body
@@ -862,13 +935,15 @@
       return payload;
     }
 
-    async function runSearch() {
+    async function runSearch(options = {}) {
+      if (options instanceof Event) options = {};
       if (!requireSnomedLicenseAcknowledgement()) return;
-      const query = els.query.value.trim();
+      const query = String(typeof options.query === "string" ? options.query : els.query.value).trim();
       const topK = Math.max(18, Math.min(100, Number(els.topK.value) || SEMANTIC_BUCKET_FETCH_MIN));
       const searchMode = selectedSearchMode();
       const searchScope = selectedSearchScope();
       const includeRelated = includeRelatedForSearch(searchMode, searchScope);
+      const includeMolecularAssociations = selectedMolecularAssociations();
       const semanticBucketKeys = selectedSemanticBucketKeys();
       const sourceCodes = selectedSourceCodeSabs();
       const searchK = topK;
@@ -876,12 +951,14 @@
         setSearchFeedback("Enter text, a CUI, or a source code before searching.", "error");
         return;
       }
+      if (els.query && options.clearInput !== false) els.query.value = "";
       state.searchAbortController?.abort();
       const searchId = state.searchRequestSeq + 1;
       state.searchRequestSeq = searchId;
       const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
       state.searchAbortController = controller;
       els.searchBtn.disabled = true;
+      setSubmittedSearchQuery(query);
       setSearchInFlight(true);
       setSearchFeedback();
       setBrandStatus();
@@ -889,12 +966,13 @@
         includeRelated,
         searchMode,
         searchScope,
+        includeMolecularAssociations,
         sourceCodes,
         semanticBucketKeys
       });
       try {
         const payload = await api(
-          `/api/search?q=${encodeURIComponent(query)}&k=${searchK}&related=${includeRelated}&linked=${includeRelated}&evidence_items=0&mode=${encodeURIComponent(searchMode)}${searchScopeQueryParam(searchScope)}${semanticBucketFilterQueryParam(semanticBucketKeys)}${sourceCodeQueryParam(sourceCodes)}`,
+          `/api/search?q=${encodeURIComponent(query)}&k=${searchK}&related=${includeRelated}&linked=${includeRelated}&evidence_items=0&mode=${encodeURIComponent(searchMode)}${searchScopeQueryParam(searchScope)}${molecularAssociationQueryParam(includeMolecularAssociations)}${semanticBucketFilterQueryParam(semanticBucketKeys)}${sourceCodeQueryParam(sourceCodes)}`,
           { signal: controller?.signal }
         );
         if (searchId !== state.searchRequestSeq) return;
@@ -912,6 +990,7 @@
         state.lastRelatedResultBuckets = payload.related_result_buckets || [];
         state.lastScoring = payload.scoring || null;
         state.includeRelated = includeRelated === "1";
+        state.includeMolecularAssociations = Boolean(payload.molecular_associations_enabled ?? includeMolecularAssociations);
         state.searchMode = payload.search_mode || searchMode;
         state.searchScope = payload.search_scope || searchScope;
         state.sourceCodeSabs = sourceCodes;
@@ -936,6 +1015,7 @@
     }
 
     function setJudgment(hit, grade) {
+      if (!ENABLE_JUDGMENTS) return;
       if (!state.judgmentsLoaded) {
         setSearchFeedback("Judgments have not loaded from the server yet. Try again after the server responds.", "error");
         return;
@@ -981,6 +1061,7 @@
     }
 
     function judgmentGradeForHit(hit) {
+      if (!ENABLE_JUDGMENTS) return "";
       if (!hit?.doc_id) return "";
       return state.judgments[judgmentKey(state.lastQuery, hit.doc_id)]?.grade || "";
     }
@@ -993,7 +1074,99 @@
         || null;
     }
 
+    function visibleHitByCui(cui) {
+      const id = String(cui || "").trim().toUpperCase();
+      if (!id) return null;
+      return state.lastResults.find((item) => String(item.cui || "").trim().toUpperCase() === id)
+        || displayedRelatedHits().find((item) => String(item.cui || "").trim().toUpperCase() === id)
+        || null;
+    }
+
+    function relatedControlHit(control, cui) {
+      const name = String(control.getAttribute("data-related-name") || control.textContent || cui || "").trim();
+      const semanticType = String(control.getAttribute("data-related-semantic-type") || "").trim();
+      const semanticGroup = String(control.getAttribute("data-related-semantic-group") || "").trim();
+      const semanticGroupLabel = String(control.getAttribute("data-related-semantic-group-label") || "").trim();
+      return {
+        cui,
+        name,
+        label: name,
+        labels: name ? [name] : [],
+        semantic_type: semanticType,
+        semantic_group: semanticGroup,
+        semantic_group_label: semanticGroupLabel,
+        semantic_types: semanticType ? [{ name: semanticType }] : []
+      };
+    }
+
+    function seedRelatedViewHit(hitLike) {
+      const cui = String(hitLike?.cui || "").trim().toUpperCase();
+      const name = displayNameForHit(hitLike || {}) || hitLike?.label || cui;
+      const semanticType = String(hitLike?.semantic_type || semanticDisplayTypeForHit(hitLike || {}) || "").trim();
+      const semanticGroup = String(hitLike?.semantic_group || "").trim();
+      const semanticGroupLabel = String(hitLike?.semantic_group_label || "").trim();
+      return {
+        cui,
+        name,
+        label: name,
+        labels: name ? [name] : [],
+        semantic_type: semanticType,
+        semantic_group: semanticGroup,
+        semantic_group_label: semanticGroupLabel,
+        semantic_types: Array.isArray(hitLike?.semantic_types)
+          ? hitLike.semantic_types
+          : (semanticType ? [{ name: semanticType }] : [])
+      };
+    }
+
+    function closeRelatedConceptView() {
+      state.relatedView = null;
+      state.relatedViewRequestSeq += 1;
+      renderResults();
+      renderMetrics();
+    }
+
+    async function openRelatedConceptView(hitLike) {
+      const cui = String(hitLike?.cui || "").trim().toUpperCase();
+      if (!cui) return;
+      const requestSeq = state.relatedViewRequestSeq + 1;
+      state.relatedViewRequestSeq = requestSeq;
+      const seed = seedRelatedViewHit({ ...(hitLike || {}), cui });
+      state.relatedView = {
+        status: "loading",
+        seed,
+        payload: null,
+        error: ""
+      };
+      renderResults();
+      renderMetrics();
+      try {
+        const params = new URLSearchParams();
+        params.set("cui", cui);
+        params.set("k", "100");
+        const payload = await api(`/api/related?${params.toString()}`);
+        if (requestSeq !== state.relatedViewRequestSeq) return;
+        state.relatedView = {
+          status: "ready",
+          seed,
+          payload,
+          error: ""
+        };
+      } catch (err) {
+        if (requestSeq !== state.relatedViewRequestSeq) return;
+        state.relatedView = {
+          status: "error",
+          seed,
+          payload: null,
+          error: err?.message || "Related concepts request failed"
+        };
+      }
+      renderResults();
+      renderMetrics();
+    }
+
     function badResultButton(hit, grade) {
+      if (!ENABLE_JUDGMENTS) return "";
       const active = grade === "wrong";
       const label = active ? "Marked bad. Click to clear." : "Mark result bad";
       return `
@@ -1334,6 +1507,26 @@
       const sourceCode = primarySourceCodeForHit(hit);
       const sourceUrl = sourceCode ? utsSourceCodeUrl(sourceCode) : "";
       return sourceUrl || utsConceptUrl(hit.cui);
+    }
+
+    function relatedConceptUrl(cui) {
+      return `#related-${encodeURIComponent(cui || "")}`;
+    }
+
+    function resultRelatedLinkAttrs(hit) {
+      const cui = String(hit?.cui || "").trim();
+      if (!cui) {
+        return `href="${esc(resultBrowserUrl(hit))}" target="_blank" rel="noreferrer"`;
+      }
+      return [
+        `href="${esc(relatedConceptUrl(cui))}"`,
+        `data-related-cui="${esc(cui)}"`,
+        `data-related-doc="${esc(hit?.doc_id || "")}"`,
+        `data-related-name="${esc(displayNameForHit(hit))}"`,
+        `data-related-semantic-type="${esc(semanticDisplayTypeForHit(hit))}"`,
+        `data-related-semantic-group="${esc(hit?.semantic_group || "")}"`,
+        `data-related-semantic-group-label="${esc(hit?.semantic_group_label || "")}"`
+      ].join(" ");
     }
 
     function imageSourceLabel(image) {
@@ -2394,11 +2587,11 @@
         0
       );
       return `
-        <div class="clinical-context-panel" aria-label="Structured clinical context buckets">
-          <div class="result-layer-head">
+          <summary class="result-layer-head clinical-context-summary">
             <h3>Clinical Context</h3>
             <div class="result-layer-count">${fmtNum(buckets.length)} buckets · ${fmtNum(conceptTotal)} linked concepts</div>
-          </div>
+          </summary>
+        <div class="clinical-context-panel" aria-label="Structured clinical context buckets">
           <div class="clinical-context-grid">
             ${buckets.map(renderClinicalContextBucket).join("")}
           </div>
@@ -2898,6 +3091,63 @@
         .map((item, index) => relatedResultHit(item, state.lastResults.length + index + 1));
     }
 
+    function hitIsMolecularAssociation(hit) {
+      if (!hitIsGeneProteinBucketItem(hit)) return false;
+      return isRelatedHit(hit);
+    }
+
+    function molecularAssociationHits(hits) {
+      if (!state.includeMolecularAssociations) return [];
+      const seen = new Set();
+      return (hits || []).filter((hit) => {
+        if (!hitIsMolecularAssociation(hit)) return false;
+        const key = String(hit.cui || hit.doc_id || displayNameForHit(hit));
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, 8);
+    }
+
+    function molecularAssociationProvenance(hit) {
+      const seed = [hit.related_seed_label, hit.related_seed_cui].filter(Boolean).join(" ");
+      const sourceText = (hit.sources || []).slice(0, 2).join(", ");
+      const pieces = [
+        seed ? `seed ${seed}` : "",
+        sourceText,
+        matchTypeLabel(hit.match_type || hit.view || "")
+      ].filter(Boolean);
+      return pieces.join(" / ");
+    }
+
+    function renderMolecularAssociationPanel(hits) {
+      if (!state.includeMolecularAssociations) return "";
+      const items = molecularAssociationHits(hits);
+      return `
+        <section class="result-layer molecular-association-layer" aria-label="Molecular associations">
+          <div class="result-layer-head">
+            <h3>Molecular Associations</h3>
+            <div class="result-layer-count">${fmtNum(items.length)} ${items.length === 1 ? "candidate" : "candidates"}</div>
+          </div>
+          ${items.length ? `
+            <div class="molecular-association-grid">
+              ${items.map((hit, index) => `
+                <article class="molecular-association-card">
+                  <div class="molecular-association-rank">${fmtNum(index + 1)}</div>
+                  <div class="molecular-association-main">
+                    <a class="concept-link result-concept-link" ${resultRelatedLinkAttrs(hit)}>${esc(displayNameForHit(hit))}</a>
+                    <div class="molecular-association-meta">
+                      <span class="mono">${esc(hit.cui || "")}</span>
+                      <span>${esc(semanticDisplayTypeForHit(hit))}</span>
+                      <span>relevance ${esc(compactRelevanceScore(hit))}</span>
+                    </div>
+                    <div class="molecular-association-provenance">${esc(molecularAssociationProvenance(hit) || "association provenance unavailable")}</div>
+                  </div>
+                </article>
+              `).join("")}
+            </div>` : `<div class="results-empty muted">No relation-derived gene or protein associations returned for this query.</div>`}
+        </section>`;
+    }
+
     function compactSignalSummary(hit) {
       const positive = signalContributionItems(hit).slice(0, 2).map((item) =>
         `<span class="compact-signal-chip">${esc(item.label)} ${fmtScore(item.value)}</span>`
@@ -2940,7 +3190,7 @@
         <div class="result result-compact">
           <details class="result-details compact-card-details" data-lazy-detail="result" data-doc-id="${esc(hit.doc_id || "")}" data-cui="${esc(hit.cui || "")}" data-rank="${esc(rankNumber || "")}">
             <summary class="compact-result-summary">
-              <a class="concept-link compact-result-title" href="${esc(resultBrowserUrl(hit))}" target="_blank" rel="noreferrer">
+              <a class="concept-link compact-result-title result-concept-link" ${resultRelatedLinkAttrs(hit)}>
                 ${esc(name)}
               </a>
               <span class="result-semantic-type">${esc(semanticTypeLabel)}</span>
@@ -2988,15 +3238,7 @@
           <div class="detail-title">Evidence</div>
           ${renderEvidenceItems(hit)}
         </div>
-        <div class="detail-section">
-          <div class="detail-title">Review</div>
-          <div class="judgments">
-            ${judgmentButton(hit.doc_id, "relevant", "Relevant", grade)}
-            ${judgmentButton(hit.doc_id, "partial", "Partial", grade)}
-            ${judgmentButton(hit.doc_id, "wrong", "Wrong", grade)}
-            <button data-grade="" data-doc="${esc(hit.doc_id)}">Clear</button>
-          </div>
-        </div>`;
+        ${renderJudgmentSection(hit, grade)}`;
     }
 
     function detailCacheKey(docId, cui) {
@@ -3079,7 +3321,7 @@
       return `
         <div class="result">
           <div class="result-visible">
-            <a class="concept-link cui-main" href="${esc(resultBrowserUrl(hit))}" target="_blank" rel="noreferrer">
+            <a class="concept-link cui-main result-concept-link" ${resultRelatedLinkAttrs(hit)}>
               ${esc(name)}
             </a>
             <div class="result-semantic-type">${esc(semanticTypeLabel)}</div>
@@ -3125,15 +3367,7 @@
                 <span class="chip">${esc(hit.view || "")}</span>
               </div>
             </div>
-            <div class="detail-section">
-              <div class="detail-title">Review</div>
-              <div class="judgments">
-                ${judgmentButton(hit.doc_id, "relevant", "Relevant", grade)}
-                ${judgmentButton(hit.doc_id, "partial", "Partial", grade)}
-                ${judgmentButton(hit.doc_id, "wrong", "Wrong", grade)}
-                <button data-grade="" data-doc="${esc(hit.doc_id)}">Clear</button>
-              </div>
-            </div>
+            ${renderJudgmentSection(hit, grade)}
           </details>
         </div>`;
     }
@@ -3302,9 +3536,242 @@
         </details>`;
     }
 
+    function numericField(value) {
+      if (value === null || value === undefined || value === "") return null;
+      const number = Number(value);
+      return Number.isFinite(number) ? number : null;
+    }
+
+    function relatedCollectionLabel(field) {
+      const labels = {
+        related_concepts: "top related",
+        evidence_related_concepts: "evidence vectors",
+        mrrel_neighbors: "MRREL",
+        mrrel_related_concepts: "MRREL",
+        research_relations: "research relations",
+        external_embedding_neighbors: "embedding neighbors"
+      };
+      return labels[field] || field.replaceAll("_", " ");
+    }
+
+    function relatedItemCui(item) {
+      return String(item?.cui || item?.target_cui || "").trim().toUpperCase();
+    }
+
+    function relatedItemLabel(item) {
+      return String(item?.label || item?.target_label || item?.name || relatedItemCui(item) || "Concept").trim();
+    }
+
+    function relatedItemSemanticType(item) {
+      const direct = String(item?.semantic_type || item?.target_semantic_type || "").trim();
+      if (direct) return direct;
+      for (const type of item?.semantic_types || []) {
+        const label = typeof type === "string" ? type : (type?.name || type?.sty || type?.tui || "");
+        if (String(label || "").trim()) return String(label).trim();
+      }
+      return "Semantic type unavailable";
+    }
+
+    function relatedItemScore(item) {
+      for (const key of ["score", "rank_score", "strength", "confidence", "similarity"]) {
+        const value = numericField(item?.[key]);
+        if (value !== null) return value;
+      }
+      for (const edge of [item?.edge, item?.universal_edge, item?.relation_edge]) {
+        for (const key of ["score", "strength", "confidence"]) {
+          const value = numericField(edge?.[key]);
+          if (value !== null) return value;
+        }
+      }
+      return null;
+    }
+
+    function relatedItemRank(item) {
+      for (const key of ["rank", "source_rank", "related_rank"]) {
+        const value = numericField(item?.[key]);
+        if (value !== null) return value;
+      }
+      return null;
+    }
+
+    function relatedItemIsBetter(candidate, incumbent) {
+      const candidateScore = relatedItemScore(candidate);
+      const incumbentScore = relatedItemScore(incumbent);
+      if (candidateScore !== null || incumbentScore !== null) {
+        if (candidateScore === null) return false;
+        if (incumbentScore === null) return true;
+        if (Math.abs(candidateScore - incumbentScore) > 0.000001) return candidateScore > incumbentScore;
+      }
+      const candidateRank = relatedItemRank(candidate);
+      const incumbentRank = relatedItemRank(incumbent);
+      if (candidateRank !== null || incumbentRank !== null) {
+        if (candidateRank === null) return false;
+        if (incumbentRank === null) return true;
+        if (candidateRank !== incumbentRank) return candidateRank < incumbentRank;
+      }
+      return relatedItemLabel(candidate).length > relatedItemLabel(incumbent).length;
+    }
+
+    function compareRelatedItems(a, b) {
+      const scoreA = relatedItemScore(a);
+      const scoreB = relatedItemScore(b);
+      if (scoreA !== null || scoreB !== null) {
+        if (scoreA === null) return 1;
+        if (scoreB === null) return -1;
+        if (Math.abs(scoreB - scoreA) > 0.000001) return scoreB - scoreA;
+      }
+      const rankA = relatedItemRank(a);
+      const rankB = relatedItemRank(b);
+      if (rankA !== null || rankB !== null) {
+        if (rankA === null) return 1;
+        if (rankB === null) return -1;
+        if (rankA !== rankB) return rankA - rankB;
+      }
+      return relatedItemLabel(a).localeCompare(relatedItemLabel(b));
+    }
+
+    function relatedViewItems(payload) {
+      const collections = [
+        "related_concepts",
+        "evidence_related_concepts",
+        "mrrel_neighbors",
+        "mrrel_related_concepts",
+        "research_relations",
+        "external_embedding_neighbors"
+      ];
+      const best = new Map();
+      for (const field of collections) {
+        for (const item of payload?.[field] || []) {
+          const cui = relatedItemCui(item);
+          if (!cui) continue;
+          const normalized = {
+            ...item,
+            cui,
+            label: relatedItemLabel(item),
+            related_collection: field,
+            related_collection_label: relatedCollectionLabel(field)
+          };
+          const existing = best.get(cui);
+          if (!existing || relatedItemIsBetter(normalized, existing)) {
+            best.set(cui, normalized);
+          }
+        }
+      }
+      return Array.from(best.values()).sort(compareRelatedItems);
+    }
+
+    function relatedConceptGroupsBySemanticType(items) {
+      const grouped = new Map();
+      for (const item of items || []) {
+        const semanticType = relatedItemSemanticType(item);
+        if (!grouped.has(semanticType)) {
+          grouped.set(semanticType, {
+            semanticType,
+            items: []
+          });
+        }
+        grouped.get(semanticType).items.push(item);
+      }
+      return Array.from(grouped.values())
+        .map((group) => ({ ...group, items: group.items.sort(compareRelatedItems) }))
+        .sort((a, b) => b.items.length - a.items.length || a.semanticType.localeCompare(b.semanticType));
+    }
+
+    function renderRelatedViewCard(item, index) {
+      const cui = relatedItemCui(item);
+      const label = relatedItemLabel(item);
+      const semanticType = relatedItemSemanticType(item);
+      const semanticGroup = String(item.semantic_group || item.target_semantic_group || "").trim();
+      const semanticGroupLabel = String(item.semantic_group_label || "").trim();
+      const score = relatedItemScore(item);
+      const rank = relatedItemRank(item);
+      const relationText = relationLabel(item);
+      const meta = [
+        `<span class="mono">${esc(cui)}</span>`,
+        semanticGroupLabel || semanticGroup ? `<span>${esc(semanticGroupLabel || semanticGroup)}</span>` : "",
+        relationText ? `<span>${esc(relationText)}</span>` : "",
+        score !== null ? `<span>score ${esc(fmtScore(score))}</span>` : "",
+        rank !== null ? `<span>rank ${esc(fmtNum(rank))}</span>` : "",
+        item.related_collection_label ? `<span>${esc(item.related_collection_label)}</span>` : ""
+      ].filter(Boolean).join("");
+      return `
+        <button
+          class="related-view-card"
+          type="button"
+          data-related-cui="${esc(cui)}"
+          data-related-name="${esc(label)}"
+          data-related-semantic-type="${esc(semanticType)}"
+          data-related-semantic-group="${esc(semanticGroup)}"
+          data-related-semantic-group-label="${esc(semanticGroupLabel)}"
+        >
+          <span class="related-view-card-rank">${esc(fmtNum(index + 1))}</span>
+          <span class="related-view-card-main">
+            <span class="related-view-card-title">${esc(label)}</span>
+            <span class="related-view-card-meta">${meta}</span>
+          </span>
+        </button>`;
+    }
+
+    function renderRelatedConceptView() {
+      const view = state.relatedView || {};
+      const seed = view.seed || {};
+      const seedType = String(seed.semantic_type || semanticDisplayTypeForHit(seed) || "").trim();
+      const seedMeta = [
+        seed.cui ? `<span class="mono">${esc(seed.cui)}</span>` : "",
+        seedType ? `<span>${esc(seedType)}</span>` : "",
+        seed.semantic_group_label ? `<span>${esc(seed.semantic_group_label)}</span>` : ""
+      ].filter(Boolean).join("");
+      let body = "";
+      if (view.status === "loading") {
+        body = '<div class="results-empty muted">Loading related concepts...</div>';
+      } else if (view.status === "error") {
+        body = `<div class="results-empty muted">Related concepts unavailable: ${esc(view.error || "request failed")}</div>`;
+      } else {
+        const items = relatedViewItems(view.payload || {});
+        const groups = relatedConceptGroupsBySemanticType(items);
+        body = groups.length ? `
+          <div class="related-type-grid">
+            ${groups.map((group) => `
+              <section class="related-type-group">
+                <div class="related-type-group-head">
+                  <h4>${esc(group.semanticType)}</h4>
+                  <span>${fmtNum(group.items.length)}</span>
+                </div>
+                <div class="related-view-items">
+                  ${group.items.map((item, index) => renderRelatedViewCard(item, index)).join("")}
+                </div>
+              </section>`).join("")}
+          </div>` : '<div class="results-empty muted">No related concepts returned.</div>';
+      }
+      const itemCount = view.payload ? relatedViewItems(view.payload).length : 0;
+      return `
+        <section class="result-layer related-view" aria-label="Related concepts">
+          <div class="related-view-toolbar">
+            <button class="related-view-back" type="button" data-related-back>Back</button>
+            <div class="related-view-title">
+              <h3>Related Concepts</h3>
+              <div class="related-view-seed">
+                <span>${esc(seed.name || seed.label || seed.cui || "Concept")}</span>
+                ${seedMeta}
+              </div>
+            </div>
+            <div class="result-layer-count">${view.status === "ready" ? `${fmtNum(itemCount)} concepts` : esc(view.status || "")}</div>
+          </div>
+          ${body}
+        </section>`;
+    }
+
     function renderResults() {
+      if (state.relatedView) {
+        els.results.innerHTML = renderRelatedConceptView();
+        bindResultInteractions(els.results);
+        return;
+      }
       if (!state.lastResults.length && !state.lastLinkedConcepts.length && !state.lastMentions.length) {
-        els.results.innerHTML = '<span class="muted">No results yet.</span>';
+        const query = String(state.lastQuery || "").trim();
+        els.results.innerHTML = query
+          ? `<span class="muted">No results found for "${esc(query)}".</span>`
+          : '<span class="muted">No results yet.</span>';
         return;
       }
       const relatedGroups = relatedResultBuckets();
@@ -3345,11 +3812,13 @@
       );
       const statementHtml = renderStructuredStatementPanel(statement);
       const contextHtml = renderClinicalContextPanel(statement);
+      const molecularHtml = renderMolecularAssociationPanel([...state.lastResults, ...relatedHits]);
       els.results.innerHTML = `
         ${statementHtml ? `
           <section class="result-layer linked-sentence-layer" aria-label="Linked statement">
             ${statementHtml}
           </section>` : ""}
+        ${molecularHtml}
         <section class="result-layer ranking-layer" aria-label="Semantic groups and full ranking">
           <div class="result-layer-head">
             <h3>Semantic Groups and Full Ranking</h3>
@@ -3373,9 +3842,9 @@
           </div>
         </section>
         ${contextHtml ? `
-          <section class="result-layer clinical-context-layer" aria-label="Clinical context">
+          <details class="result-layer clinical-context-layer" aria-label="Clinical context">
             ${contextHtml}
-          </section>` : ""}
+          </details>` : ""}
       `;
 
       bindResultInteractions(els.results);
@@ -3403,6 +3872,27 @@
           if (!hit) return;
           const grade = judgmentGradeForHit(hit);
           setJudgment(hit, grade === "wrong" ? "" : "wrong");
+        });
+      });
+      root.querySelectorAll("[data-related-back]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          closeRelatedConceptView();
+        });
+      });
+      root.querySelectorAll("[data-related-cui]").forEach((control) => {
+        control.addEventListener("click", (event) => {
+          const cui = String(control.getAttribute("data-related-cui") || "").trim();
+          if (!cui) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const docId = control.getAttribute("data-related-doc") || "";
+          const baseHit = visibleHitByDocId(docId) || visibleHitByCui(cui) || {};
+          openRelatedConceptView({
+            ...baseHit,
+            ...relatedControlHit(control, cui)
+          });
         });
       });
       root.querySelectorAll(".related-concept").forEach((button) => {
@@ -3732,9 +4222,24 @@
     }
 
     function judgmentButton(docId, grade, label, current) {
+      if (!ENABLE_JUDGMENTS) return "";
       const active = current === grade ? " active" : "";
       const disabled = !state.judgmentsLoaded || state.judgmentSaveState === "saving";
       return `<button class="${active}" data-grade="${grade}" data-doc="${esc(docId)}"${disabled ? " disabled" : ""}>${label}</button>`;
+    }
+
+    function renderJudgmentSection(hit, grade) {
+      if (!ENABLE_JUDGMENTS) return "";
+      return `
+        <div class="detail-section">
+          <div class="detail-title">Review</div>
+          <div class="judgments">
+            ${judgmentButton(hit.doc_id, "relevant", "Relevant", grade)}
+            ${judgmentButton(hit.doc_id, "partial", "Partial", grade)}
+            ${judgmentButton(hit.doc_id, "wrong", "Wrong", grade)}
+            <button data-grade="" data-doc="${esc(hit.doc_id || "")}">Clear</button>
+          </div>
+        </div>`;
     }
 
     function renderEvidenceItems(hit) {
@@ -4246,6 +4751,7 @@
     }
 
     function renderMetrics() {
+      if (!els.metrics) return;
       const judged = Object.values(state.judgments);
       const relevant = judged.filter((row) => row.grade === "relevant").length;
       const partial = judged.filter((row) => row.grade === "partial").length;
@@ -4268,6 +4774,7 @@
         metric("Backend", state.status?.search_backend || "n/a", state.status?.elastic_index || "local vector scan"),
         metric("Search mode", scoring.search_mode || state.searchMode || "balanced", scoring.search_mode_description || "Expanded hybrid search"),
         metric("Source scope", searchScopeLabel(scoring.search_scope || state.searchScope), scoring.search_scope_description || "UMLS identifiers with evidence-backed retrieval"),
+        metric("Molecular mode", state.includeMolecularAssociations ? "opt-in on" : "default off", state.includeMolecularAssociations ? "Relation-derived genes/proteins can enter ranked results" : "Relation-derived genes/proteins stay out of ranked results"),
         metric("Model", state.status?.embedding_provider || "n/a", state.status?.embedding_model || "n/a"),
         metric("Resolver", fmtNum(codeMappings), codeMappings ? "CUI/code mappings loaded" : "No code index loaded"),
         metric("Definitions", fmtNum(definitionRows), definitionRows ? `${fmtNum(state.status?.definition_cuis || 0)} CUIs with MRDEF text` : "No MRDEF index loaded"),
@@ -4321,6 +4828,7 @@
     }
 
     function parseQuerySet() {
+      if (!ENABLE_QUERY_SET) return [];
       return els.querySet.value
         .split(/\r?\n/)
         .map(parseQuerySetLine)
@@ -4336,12 +4844,14 @@
     }
 
     async function runQuerySet() {
+      if (!ENABLE_QUERY_SET) return;
       if (!requireSnomedLicenseAcknowledgement()) return;
       const rows = parseQuerySet();
       const topK = Math.max(1, Math.min(100, Number(els.topK.value) || 10));
       const searchMode = selectedSearchMode();
       const searchScope = selectedSearchScope();
       const sourceCodes = selectedSourceCodeSabs();
+      const includeMolecularAssociations = selectedMolecularAssociations();
       if (!rows.length) {
         setQuerySetFeedback("Add one query per line before running the query set.", "error");
         return;
@@ -4357,9 +4867,9 @@
           setBrandStatus();
           setQuerySetFeedback(`Running ${fmtNum(i + 1)} of ${fmtNum(rows.length)} queries.`);
           const includeRelated = includeRelatedForSearch(searchMode, searchScope);
-            const payload = await api(
-              `/api/search?q=${encodeURIComponent(row.query)}&k=${topK}&related=${includeRelated}&linked=${includeRelated}&evidence_items=0&mode=${encodeURIComponent(searchMode)}${searchScopeQueryParam(searchScope)}${semanticBucketFilterQueryParam()}${sourceCodeQueryParam(sourceCodes)}`
-            );
+          const payload = await api(
+            `/api/search?q=${encodeURIComponent(row.query)}&k=${topK}&related=${includeRelated}&linked=${includeRelated}&evidence_items=0&mode=${encodeURIComponent(searchMode)}${searchScopeQueryParam(searchScope)}${molecularAssociationQueryParam(includeMolecularAssociations)}${semanticBucketFilterQueryParam()}${sourceCodeQueryParam(sourceCodes)}`
+          );
           const hits = payload.hits || [];
           let expectedRank = "";
           let expectedFound = "";
@@ -4407,6 +4917,7 @@
     }
 
     function renderSetResults() {
+      if (!els.setResults) return;
       if (!state.setRows.length) {
         els.setResults.innerHTML = '<table><tbody><tr><td class="muted">No query set has been run.</td></tr></tbody></table>';
         return;
@@ -4466,13 +4977,16 @@
       return `"${String(value ?? "").replaceAll('"', '""')}"`;
     }
 
-    els.searchBtn.addEventListener("click", runSearch);
-    els.query.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        runSearch();
-      }
-    });
+    setupUtsNavDropdowns();
+    if (els.searchBtn) els.searchBtn.addEventListener("click", () => runSearch());
+    if (els.query) {
+      els.query.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          runSearch();
+        }
+      });
+    }
     if (els.snomedLicenseCheckbox && els.snomedLicenseAcceptBtn) {
       els.snomedLicenseCheckbox.addEventListener("change", () => {
         els.snomedLicenseAcceptBtn.disabled = !els.snomedLicenseCheckbox.checked;
@@ -4491,55 +5005,64 @@
     if (els.semanticGroupFilter) {
       els.semanticGroupFilter.addEventListener("change", () => {
         state.selectedSemanticBucketKeys = selectedSemanticBucketKeys();
-        if (state.lastQuery) runSearch();
+        if (state.lastQuery) runSearch({ query: els.query.value.trim() || state.lastQuery });
       });
     }
     if (els.searchScope) {
       els.searchScope.addEventListener("change", () => {
         state.searchScope = selectedSearchScope();
-        if (state.lastQuery) runSearch();
+        if (state.lastQuery) runSearch({ query: els.query.value.trim() || state.lastQuery });
       });
     }
     if (els.sourceCodes) {
       els.sourceCodes.addEventListener("change", () => {
         state.sourceCodeSabs = selectedSourceCodeSabs();
-        if (state.lastQuery) runSearch();
+        if (state.lastQuery) runSearch({ query: els.query.value.trim() || state.lastQuery });
       });
     }
-    els.runSetBtn.addEventListener("click", runQuerySet);
-    els.saveJudgmentsBtn.addEventListener("click", () => {
-      state.judgmentSaveState = "saving";
-      state.judgmentSaveError = "";
-      renderMetrics();
-      persistJudgmentsToServer().catch((err) => {
-        state.judgmentSaveState = "error";
-        state.judgmentSaveError = err?.message || "Could not save judgments";
-        setSearchFeedback(`Could not save judgments: ${state.judgmentSaveError}`, "error");
-        renderMetrics();
-        setBrandStatus();
+    if (els.molecularAssociations) {
+      els.molecularAssociations.addEventListener("change", () => {
+        state.includeMolecularAssociations = selectedMolecularAssociations();
+        if (state.lastQuery) runSearch({ query: els.query.value.trim() || state.lastQuery });
+        else renderMetrics();
       });
-    });
-    els.clearJudgmentsBtn.addEventListener("click", () => {
-      const previousJudgments = { ...state.judgments };
-      state.judgments = {};
-      state.judgmentSaveState = "saving";
-      state.judgmentSaveError = "";
-      setSearchFeedback("");
-      renderResults();
-      renderMetrics();
-      persistJudgmentsToServer({ judgments: [] }).then(() => {
-        renderResults();
-      }).catch((err) => {
-        state.judgments = previousJudgments;
-        state.judgmentSaveState = "error";
-        state.judgmentSaveError = err?.message || "Could not clear judgments";
-        setSearchFeedback(`Could not clear judgments: ${state.judgmentSaveError}`, "error");
+    }
+    if (ENABLE_QUERY_SET) els.runSetBtn.addEventListener("click", runQuerySet);
+    if (ENABLE_JUDGMENTS) {
+      els.saveJudgmentsBtn.addEventListener("click", () => {
+        state.judgmentSaveState = "saving";
+        state.judgmentSaveError = "";
+        renderMetrics();
+        persistJudgmentsToServer().catch((err) => {
+          state.judgmentSaveState = "error";
+          state.judgmentSaveError = err?.message || "Could not save judgments";
+          setSearchFeedback(`Could not save judgments: ${state.judgmentSaveError}`, "error");
+          renderMetrics();
+          setBrandStatus();
+        });
+      });
+      els.clearJudgmentsBtn.addEventListener("click", () => {
+        const previousJudgments = { ...state.judgments };
+        state.judgments = {};
+        state.judgmentSaveState = "saving";
+        state.judgmentSaveError = "";
+        setSearchFeedback("");
         renderResults();
         renderMetrics();
-        setBrandStatus();
+        persistJudgmentsToServer({ judgments: [] }).then(() => {
+          renderResults();
+        }).catch((err) => {
+          state.judgments = previousJudgments;
+          state.judgmentSaveState = "error";
+          state.judgmentSaveError = err?.message || "Could not clear judgments";
+          setSearchFeedback(`Could not clear judgments: ${state.judgmentSaveError}`, "error");
+          renderResults();
+          renderMetrics();
+          setBrandStatus();
+        });
       });
-    });
-    els.exportBtn.addEventListener("click", exportJudgments);
+      els.exportBtn.addEventListener("click", exportJudgments);
+    }
 
     updateRandomQueryButton();
     loadRealShortQueries().then(updateRandomQueryButton);
@@ -4548,5 +5071,9 @@
     semanticResultBucketsReady = loadSemanticResultBuckets().then(renderSemanticGroupFilter);
     semanticExpansionProfilesReady = loadSemanticExpansionProfiles();
     renderMetrics();
-    clearLegacyJudgmentCache();
-    loadStatus().then(loadServerJudgments);
+    if (ENABLE_JUDGMENTS) {
+      clearLegacyJudgmentCache();
+      loadStatus().then(loadServerJudgments);
+    } else {
+      loadStatus();
+    }

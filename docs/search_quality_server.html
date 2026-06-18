@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>UMLS 2.0</title>
-  <link rel="stylesheet" href="/search_quality_server.css?v=structured-context-20260611">
+  <link rel="stylesheet" href="/search_quality_server.css?v=related-view-20260617">
 </head>
 <body>
   <main class="wrap">
@@ -61,6 +61,13 @@
               <option value="all">UMLS concepts + all code mappings</option>
             </select>
             <div id="sourceCodesHint" class="field-hint" hidden></div>
+          </div>
+          <div class="toggle-field">
+            <label for="molecularAssociations">Molecular mode</label>
+            <label class="checkbox-control" title="Opt in to relation-derived gene and protein associations in ranked results. Directly matched genes and proteins remain available when this is off.">
+              <input id="molecularAssociations" type="checkbox">
+              <span>Explore genes/proteins</span>
+            </label>
           </div>
         </div>
       </details>
@@ -176,6 +183,6 @@ appendectomy surgical procedure</textarea>
     </section>
   </div>
 
-  <script src="/search_quality_app.js?v=real-short-samples-20260611"></script>
+  <script src="/search_quality_app.js?v=strip-source-fragment-20260617"></script>
 </body>
 </html>

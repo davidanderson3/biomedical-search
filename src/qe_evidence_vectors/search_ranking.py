@@ -374,6 +374,16 @@ def score_breakdown_for_hit(
             hit=hit,
         )
     )
+    presentation_problem_component = (
+        0.0
+        if denied_positive_finding_penalty > 0.0
+        or assertion_status in {"historical", "family_history", "negated"}
+        else presentation_problem_component_for_hit(
+            query=query,
+            labels=labels,
+            hit=hit,
+        )
+    )
     reaction_diagnosis_component = (
         0.0
         if denied_positive_finding_penalty > 0.0
@@ -493,6 +503,7 @@ def score_breakdown_for_hit(
         + diagnosis_statement_component
         + asserted_diagnosis_component
         + active_diagnosis_component
+        + presentation_problem_component
         + reaction_diagnosis_component
         + objective_confirmed_condition_component
         + local_extension_phrase_component
@@ -559,6 +570,7 @@ def score_breakdown_for_hit(
         "diagnosis_statement_component": round(diagnosis_statement_component, 6),
         "asserted_diagnosis_component": round(asserted_diagnosis_component, 6),
         "active_diagnosis_component": round(active_diagnosis_component, 6),
+        "presentation_problem_component": round(presentation_problem_component, 6),
         "reaction_diagnosis_component": round(reaction_diagnosis_component, 6),
         "objective_confirmed_condition_component": round(objective_confirmed_condition_component, 6),
         "local_extension_phrase_component": round(local_extension_phrase_component, 6),
@@ -652,6 +664,7 @@ def rank_hits(
     return apply_evidence_aware_cutoff(
         ranked,
         query_tokens=query_tokens,
+        raw_query_token_list=denial_query_token_list,
         top_k=top_k,
         include_molecular_associations=include_molecular_associations,
     )
@@ -807,6 +820,7 @@ def annotate_hit_confidence(hit: SearchHit, *, query_tokens: list[str]) -> None:
             "diagnosis_statement_component",
             "asserted_diagnosis_component",
             "active_diagnosis_component",
+            "presentation_problem_component",
             "reaction_diagnosis_component",
             "objective_confirmed_condition_component",
             "semantic_context_component",
@@ -1248,6 +1262,14 @@ EXACT_SUBSPAN_SPECIFICITY_GROUPS = {"DISO", "PROC"}
 EXACT_SUBSPAN_SPECIFICITY_MAX_TOKENS = 2
 EXACT_SUBSPAN_SPECIFICITY_PENALTY = 0.20
 EXACT_SUBSPAN_SPECIFICITY_MAX_SCORE_GAP = 0.15
+CONTAINED_FINDING_IN_DISEASE_MAX_TOKENS = 4
+CONTAINED_FINDING_IN_DISEASE_MAX_SCORE_GAP = 1.00
+CONTAINED_FINDING_IN_DISEASE_PENALTY = 0.90
+CONTAINED_FINDING_DISEASE_TYPES = {
+    "disease or syndrome",
+    "neoplastic process",
+    "pathologic function",
+}
 EXACT_SUBSPAN_PROTECTED_TOKENS = {
     "pain",
     "ulcer",
@@ -1269,16 +1291,25 @@ def exact_subspan_specificity_penalty_for_hit(
     hit_tokens = set(content_tokens(str(hit.get("matched_query_span") or "")))
     if (
         not hit_tokens
-        or len(hit_tokens) > EXACT_SUBSPAN_SPECIFICITY_MAX_TOKENS
         or not hit_tokens <= specific_tokens
         or bool(hit_tokens & EXACT_SUBSPAN_PROTECTED_TOKENS)
     ):
+        return 0.0
+    hit_is_contained_finding = bool(
+        "finding" in semantic_type_names(hit)
+        and len(hit_tokens) <= CONTAINED_FINDING_IN_DISEASE_MAX_TOKENS
+    )
+    if len(hit_tokens) > EXACT_SUBSPAN_SPECIFICITY_MAX_TOKENS and not hit_is_contained_finding:
         return 0.0
     hit_rank_score = float(hit.get("rank_score") or breakdown.get("rank_score") or 0.0)
     for candidate in ranked_hits:
         if candidate is hit:
             continue
-        if is_curated_exact_label_hit(candidate):
+        candidate_is_containing_disease = bool(
+            hit_is_contained_finding
+            and semantic_type_names(candidate) & CONTAINED_FINDING_DISEASE_TYPES
+        )
+        if is_curated_exact_label_hit(candidate) and not candidate_is_containing_disease:
             continue
         candidate_group = str(
             candidate.get("semantic_group")
@@ -1292,12 +1323,17 @@ def exact_subspan_specificity_penalty_for_hit(
         candidate_rank_score = float(
             candidate.get("rank_score") or candidate_breakdown.get("rank_score") or 0.0
         )
-        if candidate_rank_score + EXACT_SUBSPAN_SPECIFICITY_MAX_SCORE_GAP < hit_rank_score:
-            continue
         candidate_tokens = set(content_tokens(str(candidate.get("matched_query_span") or "")))
         if not candidate_tokens or not candidate_tokens <= specific_tokens:
             continue
         if hit_tokens < candidate_tokens:
+            if (
+                candidate_is_containing_disease
+                and candidate_rank_score + CONTAINED_FINDING_IN_DISEASE_MAX_SCORE_GAP >= hit_rank_score
+            ):
+                return CONTAINED_FINDING_IN_DISEASE_PENALTY
+            if candidate_rank_score + EXACT_SUBSPAN_SPECIFICITY_MAX_SCORE_GAP < hit_rank_score:
+                continue
             return EXACT_SUBSPAN_SPECIFICITY_PENALTY
     return 0.0
 
@@ -1559,6 +1595,10 @@ ADMINISTERED_PHARMACOLOGIC_QUERY_TOKENS = {
     "received",
     "started",
 }
+INACTIVE_PHARMACOLOGIC_QUERY_TOKENS = {
+    "discontinued",
+    "stopped",
+}
 TREATMENT_PHARMACOLOGIC_COMPONENT = 0.16
 TREATMENT_PHARMACOLOGIC_CONTEXT_WINDOW = 2
 TREATMENT_PHARMACOLOGIC_QUERY_TOKENS = (
@@ -1780,6 +1820,7 @@ PRIMARY_CONDITION_CONTEXT_TOKENS = {
     "with",
 }
 ACTIVE_LABEL_SUPPLEMENT_SOURCE = "active_label_supplement"
+CONSUMER_HEALTH_ACTIVE_LABEL_SPECIALTY = "consumer health"
 CENTRAL_SINGLE_TOKEN_CONDITION_TYPES = {
     "acquired abnormality",
     "cell or molecular dysfunction",
@@ -2088,6 +2129,40 @@ def curated_exact_label_component_for_hit(
     return 0.42 if len(span_tokens) == 1 else 0.34
 
 
+def hit_sources(hit: SearchHit) -> set[str]:
+    return {str(source) for source in hit.get("sources") or []}
+
+
+def hit_has_active_label_supplement(hit: SearchHit) -> bool:
+    return ACTIVE_LABEL_SUPPLEMENT_SOURCE in hit_sources(hit)
+
+
+def active_label_specialty_values(hit: SearchHit) -> set[str]:
+    value = hit.get("active_label_specialty")
+    if isinstance(value, (list, tuple, set)):
+        values = value
+    else:
+        values = [value]
+    return {str(item or "").strip().lower() for item in values if str(item or "").strip()}
+
+
+def is_consumer_health_active_label_hit(hit: SearchHit) -> bool:
+    return hit_has_active_label_supplement(hit) and (
+        CONSUMER_HEALTH_ACTIVE_LABEL_SPECIALTY in active_label_specialty_values(hit)
+    )
+
+
+def active_label_span_tokens(hit: SearchHit) -> list[str]:
+    return content_tokens(
+        str(
+            hit.get("matched_query_span")
+            or hit.get("matched_label")
+            or hit.get("name")
+            or ""
+        )
+    )
+
+
 def mention_frequency_component_for_hit(
     *,
     raw_query_token_list: list[str],
@@ -2177,6 +2252,7 @@ def apply_evidence_aware_cutoff(
     ranked_hits: list[SearchHit],
     *,
     query_tokens: list[str],
+    raw_query_token_list: list[str] | None = None,
     top_k: int,
     include_molecular_associations: bool = False,
 ) -> list[SearchHit]:
@@ -2211,6 +2287,17 @@ def apply_evidence_aware_cutoff(
     ]
     if context_filtered:
         ranked_hits = context_filtered
+    consumer_lay_filtered = [
+        hit
+        for hit in ranked_hits
+        if not is_consumer_lay_literal_drift_result(
+            hit,
+            ranked_hits,
+            query_tokens=query_tokens,
+        )
+    ]
+    if consumer_lay_filtered:
+        ranked_hits = consumer_lay_filtered
     filtered = []
     for hit in ranked_hits:
         if is_weak_zero_evidence_label_fallback(hit, query_tokens=query_tokens):
@@ -2266,6 +2353,17 @@ def apply_evidence_aware_cutoff(
     ]
     if denial_filtered:
         ranked_hits = denial_filtered
+    inactive_pharmacologic_filtered = [
+        hit
+        for hit in ranked_hits
+        if not is_inactive_pharmacologic_hit(
+            hit,
+            query_tokens=query_tokens,
+            raw_query_token_list=raw_query_token_list or [],
+        )
+    ]
+    if inactive_pharmacologic_filtered:
+        ranked_hits = inactive_pharmacologic_filtered
     return select_anchor_diverse_hits(ranked_hits, query_tokens=query_tokens, top_k=top_k)
 
 
@@ -2290,6 +2388,73 @@ def is_yes_no_answer_noise_result(hit: SearchHit, *, query_tokens: list[str]) ->
     return hit_has_yes_no_answer_status_context(hit=hit, labels=labels) and not query_asks_for_yes_no_answer(
         set(query_tokens)
     )
+
+
+def is_consumer_lay_literal_drift_result(
+    hit: SearchHit,
+    ranked_hits: list[SearchHit],
+    *,
+    query_tokens: list[str],
+) -> bool:
+    if len(query_tokens) > 5:
+        return False
+    if hit_has_active_label_supplement(hit):
+        return False
+    candidate_rank = float(
+        hit.get("rank_score")
+        or (hit.get("score_breakdown") or {}).get("rank_score")
+        or 0.0
+    )
+    candidate_span_tokens = content_tokens(
+        str(
+            hit.get("matched_query_span")
+            or hit.get("matched_input")
+            or hit.get("matched_label")
+            or ""
+        )
+    )
+    candidate_span_set = set(candidate_span_tokens)
+    labels = [
+        str(hit.get("matched_label") or ""),
+        str(hit.get("name") or ""),
+        *[str(label or "") for label in hit.get("labels") or []],
+    ]
+    candidate_label_sets = hit_primary_label_token_sets(hit=hit, labels=labels)
+
+    for curated in ranked_hits:
+        if curated is hit:
+            continue
+        if not is_consumer_health_active_label_hit(curated):
+            continue
+        if not is_curated_exact_label_hit(curated):
+            continue
+        curated_span_tokens = active_label_span_tokens(curated)
+        curated_span_set = set(curated_span_tokens)
+        if not curated_span_set or not curated_span_set <= set(query_tokens):
+            continue
+        curated_rank = float(
+            curated.get("rank_score")
+            or (curated.get("score_breakdown") or {}).get("rank_score")
+            or 0.0
+        )
+        if len(curated_span_set) >= 2:
+            if candidate_span_set == curated_span_set and any(
+                label_set == curated_span_set for label_set in candidate_label_sets
+            ):
+                return True
+            if (
+                candidate_span_set
+                and candidate_span_set < curated_span_set
+                and curated_rank + 0.05 >= candidate_rank
+            ):
+                return True
+        elif (
+            str(curated.get("matched_tty") or "").upper() == "AB"
+            and semantic_context_role_for_hit(hit) != semantic_context_role_for_hit(curated)
+            and candidate_rank + 0.25 < curated_rank
+        ):
+            return True
+    return False
 
 
 PATIENT_MESSAGE_META_CONTEXT_TOKENS = {
@@ -2403,9 +2568,38 @@ def is_explicit_assertion_matched_hit(hit: SearchHit, *, assertion: dict) -> boo
     labels = [str(label or "") for label in hit.get("labels") or []]
     if hit.get("name"):
         labels.insert(0, str(hit["name"]))
+    if assertion.get("status") == "negated" and assertion.get("cue") in {"no", "without"}:
+        if not any(label_is_negated(label) for label in labels):
+            return False
     for token_set in hit_primary_label_token_sets(hit=hit, labels=labels):
         useful_tokens = token_set - LOW_SPECIFICITY_QUERY_TOKENS - NEGATION_QUERY_TOKENS
         if useful_tokens and useful_tokens <= span_tokens:
+            return True
+    return False
+
+
+def is_inactive_pharmacologic_hit(
+    hit: SearchHit,
+    *,
+    query_tokens: list[str],
+    raw_query_token_list: list[str],
+) -> bool:
+    if not (semantic_type_names(hit) & EXACT_DRUG_SEMANTIC_TYPES):
+        return False
+    raw_query_tokens = [token for token in raw_query_token_list if token != DENIAL_SCOPE_BOUNDARY_TOKEN]
+    span_tokens = normalized_key(str(hit.get("matched_query_span") or "")).split()
+    if not raw_query_tokens or not span_tokens or len(span_tokens) > 2:
+        return False
+    for start in token_sequence_positions(raw_query_tokens, span_tokens):
+        end = start + len(span_tokens)
+        left = max(0, start - 3)
+        right = min(len(raw_query_tokens), end + 3)
+        local_context = [
+            token
+            for index, token in enumerate(raw_query_tokens[left:right], start=left)
+            if index < start or index >= end
+        ]
+        if set(local_context) & INACTIVE_PHARMACOLOGIC_QUERY_TOKENS:
             return True
     return False
 
@@ -3980,7 +4174,10 @@ def is_long_document_diversity_candidate(hit: SearchHit, *, query_tokens: list[s
         or is_salient_long_document_direct_mention_candidate(hit, query_tokens=query_tokens)
     ):
         return False
-    if float(hit.get("rank_score") or 0.0) < 0.60:
+    if float(hit.get("rank_score") or 0.0) < 0.60 and not is_strong_exact_condition_long_document_recall_candidate(
+        hit,
+        query_tokens=query_tokens,
+    ):
         return False
     if not (hit_direct_label_specific_tokens(hit, query_tokens=query_tokens) or mention_count >= 2):
         return False
@@ -4032,6 +4229,34 @@ def is_strong_long_document_recall_candidate(hit: SearchHit, *, query_tokens: li
         or chunk_count >= 2
         or is_long_document_exact_condition_variant_candidate(hit, query_tokens=query_tokens)
     )
+
+
+def is_strong_exact_condition_long_document_recall_candidate(
+    hit: SearchHit,
+    *,
+    query_tokens: list[str],
+) -> bool:
+    if hit_semantic_group(hit) not in {"DISO", "FIND"}:
+        return False
+    support = hit.get("long_document_support") or {}
+    if not isinstance(support, dict):
+        return False
+    sources = {str(source) for source in support.get("sources") or []}
+    if not {"chunk_vector", "mention"} <= sources:
+        return False
+    if int(support.get("chunk_count") or 0) < 2:
+        return False
+    if int(support.get("mention_count") or 0) < 2:
+        return False
+    if float(support.get("best_section_weight") or 0.0) < 0.95:
+        return False
+    if float(hit.get("rank_score") or 0.0) < 0.20:
+        return False
+    direct_tokens = hit_direct_label_specific_tokens(hit, query_tokens=query_tokens)
+    if len(direct_tokens) < 3:
+        return False
+    span_tokens = set(content_tokens(str(hit.get("matched_query_span") or hit.get("name") or "")))
+    return bool(span_tokens) and span_tokens <= set(query_tokens)
 
 
 def is_near_strong_long_document_recall_candidate(
@@ -4934,6 +5159,11 @@ ACTIVE_DIAGNOSIS_RESULT_FOLLOWING_RE = re.compile(
     r"^\s+(?:after|following)\b",
     re.IGNORECASE,
 )
+PRESENTATION_PROBLEM_PRECEDING_RE = re.compile(
+    r"\b(?:presented|presents|presenting|admitted|admission)\s+(?:to\s+\w+\s+)?"
+    r"(?:with|for)\s+(?:(?:acute|new|worsening|severe)\s+){0,3}$",
+    re.IGNORECASE,
+)
 REACTION_DIAGNOSIS_DEVELOPED_PRECEDING_RE = re.compile(
     r"\bdeveloped\s+$",
     re.IGNORECASE,
@@ -5095,6 +5325,43 @@ def active_diagnosis_component_for_hit(
     if not ACTIVE_DIAGNOSIS_RESULT_FOLLOWING_RE.search(after):
         return 0.0
     return 0.14
+
+
+def presentation_problem_component_for_hit(
+    *,
+    query: str,
+    labels: list[str],
+    hit: dict,
+) -> float:
+    span = query_span_for_hit(query, labels, hit, min_tokens=2)
+    if not span:
+        return 0.0
+    start, end, text = span
+    if is_comparator_arm_span(query, start, end):
+        return 0.0
+    if not is_central_multi_token_condition_hit(hit, labels=labels, span_text=text):
+        return 0.0
+    sentence_start = max(
+        query.rfind(".", 0, start),
+        query.rfind("!", 0, start),
+        query.rfind("?", 0, start),
+    ) + 1
+    before = query[max(sentence_start, start - 90) : start]
+    if not PRESENTATION_PROBLEM_PRECEDING_RE.search(before):
+        return 0.0
+    span_tokens = content_tokens(text)
+    primary_tokens = content_tokens(str(hit.get("name") or ""))
+    query_set = set(content_tokens(query))
+    if span_tokens and primary_tokens == span_tokens:
+        return 0.70
+    if (
+        hit_has_active_label_supplement(hit)
+        and span_tokens
+        and set(span_tokens) < set(primary_tokens)
+        and ((set(primary_tokens) - set(span_tokens)) & query_set)
+    ):
+        return 0.90
+    return 0.66
 
 
 def reaction_diagnosis_component_for_hit(
@@ -5531,6 +5798,12 @@ def numeric_specificity_mismatch_penalty(
     if numeric_anchors <= label_tokens:
         return 0.0
     if not (query_set & NUMERIC_SPECIFICITY_CONTEXT_TOKENS):
+        return 0.0
+    local_tokens = local_context_tokens_for_hit(" ".join(query_tokens), hit, window=4)
+    if not (
+        local_tokens & numeric_anchors
+        and local_tokens & NUMERIC_SPECIFICITY_CONTEXT_TOKENS
+    ):
         return 0.0
     matched_without_number = (specific_query_token_set(query_tokens) - numeric_anchors) & label_tokens
     if not matched_without_number:

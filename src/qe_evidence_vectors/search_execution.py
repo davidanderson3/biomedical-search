@@ -5,10 +5,13 @@ from array import array
 from copy import deepcopy
 from urllib.error import URLError
 
-from qe_evidence_vectors.code_index import looks_like_code, parse_system_code
 from qe_evidence_vectors.generic_filters import is_blocked_generic_query
 from qe_evidence_vectors.search_hit_features import semantic_type_names
-from qe_evidence_vectors.search_hydration import normalize_return_code_sabs, source_code_result_sabs
+from qe_evidence_vectors.search_hydration import (
+    normalize_return_code_sabs,
+    source_code_identifier_search_query,
+    source_code_search_sabs,
+)
 from qe_evidence_vectors.search_long_documents import LongDocumentChunk, plan_long_document_chunks
 from qe_evidence_vectors.search_ranking import promote_long_document_first_page_recall
 from qe_evidence_vectors.search_semantics import semantic_group_metadata
@@ -70,12 +73,7 @@ TEMPORAL_WORD_CHEMICAL_SEMANTIC_TYPES = {
 
 
 def source_code_identifier_query(query: object) -> bool:
-    text = str(query or "").strip()
-    if not text:
-        return False
-    if parse_system_code(text):
-        return True
-    return looks_like_code(text)
+    return source_code_identifier_search_query(query)
 
 
 def temporal_word_chemical_false_positive(hit: dict, *, query: object = None) -> bool:
@@ -321,7 +319,7 @@ class SearchExecutionMixin:
         search_mode = normalize_search_mode(search_mode)
         search_scope = normalize_search_scope(search_scope)
         semantic_bucket_keys = normalize_semantic_bucket_filter(semantic_bucket_keys)
-        selected_sabs = source_code_result_sabs(return_code_sabs)
+        selected_sabs = source_code_search_sabs(return_code_sabs, query=query)
         rank_top_k = self.semantic_filter_rank_limit(
             top_k,
             semantic_bucket_keys,
@@ -594,6 +592,7 @@ class SearchExecutionMixin:
             or str(source).strip() in {
                 "code",
                 "cui",
+                "legacy_umls_identifier",
                 "resolver",
                 "rui",
                 "system_code",
@@ -1359,7 +1358,7 @@ class SearchExecutionMixin:
             }
             result["server_timing"] = self.finalized_search_timing(timing, started=started)
             return self.store_search_result_cache(cache_key, result)
-        if source_code_result_sabs(return_code_sabs):
+        if source_code_search_sabs(return_code_sabs, query=query):
             source_code_started = time.time()
             source_code_result = self.search_source_code_atoms(
                 query,

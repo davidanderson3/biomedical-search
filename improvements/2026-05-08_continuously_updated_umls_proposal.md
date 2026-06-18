@@ -1,7 +1,7 @@
 # Continuously Updated UMLS Proposal
 
 ## Change
-- Added `docs/proposals/search_driven_umls_replacement.md`.
+- Added `docs/proposals/search_driven_umls_replacement.html`.
 - Kept the proposal to three substantive paragraphs, using the user's draft as the starting structure.
 - Reframed the document around UMLS 2.0 as a replacement for the static batch-release model while preserving authoritative source vocabularies.
 

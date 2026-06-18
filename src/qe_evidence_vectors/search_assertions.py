@@ -219,7 +219,10 @@ def assertion_context_for_hit(*, query: str, labels: list[str], hit: dict) -> di
     query_tokens = scope_sensitive_token_list(query)
     if not query_tokens:
         return {"status": ASSERTION_CURRENT}
-    canonical_query = [canonical_token(token) for token in query_tokens]
+    canonical_query = [
+        DENIAL_SCOPE_BOUNDARY_TOKEN if token == DENIAL_SCOPE_BOUNDARY_TOKEN else canonical_token(token)
+        for token in query_tokens
+    ]
     spans = mention_spans_for_hit(canonical_query=canonical_query, labels=labels, hit=hit)
     if not spans:
         return {"status": ASSERTION_CURRENT}

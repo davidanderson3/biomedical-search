@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TREC PM/CDS Benchmark</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>TREC PM/CDS Benchmark</h1>
+<p>This lane imports TREC Precision Medicine or TREC Clinical Decision Support topics and qrels as an external document/source retrieval benchmark.</p>
+<p>It is intentionally separate from MedMentions and CUI recall checks:</p>
+<p>ClinicalTrials.gov IDs.</p>
+<ul><li>MedMentions evaluates whether text links to expected UMLS CUIs.</li><li>TREC PM/CDS evaluates whether retrieved results expose judged PubMed IDs or</li><li>Unjudged returned documents are unknown, not false positives.</li></ul>
+<h2>Workflow</h2>
+<p>Prepare:</p>
+<pre><code class="language-sh">python3 scripts/run_trec_benchmark.py prepare \
+  --track precision_medicine \
+  --topics data/trec/precision_medicine/topics2019.xml \
+  --qrels data/trec/precision_medicine/qrels-treceval-abstracts.2019.txt \
+  --qrels data/trec/precision_medicine/qrels-treceval-trials.38.txt \
+  --output-dir build/trec/precision_medicine</code></pre>
+<p>If <code>--corpus</code> is omitted, the importer discovers the existing local PubMed/Europe PMC/PMC OA and ClinicalTrials.gov corpus JSONL artifacts under <code>build/</code>. Pass explicit <code>--corpus</code> paths to pin a release corpus.</p>
+<p>Evaluate:</p>
+<pre><code class="language-sh">python3 scripts/run_trec_benchmark.py evaluate \
+  build/trec/precision_medicine/trec_precision_medicine_resolved_document_queries.tsv \
+  --base-url http://127.0.0.1:8766 \
+  --top-k 10 \
+  --scope umls_evidence \
+  --output-dir build/trec/precision_medicine/eval</code></pre>
+<p>Use <code>--track clinical_decision_support</code> for TREC CDS topics/qrels.</p>
+<h2>Outputs</h2>
+<p>type.</p>
+<p>with local-corpus resolution status.</p>
+<p><code>expected_doc_ids</code> contain all qrels positives. Use this for corpus-expansion accounting, because many judged positives may be absent locally.</p>
+<p><code>expected_doc_ids</code> contain only judged positives resolved in the local corpus. Use this for local document/source retrieval scoring.</p>
+<ul><li><code>trec_&lt;track&gt;_topics.tsv</code>: normalized topic text.</li><li><code>trec_&lt;track&gt;_qrels.tsv</code>: normalized qrels, including relevance and source</li><li><code>trec_&lt;track&gt;_corpus_coverage.tsv</code>: one row per judged document/trial ID,</li><li><code>trec_&lt;track&gt;_document_queries.tsv</code>: evaluator-ready topic rows whose</li><li><code>trec_&lt;track&gt;_resolved_document_queries.tsv</code>: evaluator-ready topic rows whose</li><li><code>trec_&lt;track&gt;_manifest.json</code>: coverage-first summary.</li><li><code>eval/rows.tsv</code> and <code>eval/summary.json</code>: document/source retrieval metrics.</li></ul>
+<h2>Scoring Contract</h2>
+<p>The lane uses qrels rows with <code>relevance &gt; 0</code> as positives. It does not score unknown/unjudged returned documents as false positives and does not substitute CUI retrieval metrics for source-document retrieval.</p>
+<p>Run evaluation against a local/internal API configuration that exposes source identifiers in hits or evidence items. A public-output-only API can still search concepts, but it may suppress PMID/NCT evidence identifiers and therefore cannot produce meaningful TREC document/source retrieval scores.</p>
+<h2>Current Local Import</h2>
+<p>The first imported lane uses the public NIST TREC 2019 Precision Medicine test topics and both trec-eval qrels files:</p>
+<ul><li>Track page: &lt;https://trec.nist.gov/data/precmed2019.html&gt;</li><li>Topics: &lt;https://trec.nist.gov/data/precmed/topics2019.xml&gt;</li><li>Abstract qrels: &lt;https://trec.nist.gov/data/precmed/qrels-treceval-abstracts.2019.txt&gt;</li><li>Clinical trial qrels: &lt;https://trec.nist.gov/data/precmed/qrels-treceval-trials.38.txt&gt;</li></ul>
+<pre><code class="language-sh">python3 scripts/run_trec_benchmark.py prepare \
+  --track precision_medicine \
+  --topics build/trec/precision_medicine_2019/raw/topics2019.xml \
+  --qrels build/trec/precision_medicine_2019/raw/qrels-treceval-abstracts.2019.txt \
+  --qrels build/trec/precision_medicine_2019/raw/qrels-treceval-trials.38.txt \
+  --output-dir build/trec/precision_medicine_2019</code></pre>
+<p>Coverage came first:</p>
+<ul><li>40 topics.</li><li>31,312 judgments.</li><li>7,729 judged positives.</li><li>511,844 local corpus records scanned by default discovery.</li><li>74 judged positives resolved locally: 73 PubMed IDs and 1 ClinicalTrials.gov ID.</li></ul>
+<p>The resolved-local query file has 10 topic rows. The public-output API smoke produced zero document/source hits because the running public API suppresses underlying PMID/NCT evidence identifiers. A follow-up non-public API run on port <code>8768</code> also completed against the same resolved-local rows and wrote <code>build/trec/precision_medicine_2019/eval_non_public_20260610/summary.json</code>, but still found <code>0/74</code> expected source documents at rank 10. The next implementation work is therefore source-document identifier exposure or a source-document retrieval path, not another public/private API rerun.</p>
+</main>
+<!-- Converted from docs/trec_benchmark.html. -->
+</body>
+</html>

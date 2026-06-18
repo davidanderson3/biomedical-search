@@ -2,7 +2,7 @@
 
 ## Change
 
-Added `docs/ohdsi_relationship_mining.md` and linked it from `docs/technical_pipeline.md`.
+Added `docs/ohdsi_relationship_mining.html` and linked it from `docs/technical_pipeline.html`.
 
 ## How It Improved Things
 

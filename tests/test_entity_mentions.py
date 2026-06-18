@@ -11,6 +11,7 @@ if str(SRC) not in sys.path:
 
 from qe_evidence_vectors.code_index import build_code_index
 from qe_evidence_vectors.label_index import build_label_index
+from qe_evidence_vectors.search_rerank import LONG_DOCUMENT_MAX_ENTITY_MENTION_OCCURRENCES_PER_SPAN
 from qe_evidence_vectors.search_service import SearchIndex
 from qe_evidence_vectors.semantic_type_index import build_semantic_type_index
 
@@ -113,6 +114,31 @@ def test_entity_mentions_suppress_temporal_word_chemical_false_positive(tmp_path
     )
 
     assert all(mention["text"].lower() != "today" for mention in mentions)
+
+
+def test_entity_mentions_reuse_repeated_span_lookups_and_cap_occurrences(tmp_path: Path) -> None:
+    index = build_index(tmp_path)
+    original_lookup = index.entity_mention_rows_for_lookup
+    lookup_calls: list[str] = []
+
+    def counted_lookup(lookup_norm: str, *, query_norm: str) -> list[dict]:
+        lookup_calls.append(lookup_norm)
+        return original_lookup(lookup_norm, query_norm=query_norm)
+
+    index.entity_mention_rows_for_lookup = counted_lookup
+    query = " ".join(["Atrial fibrillation was documented."] * 10)
+
+    mentions = index.query_entity_mentions(query, limit=50)
+    atrial_mentions = [
+        mention
+        for mention in mentions
+        if mention["normalized_text"] == "atrial fibrillation"
+    ]
+
+    assert lookup_calls.count("atrial fibrillation") == 1
+    assert len(atrial_mentions) == LONG_DOCUMENT_MAX_ENTITY_MENTION_OCCURRENCES_PER_SPAN
+    assert any(mention["start"] == query.rindex("Atrial fibrillation") for mention in atrial_mentions)
+    assert all(mention["cui"] == "C0004238" for mention in atrial_mentions)
 
 
 def test_mentions_are_omitted_when_linked_concepts_are_disabled(tmp_path: Path) -> None:

@@ -208,8 +208,8 @@ def test_clinical_text_variety_suite_file_covers_realistic_note_formats() -> Non
     ) as handle:
         rows = list(csv.DictReader(handle, delimiter="\t"))
 
-    assert len(rows) == 12
-    assert {row["id"] for row in rows} == {
+    assert len(rows) == 24
+    assert {
         "clinical_text_variety_01_discharge_summary",
         "clinical_text_variety_02_radiology_report",
         "clinical_text_variety_03_pathology_report",
@@ -222,8 +222,20 @@ def test_clinical_text_variety_suite_file_covers_realistic_note_formats() -> Non
         "clinical_text_variety_10_telephone_triage",
         "clinical_text_variety_11_consult_note",
         "clinical_text_variety_12_prior_authorization",
-    }
-    assert sum(len(row["expected_cuis"].split("|")) for row in rows) == 60
+        "clinical_text_variety_13_radiology_mri_stroke",
+        "clinical_text_variety_14_pathology_colon_biopsy",
+        "clinical_text_variety_15_operating_note_cabg",
+        "clinical_text_variety_16_nursing_sepsis",
+        "clinical_text_variety_17_lab_anemia",
+        "clinical_text_variety_18_medication_heparin_dvt",
+        "clinical_text_variety_19_therapy_hip_fracture",
+        "clinical_text_variety_20_home_health_hf",
+        "clinical_text_variety_21_telephone_asthma",
+        "clinical_text_variety_22_consult_endocarditis",
+        "clinical_text_variety_23_prior_authorization_crohn",
+        "clinical_text_variety_24_discharge_af_stroke",
+    } <= {row["id"] for row in rows}
+    assert sum(len(row["expected_cuis"].split("|")) for row in rows) == 115
     assert all(row["expected_cuis"] for row in rows)
     assert all("multilingual" not in row["why"].lower() for row in rows)
 

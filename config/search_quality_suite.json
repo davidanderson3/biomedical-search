@@ -132,13 +132,13 @@
       "top_k": 60,
       "timeout": 90,
       "thresholds": {
-        "min_queries_all_expected_at_10": 12,
-        "min_found_at_10": 60,
+        "min_queries_all_expected_at_10": 24,
+        "min_found_at_10": 115,
         "max_queries_with_missing_at_10": 0,
         "max_queries_with_disallowed_at_10": 0,
         "max_top_wrong_count": 0
       },
-            "weakness_found": "The core clinical benchmark is strong but still underrepresents realistic note formats such as discharge summaries, radiology reports, pathology reports, operative notes, nursing notes, lab flowsheets, medication administration records, therapy notes, home health notes, telephone triage, consult notes, and prior authorization text. First live baseline: 5/12 rows fully found at top 10, 52/60 expected concepts found, 7 rows missing at least one expected concept, and 0 wrong first results.",
+      "weakness_found": "The core clinical benchmark is strong but still underrepresents realistic note formats such as discharge summaries, radiology reports, pathology reports, operative notes, nursing notes, lab flowsheets, medication administration records, therapy notes, home health notes, telephone triage, consult notes, and prior authorization text. Expanded diagnostic lane now covers 24 rows and 115 expected concepts across repeated note-format families; the pre-expansion live run was 6/12 rows fully found at top 10, 51/60 expected concepts found, 6 rows missing at least one expected concept, and 0 wrong first results.",
             "recommended_solution": "Work the missing secondary concepts in the realistic note-format probe, then either promote it to a blocking lane or fold its rows into the broad clinical benchmark with updated thresholds once it has a stable green baseline."
         },
         {
@@ -206,14 +206,14 @@
       "search_system": "api",
       "scope": "umls_evidence",
       "top_k": 60,
-      "timeout": 120,
+      "timeout": 240,
       "thresholds": {
-        "min_queries_all_expected_at_10": 13,
-        "min_found_at_10": 60,
+        "min_queries_all_expected_at_10": 23,
+        "min_found_at_10": 106,
         "max_queries_with_missing_at_10": 0,
         "max_top_wrong_count": 0
       },
-      "weakness_found": "The current approved PubMed suite is 3/13 with 44/60 expected concepts at top 10 and 2 wrong first results.",
+      "weakness_found": "The approved PubMed suite has been expanded from 13 to 23 reviewed title-plus-abstract rows so long-document recall is measured across more literature topics. The previous full approved run was 9/13 rows complete with 53/60 expected concepts at top 10, 13/13 top-on-target, and 0 wrong first rows.",
       "recommended_solution": "Fix long-document sectioning, evidence carry-forward, and secondary-concept ranking; this layer should turn green when the weakness is solved."
     },
     {

@@ -5,6 +5,7 @@ import time
 
 from qe_evidence_vectors.code_index import (
     CODE_IDENTIFIER_SYSTEMS,
+    KNOWN_SOURCE_SYSTEMS,
     UMLS_IDENTIFIER_SYSTEMS,
     infer_umls_identifier_type,
     is_cui,
@@ -43,6 +44,9 @@ EMBEDDED_SYSTEM_CODE_RE = re.compile(
     r"(?<!\S)([A-Za-z][A-Za-z0-9_]{1,31}):([A-Za-z0-9][A-Za-z0-9_.\-/]{0,31})(?!\S)"
 )
 EMBEDDED_CODE_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.\-/]*")
+SYSTEM_CODE_SEARCH_RE = re.compile(r"^([^:]{2,64}):(\S{1,96})$")
+UNKNOWN_SYSTEM_CODE_PREFIX_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{1,31}$")
+UNKNOWN_SYSTEM_CODE_VALUE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{1,95}$")
 EMBEDDED_BARE_CODE_RE = re.compile(
     r"^(?:[A-Za-z]\d[A-Za-z0-9](?:\.[A-Za-z0-9]{1,5})?|\d{1,5}-\d)$",
     re.IGNORECASE,
@@ -176,6 +180,38 @@ def source_code_result_sabs(value: object = None) -> tuple[str, ...]:
     return sabs
 
 
+def source_code_identifier_search_query(query: object) -> bool:
+    text = str(query or "").strip()
+    if not text:
+        return False
+    parsed = parse_system_code(text)
+    if not parsed:
+        return looks_like_code(text) and not is_cui(text)
+    system, code = parsed
+    if any(char.isspace() for char in code):
+        return False
+    match = SYSTEM_CODE_SEARCH_RE.match(text)
+    if not match:
+        return False
+    raw_system = match.group(1).strip()
+    if system in KNOWN_SOURCE_SYSTEMS:
+        return looks_like_code(code)
+    return (
+        bool(UNKNOWN_SYSTEM_CODE_PREFIX_RE.match(raw_system))
+        and bool(UNKNOWN_SYSTEM_CODE_VALUE_RE.match(code))
+        and any(char.isdigit() for char in code)
+    )
+
+
+def source_code_search_sabs(value: object = None, *, query: object = None) -> tuple[str, ...]:
+    sabs = source_code_result_sabs(value)
+    if sabs:
+        return sabs
+    if source_code_identifier_search_query(query):
+        return ALL_RETURN_CODE_SABS
+    return ()
+
+
 class SearchHydrationMixin:
     def concept_has_active_atoms(self, cui: str) -> bool:
         cui = str(cui or "").strip().upper()
@@ -189,7 +225,7 @@ class SearchHydrationMixin:
             return True
         if not self.code_index:
             return True
-        return self.code_index.has_active_cui(cui)
+        return self.code_index.has_active_cui(cui) or self.code_index.has_legacy_cui(cui)
 
     def display_label_for_cui(self, cui: str, labels: list[str]) -> str:
         cui = str(cui or "").strip().upper()
@@ -356,6 +392,10 @@ class SearchHydrationMixin:
         code = str(row.get("code") or "").strip()
         label = str(row.get("label") or "").strip()
         score = float(row.get("source_atom_score") or 0.0)
+        legacy_identifier_only = bool(row.get("legacy_identifier_only"))
+        legacy_last_release = str(row.get("legacy_last_release") or row.get("last_release") or "")
+        legacy_identifier_type = str(row.get("matched_identifier_type") or "").strip().upper()
+        legacy_identifier = str(row.get("matched_identifier") or "").strip()
         semantic_types = self.semantic_types_for_cui(cui) if cui else []
         code_row = {
             "system": system,
@@ -371,7 +411,25 @@ class SearchHydrationMixin:
             "label": label,
             "ispref": row.get("ispref") or "",
         }
+        if legacy_identifier_only:
+            code_row["legacy_identifier_only"] = True
+            code_row["legacy_last_release"] = legacy_last_release
+            code_row["legacy_identifier_type"] = legacy_identifier_type
+            code_row["legacy_identifier"] = legacy_identifier
         source_label = SOURCE_CODE_SYSTEM_NAMES.get(system, system) or "Source vocabulary"
+        sources = ["source_code", system] if system else ["source_code"]
+        if legacy_identifier_only:
+            sources = ["legacy_umls_identifier", *sources]
+        text_lines = [
+            f"{source_label} source atom",
+            f"CUI: {cui}",
+            f"Code: {code}",
+            f"TTY: {row.get('tty') or ''}",
+            f"Label: {label}",
+            f"Matched query: {query}",
+        ]
+        if legacy_identifier_only:
+            text_lines.append(f"Legacy UMLS last release: {legacy_last_release}")
         return {
             "doc_id": f"{system}:{code}:source_atom:{rank}" if system and code else f"{cui}:source_atom:{rank}",
             "cui": cui,
@@ -380,12 +438,12 @@ class SearchHydrationMixin:
             "score": score,
             "rank_score": score,
             "labels": [label] if label else [],
-            "sources": ["source_code", system] if system else ["source_code"],
+            "sources": sources,
             "evidence_count": 0,
             "source_bundle": "source_code",
             "source_mix": source_mix_from_evidence_items(
                 [],
-                declared_sources=["source_code", system] if system else ["source_code"],
+                declared_sources=sources,
                 evidence_count=0,
             ),
             "semantic_types": semantic_types,
@@ -395,14 +453,7 @@ class SearchHydrationMixin:
             "codes": [dict(code_row)] if code else [],
             "source_asserted_codes": [dict(code_row)] if code else [],
             "mappings": [dict(row)],
-            "text": (
-                f"{source_label} source atom\n"
-                f"CUI: {cui}\n"
-                f"Code: {code}\n"
-                f"TTY: {row.get('tty') or ''}\n"
-                f"Label: {label}\n"
-                f"Matched query: {query}"
-            ),
+            "text": "\n".join(text_lines),
             "evidence_items": [],
             "related_concepts": [],
             "match_type": "source_code_label",
@@ -413,6 +464,10 @@ class SearchHydrationMixin:
             "matched_ispref": row.get("ispref") or "",
             "source_code_result": True,
             "source_code_rank": rank,
+            "legacy_identifier_only": legacy_identifier_only,
+            "legacy_last_release": legacy_last_release,
+            "legacy_identifier_type": legacy_identifier_type,
+            "legacy_identifier": legacy_identifier,
         }
 
     def source_code_atom_hits(
@@ -424,7 +479,7 @@ class SearchHydrationMixin:
     ) -> list[dict]:
         if not self.code_index:
             return []
-        selected_sabs = source_code_result_sabs(sabs)
+        selected_sabs = source_code_search_sabs(sabs, query=query)
         if not selected_sabs:
             return []
         rows = self.source_code_identifier_rows(query, sabs=selected_sabs, limit=limit)
@@ -450,16 +505,51 @@ class SearchHydrationMixin:
         if parsed:
             system, code = parsed
             if system == "CUI":
-                rows = self.code_index.lookup_cui(code, sabs=sabs, limit=limit)
+                lookup_sabs = None if sabs == ALL_RETURN_CODE_SABS else sabs
+                rows = self.code_index.lookup_cui(code, sabs=lookup_sabs, limit=limit)
             elif system in CODE_IDENTIFIER_SYSTEMS:
                 seen = set()
-                for sab in sabs:
-                    for row in self.code_index.lookup_identifier(
+                if sabs == ALL_RETURN_CODE_SABS:
+                    rows = self.code_index.lookup_identifier(
                         code,
                         identifier_type=system,
-                        sab=sab,
                         limit=limit,
-                    ):
+                    )
+                else:
+                    for sab in sabs:
+                        for row in self.code_index.lookup_identifier(
+                            code,
+                            identifier_type=system,
+                            sab=sab,
+                            limit=limit,
+                        ):
+                            key = (
+                                str(row.get("cui") or ""),
+                                str(row.get("sab") or ""),
+                                str(row.get("code") or "").upper(),
+                            )
+                            if key in seen:
+                                continue
+                            seen.add(key)
+                            rows.append(row)
+                            if len(rows) >= limit:
+                                break
+                        if len(rows) >= limit:
+                            break
+            elif sabs == ALL_RETURN_CODE_SABS and system not in UMLS_IDENTIFIER_SYSTEMS:
+                rows = self.code_index.lookup_code(code, sab=system, limit=limit)
+            elif system in sabs:
+                rows = self.code_index.lookup_code(code, sab=system, limit=limit)
+        elif is_cui(text):
+            lookup_sabs = None if sabs == ALL_RETURN_CODE_SABS else sabs
+            rows = self.code_index.lookup_cui(text, sabs=lookup_sabs, limit=limit)
+        elif looks_like_code(text):
+            if sabs == ALL_RETURN_CODE_SABS:
+                rows = self.code_index.lookup_code(text, limit=limit)
+            else:
+                seen = set()
+                for sab in sabs:
+                    for row in self.code_index.lookup_code(text, sab=sab, limit=limit):
                         key = (
                             str(row.get("cui") or ""),
                             str(row.get("sab") or ""),
@@ -473,32 +563,11 @@ class SearchHydrationMixin:
                             break
                     if len(rows) >= limit:
                         break
-            elif system in sabs:
-                rows = self.code_index.lookup_code(code, sab=system, limit=limit)
-        elif is_cui(text):
-            rows = self.code_index.lookup_cui(text, sabs=sabs, limit=limit)
-        elif looks_like_code(text):
-            seen = set()
-            for sab in sabs:
-                for row in self.code_index.lookup_code(text, sab=sab, limit=limit):
-                    key = (
-                        str(row.get("cui") or ""),
-                        str(row.get("sab") or ""),
-                        str(row.get("code") or "").upper(),
-                    )
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    rows.append(row)
-                    if len(rows) >= limit:
-                        break
-                if len(rows) >= limit:
-                    break
         query_token = normalized_key(text)
         hydrated_rows = []
         for row in rows[:limit]:
             item = dict(row)
-            item["source_atom_score"] = 1.4
+            item["source_atom_score"] = 0.82 if item.get("legacy_identifier_only") else 1.4
             item["matched_query_tokens"] = [query_token] if query_token else []
             hydrated_rows.append(item)
         return hydrated_rows
@@ -548,6 +617,8 @@ class SearchHydrationMixin:
                 self.preferred_label_cache[cui] = loinc_lc_label
                 return loinc_lc_label
         label = self.code_index.preferred_label(cui)
+        if not label:
+            label = self.code_index.legacy_label(cui)
         self.preferred_label_cache[cui] = label
         return label
 
@@ -794,15 +865,38 @@ class SearchHydrationMixin:
             if not cui:
                 continue
             best = mappings[0]
+            legacy_rows = [row for row in mappings if row.get("legacy_identifier_only")]
+            legacy_identifier_only = bool(legacy_rows)
+            if legacy_identifier_only:
+                score = {
+                    "system_code": 0.88,
+                    "code": 0.80,
+                    "cui": 0.90,
+                    "umls_identifier": 0.82,
+                }.get(source, 0.80)
+            else:
+                score = 1.3 if source == "system_code" else 1.2
             candidate = self.candidate_from_cui(
                 cui,
-                score=1.3 if source == "system_code" else 1.2,
+                score=score,
                 source=source,
                 matched=matched,
                 mappings=mappings,
                 label=str(best.get("label") or ""),
             )
             if candidate:
+                if legacy_identifier_only:
+                    legacy_row = legacy_rows[0]
+                    candidate["legacy_identifier_only"] = True
+                    candidate["legacy_last_release"] = str(
+                        legacy_row.get("legacy_last_release") or legacy_row.get("last_release") or ""
+                    )
+                    candidate["legacy_identifier_type"] = str(
+                        legacy_row.get("matched_identifier_type") or ""
+                    ).upper()
+                    candidate["legacy_identifier"] = str(legacy_row.get("matched_identifier") or "")
+                    candidate["matched_identifier_type"] = candidate["legacy_identifier_type"]
+                    candidate["matched_identifier"] = candidate["legacy_identifier"] or matched
                 candidates.append(candidate)
         sorted_candidates = sorted(
             candidates,
@@ -1127,6 +1221,23 @@ class SearchHydrationMixin:
             return {"query": query, "input_type": "empty", "candidates": []}
         if is_cui(raw_query):
             cui = raw_query.upper()
+            if self.code_index and not self.code_index.has_active_cui(cui):
+                rows = self.code_index.lookup_identifier(
+                    cui,
+                    identifier_type="CUI",
+                    limit=max(limit * 5, 25),
+                )
+                if rows:
+                    return {
+                        "query": query,
+                        "input_type": "cui",
+                        "candidates": self.candidates_from_mappings(
+                            rows,
+                            source="cui",
+                            matched=cui,
+                            limit=limit,
+                        ),
+                    }
             candidate = self.candidate_from_cui(cui, score=1.4, source="cui", matched=cui)
             return {
                 "query": query,
@@ -1138,6 +1249,23 @@ class SearchHydrationMixin:
             sab, code = parsed_code
             if sab == "CUI" and is_cui(code):
                 cui = code.upper()
+                if self.code_index and not self.code_index.has_active_cui(cui):
+                    rows = self.code_index.lookup_identifier(
+                        cui,
+                        identifier_type="CUI",
+                        limit=max(limit * 5, 25),
+                    )
+                    if rows:
+                        return {
+                            "query": query,
+                            "input_type": "cui",
+                            "candidates": self.candidates_from_mappings(
+                                rows,
+                                source="cui",
+                                matched=cui,
+                                limit=limit,
+                            ),
+                        }
                 candidate = self.candidate_from_cui(cui, score=1.4, source="cui", matched=cui)
                 return {
                     "query": query,
@@ -1420,6 +1548,19 @@ class SearchHydrationMixin:
         if candidate.get("matched_identifier_type"):
             hit["matched_identifier_type"] = candidate.get("matched_identifier_type") or ""
             hit["matched_identifier"] = candidate.get("matched_identifier") or hit["matched_input"]
+        if candidate.get("legacy_identifier_only"):
+            legacy_source = "legacy_umls_identifier"
+            hit["legacy_identifier_only"] = True
+            hit["legacy_last_release"] = candidate.get("legacy_last_release") or ""
+            hit["legacy_identifier_type"] = candidate.get("legacy_identifier_type") or ""
+            hit["legacy_identifier"] = candidate.get("legacy_identifier") or hit.get("matched_identifier") or ""
+            if legacy_source not in hit.get("sources", []):
+                hit["sources"] = [legacy_source] + list(hit.get("sources") or [])
+                hit["source_mix"] = source_mix_from_evidence_items(
+                    list(hit.get("evidence_items") or []),
+                    declared_sources=list(hit.get("sources") or []),
+                    evidence_count=int(hit.get("evidence_count") or 0),
+                )
         if hit["match_type"] in {"code", "system_code", "umls_identifier"}:
             hit["matched_code_input"] = hit["matched_input"]
             hit["code_match_type"] = hit["match_type"]

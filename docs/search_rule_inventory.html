@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Search Rule Inventory</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #5d6978;
+      --line: #d7dde5;
+      --accent: #176b87;
+      --accent-soft: #e8f4f7;
+      --warn: #8c5b14;
+      --warn-soft: #fff4dc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    header {
+      margin-bottom: 22px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 34px 0 12px;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+    h3 {
+      margin: 24px 0 8px;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+    p {
+      margin: 0 0 12px;
+    }
+    .muted {
+      color: var(--muted);
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 10px;
+      margin: 18px 0 26px;
+    }
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .metric strong {
+      display: block;
+      font-size: 26px;
+      line-height: 1;
+      margin-bottom: 7px;
+    }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .note {
+      background: var(--accent-soft);
+      border: 1px solid #b7dce5;
+      border-radius: 8px;
+      padding: 14px;
+      margin: 16px 0;
+    }
+    .warning {
+      background: var(--warn-soft);
+      border-color: #f1d6a3;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 10px 0 20px;
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #eef2f6;
+      color: #233142;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    tr:last-child td {
+      border-bottom: 0;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: #eef2f6;
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    ul, ol {
+      margin: 8px 0 16px 22px;
+      padding: 0;
+    }
+    li {
+      margin: 6px 0;
+    }
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 18px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    @media (max-width: 720px) {
+      main {
+        width: min(100vw - 20px, 1180px);
+        padding-top: 18px;
+      }
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+      h1 {
+        font-size: 25px;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Search Rule Inventory</h1>
+    <p class="muted">Generated from the current checkout by <code>python3 scripts/build_search_rule_inventory.py</code>.</p>
+    <p class="muted">Use this as the review surface for heuristic changes. Every rule should have a class, a source artifact, and a benchmark or audit artifact explaining why it exists.</p>
+  </header>
+
+  <section class="summary-grid" aria-label="Inventory summary">
+    <div class="metric"><span>Active heuristic items</span><strong>678</strong><div class="muted">Live search path</div></div><div class="metric"><span>Rule classes</span><strong>7</strong><div class="muted">Named layers</div></div><div class="metric"><span>Guardrail rows</span><strong>360</strong><div class="muted">Audit and benchmark</div></div><div class="metric"><span>Generic suppression</span><strong>284</strong><div class="muted">Labels, CUIs, queries</div></div><div class="metric"><span>Clinical aliases</span><strong>254</strong><div class="muted">Reviewed rows</div></div><div class="metric"><span>Assertion cues</span><strong>97</strong><div class="muted">Before, after, chart history</div></div><div class="metric"><span>Portal meta tokens</span><strong>42</strong><div class="muted">Tokens and exceptions</div></div><div class="metric"><span>Score guards</span><strong>1</strong><div class="muted">Named guards</div></div>
+  </section>
+
+  <section class="note">
+    <p><strong>Interpretation:</strong> active heuristic items are entries that can directly shape live search behavior. Guardrail rows are review and benchmark data that govern changes, but they are not all runtime rules.</p>
+  </section>
+
+  <h2>Rule Classes</h2>
+  <table><thead><tr><th>Class</th><th>Source</th><th>Purpose</th><th>Current Size</th></tr></thead><tbody><tr><td>generic_meta_suppression</td><td><code><a href="../src/qe_evidence_vectors/generic_filters.py">src/qe_evidence_vectors/generic_filters.py</a></code></td><td>Suppress UMLS concepts that behave like ordinary prose, form labels, or chart metadata instead of biomedical retrieval anchors.</td><td>98 labels; 87 CUIs; 99 query blocks</td></tr><tr><td>clinical_alias_supplement</td><td><code><a href="../config/active_label_supplement.tsv">config/active_label_supplement.tsv</a></code></td><td>Add explicit, reviewed clinical phrases for known CUIs when core UMLS labels or default indexing miss the user-facing phrase.</td><td>254 rows; 212 CUIs</td></tr><tr><td>assertion_context</td><td><code><a href="../src/qe_evidence_vectors/search_assertions.py">src/qe_evidence_vectors/search_assertions.py</a></code></td><td>Classify mentions as current, negated, uncertain, historical, family-history, planned, or confirmed before ranking them.</td><td>56 before-cues; 33 after-cues</td></tr><tr><td>patient_portal_meta_context</td><td><code><a href="../src/qe_evidence_vectors/search_ranking.py">src/qe_evidence_vectors/search_ranking.py</a></code></td><td>Detect patient portal prose and suppress conversational uncertainty/meta words without suppressing clinical confusion contexts.</td><td>12 context tokens; 8 noise tokens</td></tr><tr><td>precision_audit_outcomes</td><td><code><a href="../config/search_quality_precision_audit_review.tsv">config/search_quality_precision_audit_review.tsv</a></code></td><td>Separate useful secondary concepts from true false positives so future ranking changes have an unambiguous target.</td><td>69 reviewed rows</td></tr><tr><td>ranking_score_guards</td><td><code><a href="../src/qe_evidence_vectors/search_ranking.py">src/qe_evidence_vectors/search_ranking.py</a></code></td><td>Apply narrow score components or penalties for recurring ranking error classes that cannot be expressed as generic suppression or alias supplementation.</td><td>1 named guards</td></tr><tr><td>benchmark_guardrails</td><td><code><a href="../config/search_quality_paragraph_queries.tsv">config/search_quality_paragraph_queries.tsv; config/search_quality_patient_portal_queries.tsv; config/search_quality_useful_extra_cuis.tsv</a></code></td><td>Keep rule changes measurable through expected CUIs, active/current CUIs, context CUIs, disallowed CUIs, and known useful extras.</td><td>168 paragraph rows; 12 portal rows</td></tr></tbody></table>
+
+  <h2>Why This Exists</h2>
+  <ol>
+    <li>Suppress generic/meta concepts when UMLS exposes ordinary prose as concepts.</li>
+    <li>Rescue clinical aliases when a real clinical phrase should map to a known CUI.</li>
+    <li>Classify assertion/currentness when a mention is old, negated, uncertain, planned, or active.</li>
+    <li>Handle patient-message meta language when conversational words should not outrank clinical entities.</li>
+    <li>Apply narrow ranking score guards when a recurring error class cannot be represented as suppression or alias data.</li>
+    <li>Audit useful extras versus false positives so ranking changes target real errors.</li>
+    <li>Guard with benchmark rows so each improvement is repeatable.</li>
+  </ol>
+
+  <h2>Where To Put A New Rule</h2>
+  <table><thead><tr><th>Problem</th><th>Preferred Artifact</th><th>Required Guardrail</th></tr></thead><tbody><tr><td>UMLS concept is generic prose or chart metadata.</td><td><code><a href="../src/qe_evidence_vectors/generic_filters.py">src/qe_evidence_vectors/generic_filters.py</a></code></td><td>Add a focused regression row with disallowed CUIs or a unit test proving a valid clinical phrase still survives.</td></tr><tr><td>A real clinical phrase is missing or under-ranked, but the target CUI is known.</td><td><code><a href="../config/active_label_supplement.tsv">config/active_label_supplement.tsv</a></code></td><td>Include why, semantic type, field, context gates for risky aliases, and run active-label validation.</td></tr><tr><td>The mention is current versus old/history, negated, uncertain, planned, or family history.</td><td><code><a href="../src/qe_evidence_vectors/search_assertions.py">src/qe_evidence_vectors/search_assertions.py</a></code></td><td>Add a patient/clinical benchmark row showing active CUIs above context CUIs, plus reusable unit coverage.</td></tr><tr><td>Patient portal prose contains conversational uncertainty or workflow words.</td><td><code><a href="../src/qe_evidence_vectors/search_ranking.py">src/qe_evidence_vectors/search_ranking.py</a></code></td><td>Add a portal row with active/current CUIs, context CUIs, and disallowed meta CUIs.</td></tr><tr><td>A valid but broad ranked concept should remain searchable but stop winning in a repeatable context.</td><td><code><a href="../src/qe_evidence_vectors/search_ranking.py">src/qe_evidence_vectors/search_ranking.py</a></code></td><td>Add a focused test for the failing context, a direct-search protection test, and a score-breakdown field.</td></tr><tr><td>A non-primary concept is expected and useful, not a false positive.</td><td><code><a href="../config/search_quality_useful_extra_cuis.tsv">config/search_quality_useful_extra_cuis.tsv</a></code></td><td>Record audit classification with a human-readable why.</td></tr><tr><td>A new class of user-visible failure needs tracking.</td><td><code><a href="../config/search_quality_*queries.tsv">config/search_quality_*queries.tsv</a></code></td><td>Include expected CUIs, disallowed CUIs when relevant, and a short expected-behavior statement.</td></tr></tbody></table>
+
+  <h2>Current Generic Suppression</h2>
+  <ul>
+    <li>Blocked labels: <strong>98</strong></li>
+    <li>Blocked CUIs: <strong>87</strong></li>
+    <li>Blocked exact queries: <strong>99</strong></li>
+    <li>Label examples: <code>abnormal</code>, <code>at home</code>, <code>at least daily</code>, <code>at work</code>, <code>chart [medical device]</code>, <code>code system type internal</code>, <code>control aspects</code>, <code>control veterinary product</code>, <code>degree or extent</code>, <code>disease management</code>, <code>do not</code>, <code>domestic</code>, <code>elevated</code>, <code>entity risk aggressive</code>, <code>examined</code>, <code>extremely limited</code>, <code>fluid behavior</code>, <code>found down</code>, ... +80 more</li>
+    <li>CUI examples: <code>C0007963</code>, <code>C0022885</code>, <code>C0027552</code>, <code>C0028678</code>, <code>C0033080</code>, <code>C0033213</code>, <code>C0087111</code>, <code>C0150312</code>, <code>C0150369</code>, <code>C0184511</code>, <code>C0205161</code>, <code>C0205217</code>, <code>C0205250</code>, <code>C0205266</code>, <code>C0205307</code>, <code>C0205396</code>, <code>C0225990</code>, <code>C0226003</code>, ... +69 more</li>
+  </ul>
+
+  <h2>Current Clinical Alias Supplement</h2>
+  <ul>
+    <li>Rows: <strong>254</strong></li>
+    <li>Unique CUIs: <strong>212</strong></li>
+    <li>Rows with <code>context_any</code>: <strong>207</strong></li>
+    <li>Rows with <code>block_any</code>: <strong>15</strong></li>
+  </ul>
+  <div class="two-col">
+    <section>
+      <h3>Field Counts</h3>
+      <table><thead><tr><th>Field</th><th>Rows</th></tr></thead><tbody><tr><td>condition</td><td>88</td></tr><tr><td>finding</td><td>46</td></tr><tr><td>procedure</td><td>37</td></tr><tr><td>drug</td><td>33</td></tr><tr><td>lab</td><td>23</td></tr><tr><td>drug_alias</td><td>14</td></tr><tr><td>context</td><td>5</td></tr><tr><td>gene</td><td>5</td></tr><tr><td>organism</td><td>2</td></tr><tr><td>assessment</td><td>1</td></tr></tbody></table>
+    </section>
+    <section>
+      <h3>Top Semantic Type Counts</h3>
+      <table><thead><tr><th>Semantic Type</th><th>Rows</th></tr></thead><tbody><tr><td>Disease or Syndrome</td><td>73</td></tr><tr><td>Pharmacologic Substance</td><td>44</td></tr><tr><td>Finding</td><td>34</td></tr><tr><td>Diagnostic Procedure</td><td>21</td></tr><tr><td>Sign or Symptom</td><td>18</td></tr><tr><td>Therapeutic or Preventive Procedure</td><td>16</td></tr><tr><td>Laboratory Procedure</td><td>10</td></tr><tr><td>Pathologic Function</td><td>6</td></tr><tr><td>Gene or Genome</td><td>5</td></tr><tr><td>Immunologic Factor</td><td>4</td></tr><tr><td>Clinical Concept</td><td>3</td></tr><tr><td>Neoplastic Process</td><td>3</td></tr></tbody></table>
+    </section>
+  </div>
+
+  <h2>Current Assertion And Currentness Cues</h2>
+  <div class="two-col">
+    <section>
+      <h3>Before-Cue Counts</h3>
+      <table><thead><tr><th>Status</th><th>Cue Count</th></tr></thead><tbody><tr><td>negated</td><td>8</td></tr><tr><td>uncertain</td><td>12</td></tr><tr><td>historical</td><td>11</td></tr><tr><td>family_history</td><td>8</td></tr><tr><td>planned</td><td>7</td></tr><tr><td>confirmed</td><td>10</td></tr></tbody></table>
+    </section>
+    <section>
+      <h3>After-Cue Counts</h3>
+      <table><thead><tr><th>Status</th><th>Cue Count</th></tr></thead><tbody><tr><td>negated</td><td>4</td></tr><tr><td>uncertain</td><td>4</td></tr><tr><td>historical</td><td>5</td></tr><tr><td>family_history</td><td>0</td></tr><tr><td>planned</td><td>15</td></tr><tr><td>confirmed</td><td>5</td></tr></tbody></table>
+    </section>
+  </div>
+  <p>Chart-history cues: <code>another visit</code>, <code>from another visit</code>, <code>old</code>, <code>old problem</code>, <code>older</code>, <code>older problem</code>, <code>still list</code>, <code>still lists</code></p>
+
+  <h2>Current Patient Portal Meta Layer</h2>
+  <ul>
+    <li>Context tokens: <code>call</code>, <code>explain</code>, <code>instruction</code>, <code>language</code>, <code>message</code>, <code>plain</code>, <code>portal</code>, <code>reply</code>, <code>scheduling</code>, <code>sort</code>, <code>summary</code>, <code>visit</code></li>
+    <li>Self tokens: <code>i</code>, <code>me</code>, <code>my</code></li>
+    <li>Noise tokens: <code>concern</code>, <code>concerned</code>, <code>confuse</code>, <code>confused</code>, <code>confusion</code>, <code>sure</code>, <code>worried</code>, <code>worry</code></li>
+    <li>Clinical confusion exception tokens: <code>altered</code>, <code>delirium</code>, <code>diaphoretic</code>, <code>encephalopathy</code>, <code>fall</code>, <code>febrile</code>, <code>fever</code>, <code>glucose</code>, <code>head</code>, <code>hypoglycemia</code>, <code>injury</code>, <code>lethargic</code>, <code>mental</code>, <code>sepsis</code>, <code>status</code>, <code>stroke</code>, <code>unresponsive</code>, <code>weak</code>, ... +1 more</li>
+  </ul>
+
+  <h2>Current Ranking Score Guards</h2>
+  <table><thead><tr><th>Guard</th><th>Purpose</th><th>Scope</th><th>Guardrail</th></tr></thead><tbody><tr><td>broad_corticosteroid_class_penalty</td><td>Demote broad steroid/corticosteroid class hits in long treatment-review queries when multiple non-class anchors show the abstract is about a condition and its treatment options.</td><td>Penalty 0.18; min query tokens 12; matched spans <code>corticosteroid</code>, <code>corticosteroids</code>, <code>steroid</code>, <code>steroids</code></td><td><code>tests/test_evidence_vectors.py::test_ranker_demotes_broad_corticosteroid_class_in_long_status_review</code></td></tr></tbody></table>
+
+  <h2>Current Audit And Benchmark Guardrails</h2>
+  <table><thead><tr><th>Artifact</th><th>Rows / Values</th></tr></thead><tbody><tr><td>Precision audit review rows</td><td>69</td></tr><tr><td>Known useful extra CUI rows</td><td>111</td></tr><tr><td>Paragraph benchmark rows</td><td>168</td></tr><tr><td>Paragraph rows with disallowed CUIs</td><td>26</td></tr><tr><td>Patient portal benchmark rows</td><td>12</td></tr><tr><td>Patient portal rows with disallowed CUIs</td><td>12</td></tr><tr><td>Patient portal active CUI values</td><td>65</td></tr><tr><td>Patient portal context CUI values</td><td>23</td></tr></tbody></table>
+  <div class="two-col">
+    <section>
+      <h3>Precision Audit Review Classes</h3>
+      <table><thead><tr><th>Review Class</th><th>Rows</th></tr></thead><tbody><tr><td>useful_extra</td><td>58</td></tr><tr><td>true_false_positive</td><td>11</td></tr></tbody></table>
+    </section>
+    <section>
+      <h3>Precision Audit Actions</h3>
+      <table><thead><tr><th>Action</th><th>Rows</th></tr></thead><tbody><tr><td>add_useful_extra</td><td>58</td></tr><tr><td>keep_rule_candidate</td><td>11</td></tr></tbody></table>
+    </section>
+  </div>
+
+  <h2>Review Standard</h2>
+  <ol>
+    <li>It has a named class from this inventory.</li>
+    <li>The rule source is the narrowest artifact that can express it.</li>
+    <li>The why is readable by someone who did not write the code.</li>
+    <li>It has a focused query, disallowed CUI, useful-extra audit row, or unit test.</li>
+    <li>The full clinical smoke is run when the rule can affect broad ranking behavior.</li>
+  </ol>
+</main>
+</body>
+</html>

@@ -4,75 +4,81 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>UMLS 2.0</title>
-  <link rel="stylesheet" href="/search_quality_server.css?v=root-review-parity-20260610">
+  <link rel="stylesheet" href="/search_quality_server.css?v=search-copy-20260617">
 </head>
-<body>
-  <main class="wrap">
-    <section class="panel search-panel">
-      <h2>Find Concepts</h2>
-      <div class="search-primary-row">
-        <div class="query-field">
-          <textarea id="query" aria-label="Search query">heart failure with reduced ejection fraction</textarea>
-        </div>
-        <div class="search-actions">
-          <div class="search-button-row">
-            <button id="searchBtn" class="primary">Search</button>
-            <button id="randomQueryBtn" type="button">Random</button>
-            <button id="longQueryBtn" type="button" disabled>Long sample</button>
-          </div>
-          <div id="sampleStatus" class="sample-status">Loading samples...</div>
-        </div>
-      </div>
-      <details class="advanced-search-panel">
-        <summary>Search settings</summary>
-        <div class="grid search-settings-grid">
-          <div>
-            <label for="topK">Result depth</label>
-            <input id="topK" type="number" min="60" max="100" value="60">
-          </div>
-          <div>
-            <label for="searchMode">Matching</label>
-            <select id="searchMode" aria-label="Search mode">
-              <option value="balanced" selected>Expanded</option>
-              <option value="exact">Exact</option>
-            </select>
-          </div>
-          <div>
-            <label for="searchScope">Vocabulary scope</label>
-            <select id="searchScope" aria-label="Source scope">
-              <option value="umls_evidence" selected>UMLS + evidence</option>
-              <option value="umls">UMLS only</option>
-            </select>
-          </div>
-          <div>
-            <label for="semanticGroupFilter">Semantic group</label>
-            <select id="semanticGroupFilter" aria-label="Semantic group filter"></select>
-          </div>
-          <div>
-            <label for="sourceCodes">Result source</label>
-            <select id="sourceCodes" aria-label="Result source">
-              <option value="none" selected>UMLS concepts (CUIs)</option>
-              <option value="RXNORM">RxNorm codes only</option>
-              <option value="LNC">LOINC codes only</option>
-              <option value="SNOMEDCT_US">SNOMED CT US codes only</option>
-              <option value="ICD10CM">ICD-10-CM codes only</option>
-              <option value="default">UMLS concepts + default code mappings</option>
-              <option value="all">UMLS concepts + all code mappings</option>
-            </select>
-            <div id="sourceCodesHint" class="field-hint" hidden></div>
-          </div>
-        </div>
-      </details>
-      <div id="searchProgress" class="search-progress" role="status" aria-live="polite" hidden>
-        <div class="search-progress-label">Searching</div>
-        <div class="search-progress-track" aria-hidden="true">
-          <div class="search-progress-bar"></div>
-        </div>
-      </div>
-      <div id="searchFeedback" class="search-feedback" role="alert" hidden></div>
-    </section>
+<body class="public-search-shell">
+  <section id="search" class="uts-hero">
+    <div class="uts-hero-inner">
+      <h1>UMLS Metathesaurus Search</h1>
+      <p>Search any text, from a word or phrase to a full note, abstract, or paragraph. Codes and UMLS CUIs work too.</p>
 
-    <section class="panel results-panel">
+      <section class="search-panel" aria-labelledby="searchTitle">
+        <h2 id="searchTitle" class="visually-hidden">Find Concepts</h2>
+        <div class="uts-search-box">
+          <textarea id="query" aria-label="Search query">heart failure with reduced ejection fraction</textarea>
+          <button id="searchBtn" class="primary">Search</button>
+        </div>
+        <div class="uts-sample-row">
+          <span>Try:</span>
+          <button id="randomQueryBtn" type="button">Random</button>
+          <button id="longQueryBtn" type="button" disabled>Long sample</button>
+          <span id="sampleStatus" class="sample-status">Loading samples...</span>
+        </div>
+        <details class="advanced-search-panel">
+          <summary>Search settings</summary>
+          <div class="grid search-settings-grid">
+            <div>
+              <label for="topK">Result depth</label>
+              <input id="topK" type="number" min="60" max="100" value="60">
+            </div>
+            <div>
+              <label for="searchMode">Matching</label>
+              <select id="searchMode" aria-label="Search mode">
+                <option value="balanced" selected>Expanded</option>
+                <option value="exact">Exact</option>
+              </select>
+            </div>
+            <div>
+              <label for="searchScope">Vocabulary scope</label>
+              <select id="searchScope" aria-label="Source scope">
+                <option value="umls_evidence" selected>UMLS + evidence</option>
+                <option value="umls">UMLS only</option>
+              </select>
+            </div>
+            <div>
+              <label for="semanticGroupFilter">Semantic group</label>
+              <select id="semanticGroupFilter" aria-label="Semantic group filter"></select>
+            </div>
+            <div>
+              <label for="sourceCodes">Result source</label>
+              <select id="sourceCodes" aria-label="Result source">
+                <option value="none" selected>UMLS concepts (CUIs)</option>
+                <option value="RXNORM">RxNorm codes only</option>
+                <option value="LNC">LOINC codes only</option>
+                <option value="SNOMEDCT_US">SNOMED CT US codes only</option>
+                <option value="ICD10CM">ICD-10-CM codes only</option>
+                <option value="default">UMLS concepts + default code mappings</option>
+                <option value="all">UMLS concepts + all code mappings</option>
+              </select>
+              <div id="sourceCodesHint" class="field-hint" hidden></div>
+            </div>
+          </div>
+        </details>
+        <div id="searchProgress" class="search-progress" role="status" aria-live="polite" hidden>
+          <div class="search-progress-label">Searching</div>
+          <div id="searchSubmittedQuery" class="search-progress-query" hidden></div>
+          <div class="search-progress-track" aria-hidden="true">
+            <div class="search-progress-bar"></div>
+          </div>
+        </div>
+        <div id="searchFeedback" class="search-feedback" role="alert" hidden></div>
+      </section>
+    </div>
+  </section>
+
+  <main class="wrap uts-main">
+
+    <section id="results-section" class="panel results-panel">
       <div id="results" class="muted">Run a query to see candidate CUIs.</div>
     </section>
 
@@ -109,31 +115,6 @@
         </p>
       </div>
     </details>
-
-    <details class="panel utility-panel" hidden>
-      <summary>Evaluation tools and system details</summary>
-      <div class="grid two-col">
-        <div>
-          <h3>Query Set</h3>
-          <label for="querySet">One query per line. Add expected CUI(s) after a tab or final comma when known.</label>
-          <textarea id="querySet"></textarea>
-          <div class="actions">
-            <button id="runSetBtn">Run query set</button>
-            <button id="saveJudgmentsBtn">Save judgments</button>
-            <button id="clearJudgmentsBtn">Clear judgments</button>
-            <button id="exportBtn">Export judgments CSV</button>
-          </div>
-          <div id="querySetFeedback" class="search-feedback" role="status" aria-live="polite" hidden></div>
-        </div>
-        <div>
-          <h3>System Metrics</h3>
-          <div id="metrics" class="metric-grid"></div>
-        </div>
-      </div>
-      <div id="setResults" class="table-wrap">
-        <table><tbody><tr><td class="muted">No query set has been run.</td></tr></tbody></table>
-      </div>
-    </details>
   </main>
 
   <div id="snomedLicenseDialog" class="license-dialog-backdrop" role="presentation" hidden>
@@ -161,6 +142,6 @@
     </section>
   </div>
 
-  <script src="/search_quality_app.js?v=root-review-parity-20260610"></script>
+  <script src="/search_quality_app.js?v=strip-source-fragment-20260617"></script>
 </body>
 </html>

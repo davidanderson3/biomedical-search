@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PubMed Literature Benchmark</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>PubMed Literature Benchmark</h1>
+<p>This benchmark exists because the clinical paragraph smoke test can overstate general literature performance. PubMed abstracts are longer, contain more study design language, and often require secondary concepts such as treatments, outcomes, biomarkers, and cohort attributes to remain visible.</p>
+<h2>Policy</h2>
+<p><code>config/pubmed_literature_abstract_curation.tsv</code>.</p>
+<p>without first moving the affected row into a new dev iteration and replacing the held-out row.</p>
+<ul><li>Do not score fetched abstracts with topic-level expected CUIs.</li><li>Every scored abstract must have an approved per-PMID row in</li><li>Keep <code>dev</code> and <code>heldout</code> outputs separate.</li><li>Use <code>dev</code> for diagnosis and iteration.</li><li>Use <code>heldout</code> for periodic checks; do not tune from row-level held-out misses</li></ul>
+<h2>Seed Set</h2>
+<p>The current seed curation has 13 approved abstracts:</p>
+<ul><li>Dev: 7 abstracts.</li><li>Held-out: 6 abstracts.</li><li>Source curation: <code>config/pubmed_literature_abstract_curation.tsv</code>.</li></ul>
+<p>Generate the strict scored files:</p>
+<pre><code class="language-bash">python3 scripts/fetch_pubmed_paragraph_queries.py \
+  --topics config/pubmed_paragraph_topics.tsv \
+  --curation config/pubmed_literature_abstract_curation.tsv \
+  --strict-curation \
+  --output-dir build/pubmed_literature_benchmark_seed</code></pre>
+<p>This writes:</p>
+<ul><li><code>build/pubmed_literature_benchmark_seed/pubmed_literature_dev_queries.tsv</code></li><li><code>build/pubmed_literature_benchmark_seed/pubmed_literature_heldout_queries.tsv</code></li><li><code>build/pubmed_literature_benchmark_seed/pubmed_review_queue.tsv</code></li><li><code>build/pubmed_literature_benchmark_seed/benchmark_manifest.json</code></li></ul>
+<h2>Focused Long-Document Slice</h2>
+<p>SQI-2026-06-10-004 adds a focused dev-only slice for the next long-document iteration. The slice intentionally uses reviewed PubMed dev rows and should be run before section/chunk linking or reranking changes.</p>
+<p>Slice selector:</p>
+<ul><li><code>config/search_quality_pubmed_long_document_slice.tsv</code></li></ul>
+<p>Materialize the evaluator-ready TSV from the strict seed files:</p>
+<pre><code class="language-bash">python3 scripts/build_pubmed_long_document_slice.py</code></pre>
+<p>This writes:</p>
+<ul><li><code>build/pubmed_literature_benchmark_seed/pubmed_long_document_focused_queries.tsv</code></li><li><code>build/pubmed_literature_benchmark_seed/pubmed_long_document_focused_manifest.json</code></li></ul>
+<p>Score the focused slice against the current search API:</p>
+<pre><code class="language-bash">PYTHONPATH=src:scripts python3 scripts/run_search_quality_experiment.py \
+  --queries build/pubmed_literature_benchmark_seed/pubmed_long_document_focused_queries.tsv \
+  --base-url http://127.0.0.1:8766 \
+  --scope umls_evidence \
+  --search-system api \
+  --run-family probe \
+  --label &quot;PubMed long-document focused slice&quot;</code></pre>
+<p>Use this slice to diagnose long-text recall failures on secondary concepts: treatments, outcomes, biomarkers, organisms, complications, and cohort attributes. Keep held-out scoring separate. For timing probes, compare <code>--workers 1</code> against the default two-worker API run and inspect <code>query_timings.tsv</code> in the run directory; exact-repeat cache hits should not be counted as uncached speed wins.</p>
+<p>Baseline run on 2026-06-10 against the local API on port <code>8766</code>:</p>
+<table><thead><tr><th>Slice</th><th>Rows</th><th>Overall</th><th>All Expected@10</th><th>Recall@10</th><th>Recall@20</th><th>Top On Target</th><th>Verdicts</th></tr></thead><tbody><tr><td>Focused dev</td><td>7</td><td>29.0</td><td>1/7</td><td>24/36</td><td>30/36</td><td>6/7</td><td>6 mixed, 1 poor</td></tr></tbody></table>
+<p>Run artifact: <code>build/search_quality_experiments/runs/20260610T172821Z_pubmed-long-document-focused-slice/paragraph_quality_report.md</code>.</p>
+<p>The first baseline confirms the target failure mode: the top result is usually on topic, but secondary concepts still fall out of the first result page.</p>
+<h2>Current Seed Results</h2>
+<p>Run on 2026-06-09 against the live Elasticsearch-backed API on port <code>8767</code>:</p>
+<table><thead><tr><th>Split</th><th>Rows</th><th>Overall</th><th>Strict@10</th><th>Recall@10</th><th>Top On Target</th><th>Verdicts</th></tr></thead><tbody><tr><td>Dev</td><td>7</td><td>39.3</td><td>1/7</td><td>26/36</td><td>6/7</td><td>1 good, 6 mixed</td></tr><tr><td>Held-out</td><td>6</td><td>40.2</td><td>1/6</td><td>17/24</td><td>6/6</td><td>2 good, 4 mixed</td></tr></tbody></table>
+<p>The seed result confirms the original assessment: the system usually finds the main abstract topic but is still incomplete on secondary literature concepts.</p>
+<h2>Scaling To 50-100 Abstracts</h2>
+<p>Use <code>config/pubmed_literature_candidate_topics.tsv</code> to fetch a review queue of about 100 candidate abstracts:</p>
+<pre><code class="language-bash">python3 scripts/fetch_pubmed_paragraph_queries.py \
+  --topics config/pubmed_literature_candidate_topics.tsv \
+  --output-dir build/pubmed_literature_candidates</code></pre>
+<p>Then review <code>build/pubmed_literature_candidates/pubmed_review_queue.tsv</code>. Promote only reviewed rows into <code>config/pubmed_literature_abstract_curation.tsv</code> with:</p>
+<ul><li><code>pmid</code></li><li><code>split</code> as <code>dev</code> or <code>heldout</code></li><li><code>review_status</code> set to <code>approved</code></li><li><code>expected_cuis</code> supported by the actual fetched title/abstract text</li><li><code>disallowed_cuis</code> for known distracting false positives</li><li>a short <code>why</code> note</li></ul>
+<p>After curation, rerun strict generation and score the split files:</p>
+<pre><code class="language-bash">PYTHONPATH=src:scripts python3 scripts/run_search_quality_experiment.py \
+  --queries build/pubmed_literature_benchmark_seed/pubmed_literature_dev_queries.tsv \
+  --base-url http://127.0.0.1:8767 \
+  --scope umls_evidence \
+  --search-system api \
+  --run-family probe \
+  --label &quot;PubMed literature dev&quot;
+
+PYTHONPATH=src:scripts python3 scripts/run_search_quality_experiment.py \
+  --queries build/pubmed_literature_benchmark_seed/pubmed_literature_heldout_queries.tsv \
+  --base-url http://127.0.0.1:8767 \
+  --scope umls_evidence \
+  --search-system api \
+  --run-family probe \
+  --label &quot;PubMed literature heldout&quot;</code></pre>
+<p>Keep these results separate from <code>config/search_quality_paragraph_queries.tsv</code>. The clinical smoke score answers whether the clinical regression set still works. The PubMed literature score answers whether long biomedical abstracts are complete enough for research text.</p>
+</main>
+<!-- Converted from docs/pubmed_literature_benchmark.html. -->
+</body>
+</html>

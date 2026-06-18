@@ -529,6 +529,7 @@ def public_rebuild_commands(args: argparse.Namespace) -> tuple[list[list[str]], 
                 str(mrconso),
                 "--out",
                 rel(paths["code_index"]),
+                "--include-suppressed",
                 "--replace",
             ],
             [

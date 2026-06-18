@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import html
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -12,7 +14,7 @@ DEFAULT_REVIEW = ROOT / "config" / "search_quality_precision_audit_review.tsv"
 DEFAULT_USEFUL_EXTRAS = ROOT / "config" / "search_quality_useful_extra_cuis.tsv"
 DEFAULT_LIVE_AUDIT = ROOT / "build" / "search_quality_live_audit" / "paragraph_precision_audit.tsv"
 DEFAULT_REVIEWED_AUDIT = ROOT / "build" / "search_quality_live_audit_reviewed" / "paragraph_precision_audit.tsv"
-DEFAULT_OUTPUT = ROOT / "docs" / "search_quality_precision_audit.md"
+DEFAULT_OUTPUT = ROOT / "docs" / "search_quality_precision_audit.html"
 ALLOWED_REVIEW_CLASSES = {"expected", "useful_extra", "true_false_positive"}
 ACTION_BY_CLASS = {
     "expected": {"promote_expected"},
@@ -76,6 +78,119 @@ def table(headers: list[str], rows: list[list[object]]) -> str:
     for row in rows:
         lines.append("| " + " | ".join(str(value) for value in row) + " |")
     return "\n".join(lines)
+
+
+def inline_html(text: str) -> str:
+    escaped = html.escape(text, quote=True)
+    escaped = re.sub(r"`([^`]+)`", r"<code>\1</code>", escaped)
+    return escaped
+
+
+def markdown_table_to_html(lines: list[str]) -> str:
+    rows = [
+        [cell.strip() for cell in line.strip().strip("|").split("|")]
+        for line in lines
+        if line.strip()
+    ]
+    if len(rows) < 2:
+        return ""
+    headers = rows[0]
+    body = rows[2:]
+    th = "".join(f"<th>{inline_html(cell)}</th>" for cell in headers)
+    trs = []
+    for row in body:
+        trs.append("<tr>" + "".join(f"<td>{inline_html(cell)}</td>" for cell in row) + "</tr>")
+    body_html = "".join(trs) or f'<tr><td colspan="{len(headers)}">None.</td></tr>'
+    return (
+        "<table>"
+        f"<thead><tr>{th}</tr></thead>"
+        f"<tbody>{body_html}</tbody>"
+        "</table>"
+    )
+
+
+def render_html_report(markdown: str) -> str:
+    lines = markdown.splitlines()
+    title = "Search Quality Precision Audit Review"
+    body: list[str] = []
+    paragraph: list[str] = []
+    list_items: list[str] = []
+    index = 0
+
+    def flush_paragraph() -> None:
+        if paragraph:
+            body.append(f"<p>{inline_html(' '.join(paragraph))}</p>")
+            paragraph.clear()
+
+    def flush_list() -> None:
+        if list_items:
+            body.append("<ul>" + "".join(f"<li>{inline_html(item)}</li>" for item in list_items) + "</ul>")
+            list_items.clear()
+
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        if not stripped:
+            flush_paragraph()
+            flush_list()
+            index += 1
+            continue
+        if stripped.startswith("|"):
+            flush_paragraph()
+            flush_list()
+            table_lines = []
+            while index < len(lines) and lines[index].strip().startswith("|"):
+                table_lines.append(lines[index])
+                index += 1
+            body.append(markdown_table_to_html(table_lines))
+            continue
+        if stripped.startswith("# "):
+            flush_paragraph()
+            flush_list()
+            title = stripped[2:].strip()
+            body.append(f"<h1>{inline_html(title)}</h1>")
+        elif stripped.startswith("## "):
+            flush_paragraph()
+            flush_list()
+            body.append(f"<h2>{inline_html(stripped[3:].strip())}</h2>")
+        elif stripped.startswith("- "):
+            flush_paragraph()
+            list_items.append(stripped[2:].strip())
+        else:
+            paragraph.append(stripped)
+        index += 1
+    flush_paragraph()
+    flush_list()
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html.escape(title, quote=True)}</title>
+  <style>
+    body {{ margin: 0; background: #f6f7f9; color: #17202a; font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+    main {{ width: min(1080px, calc(100vw - 32px)); margin: 0 auto; padding: 28px 0 48px; }}
+    h1 {{ margin: 0 0 12px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }}
+    h2 {{ margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }}
+    p {{ margin: 0 0 12px; }}
+    table {{ width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d7dde5; border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }}
+    th, td {{ padding: 10px 12px; border-bottom: 1px solid #d7dde5; text-align: left; vertical-align: top; }}
+    th {{ background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }}
+    tr:last-child td {{ border-bottom: 0; }}
+    code {{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: #eef2f6; border-radius: 4px; padding: 1px 4px; }}
+    ul {{ margin: 8px 0 16px 22px; padding: 0; }}
+    li {{ margin: 6px 0; }}
+    @media (max-width: 720px) {{ main {{ width: min(100vw - 20px, 1080px); padding-top: 18px; }} table {{ display: block; overflow-x: auto; }} }}
+  </style>
+</head>
+<body>
+<main>
+{''.join(body)}
+</main>
+</body>
+</html>
+"""
 
 
 def compact_label_rows(rows: list[dict[str, str]]) -> list[list[str]]:
@@ -193,23 +308,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--live-audit", type=Path, default=DEFAULT_LIVE_AUDIT)
     parser.add_argument("--reviewed-audit", type=Path, default=DEFAULT_REVIEWED_AUDIT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--markdown-output", type=Path, help="Optional Markdown report output path.")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    report = build_report(
+    markdown_report = build_report(
         review_path=args.review,
         useful_extras_path=args.useful_extras,
         live_audit_path=args.live_audit,
         reviewed_audit_path=args.reviewed_audit,
     )
+    report = render_html_report(markdown_report)
     output = args.output.expanduser()
     if not output.is_absolute():
         output = ROOT / output
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(report, encoding="utf-8")
     print(f"wrote {output.relative_to(ROOT)}")
+    if args.markdown_output:
+        markdown_output = args.markdown_output.expanduser()
+        if not markdown_output.is_absolute():
+            markdown_output = ROOT / markdown_output
+        markdown_output.parent.mkdir(parents=True, exist_ok=True)
+        markdown_output.write_text(markdown_report, encoding="utf-8")
+        print(f"wrote {markdown_output.relative_to(ROOT)}")
     return 0
 
 

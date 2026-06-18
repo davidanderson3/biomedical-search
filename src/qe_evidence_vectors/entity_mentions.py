@@ -90,6 +90,22 @@ def sentence_index_for_offset(text: str, offset: int) -> int:
     return sum(1 for match in SENTENCE_END_RE.finditer(str(text or "")[:offset]) if match.end() <= offset)
 
 
+def sentence_context_for_span(text: str, start: int, end: int) -> str:
+    text = str(text or "")
+    start = max(0, int(start or 0))
+    end = max(start, int(end or start))
+    left = 0
+    for match in SENTENCE_END_RE.finditer(text, 0, start):
+        left = match.end()
+    while left < len(text) and text[left].isspace():
+        left += 1
+    right = len(text)
+    match = SENTENCE_END_RE.search(text, end)
+    if match:
+        right = match.end()
+    return re.sub(r"\s+", " ", text[left:right]).strip()
+
+
 def section_for_offset(text: str, offset: int) -> str:
     offset = max(0, int(offset or 0))
     section = ""

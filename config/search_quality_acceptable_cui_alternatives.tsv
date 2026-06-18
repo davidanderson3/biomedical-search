@@ -106,3 +106,4 @@ C0018801	C0018802	Heart failure variant	The common real query "heart failure" ca
 C0041755	C0413696	Aspirin adverse reaction	A specific aspirin adverse-reaction concept is acceptable for a DailyMed adverse-reaction query that explicitly names aspirin.
 C0041755	C0559546	Adverse reactions	The plural adverse-reactions concept is acceptable for DailyMed label wording that asks for adverse reaction context.
 C0042313	C0360373	vancomycin Oral Product	Oral vancomycin product wording is acceptable for the vancomycin ingredient target when a PubMed abstract explicitly says oral vancomycin, but it does not satisfy the separate C. difficile infection target.
+C3273807	C3542461	Sodium-Glucose Cotransporter 2 Inhibitor [EPC]	The MED-RT EPC class is clinically equivalent to the SGLT2 inhibitor target when PubMed wording explicitly says sodium-glucose cotransporter 2 or SGLT2 inhibitors.

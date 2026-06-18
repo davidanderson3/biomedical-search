@@ -37,7 +37,7 @@ recall should stay at 36/36.
   from picking up pharmacogenomic context from the next sentence.
 - Added focused regression tests for the CYP2C19/clopidogrel/aspirin ranking
   shape and for the no-boost ordinary drug-query case.
-- Regenerated `docs/search_rule_inventory.md`.
+- Regenerated `docs/search_rule_inventory.html`.
 
 ## Result
 

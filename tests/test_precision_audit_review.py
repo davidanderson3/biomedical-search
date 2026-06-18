@@ -14,6 +14,7 @@ from build_precision_audit_report import (  # noqa: E402
     ALLOWED_REVIEW_CLASSES,
     build_report,
     read_tsv,
+    render_html_report,
     row_key,
     validate_review_rows,
 )
@@ -57,14 +58,15 @@ def test_current_live_precision_audit_queue_is_fully_classified_when_present() -
 
 
 def test_precision_audit_report_can_be_generated(tmp_path: Path) -> None:
-    output = tmp_path / "precision_audit.md"
+    output = tmp_path / "precision_audit.html"
     report = build_report(
         review_path=ROOT / "config" / "search_quality_precision_audit_review.tsv",
         useful_extras_path=ROOT / "config" / "search_quality_useful_extra_cuis.tsv",
         live_audit_path=ROOT / "build" / "search_quality_live_audit" / "paragraph_precision_audit.tsv",
         reviewed_audit_path=ROOT / "build" / "search_quality_live_audit_reviewed" / "paragraph_precision_audit.tsv",
     )
-    output.write_text(report, encoding="utf-8")
+    html_report = render_html_report(report)
+    output.write_text(html_report, encoding="utf-8")
 
     with (ROOT / "config" / "search_quality_precision_audit_review.tsv").open(
         "r",
@@ -77,3 +79,5 @@ def test_precision_audit_report_can_be_generated(tmp_path: Path) -> None:
     assert "Reviewed rows: 69" in report
     assert "Current raw suspect rows missing review classification: 0" in report
     assert "Residual True False Positives" in report
+    assert html_report.startswith("<!doctype html>")
+    assert "<title>Search Quality Precision Audit Review</title>" in html_report

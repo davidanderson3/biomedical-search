@@ -6,7 +6,7 @@ from array import array
 from pathlib import Path
 from typing import Iterator
 
-from .schema import VectorRecord
+from .schema import VectorRecord, iter_jsonl
 from .search import iter_vectors
 
 
@@ -86,10 +86,11 @@ def iter_compact_vectors(manifest_path: str | Path) -> Iterator[VectorRecord]:
     width = dims * array("f").itemsize
     vectors_path = Path(manifest["vectors"]).expanduser()
     metadata_path = Path(manifest["metadata"]).expanduser()
+    if not metadata_path.exists() and Path(f"{metadata_path}.gz").exists():
+        metadata_path = Path(f"{metadata_path}.gz")
 
-    with vectors_path.open("rb") as vector_handle, metadata_path.open("r", encoding="utf-8") as metadata_handle:
-        for line_number, line in enumerate(metadata_handle, start=1):
-            payload = json.loads(line)
+    with vectors_path.open("rb") as vector_handle:
+        for line_number, payload in enumerate(iter_jsonl(metadata_path), start=1):
             raw = vector_handle.read(width)
             if len(raw) != width:
                 raise ValueError(f"{vectors_path}: missing vector bytes for metadata line {line_number}")

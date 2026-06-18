@@ -457,7 +457,7 @@ def build_html(rows: list[dict[str, Any]]) -> str:
       <nav class="nav" aria-label="Related reports">
         <a href="search_quality_progress_log.html">Progress Log</a>
         <a href="search_quality_experiments.html">Experiment Details</a>
-        <a href="search_quality_test_suite.md">Test Suite</a>
+        <a href="search_quality_test_suite.html">Test Suite</a>
       </nav>
     </div>
   </header>

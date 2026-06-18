@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OHDSI Relationship Mining Plan</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>OHDSI Relationship Mining Plan</h1>
+<h2>Short Answer</h2>
+<p>Yes. OHDSI artifacts are a strong fit for the universal relationship edge model, especially because they can supply quantitative strength and confidence fields instead of only heuristic relatedness. The safe default is to mine only public cohort definitions, published/shared aggregate outputs, and study packages/results that are explicitly shareable. Do not ingest patient-level EHR rows, local CDM extracts, or restricted site outputs unless a separate governance path approves that data.</p>
+<h2>Source Classes</h2>
+<h3>A. ATLAS Cohort Definitions</h3>
+<p>ATLAS cohort JSON and concept-set JSON can be mined for curated domain knowledge. If a target cohort is a drug-exposure cohort and inclusion criteria require condition concept sets before or around index, create:</p>
+<pre><code class="language-text">Drug CUI -&gt; likely_indication -&gt; Condition CUI</code></pre>
+<p>Recommended edge fields:</p>
+<ul><li><code>type</code>: <code>likely_indication</code></li><li><code>strength</code>: normalized rule strength initially; replace with <code>P(condition | drug)</code> when CohortDiagnostics aggregate counts are available</li><li><code>strength_metric</code>: <code>cohort_rule_score</code> or <code>conditional_prevalence</code></li><li><code>directionality</code>: <code>subject_to_object</code></li><li><code>evidence.method</code>: <code>curated</code></li><li><code>evidence.provenance</code>: <code>atlas_cohort_definition</code></li><li><code>context</code>: cohort id/name, concept set id/name, inclusion rule id/name, index window, domain, source URL/package</li><li><code>confidence</code>: higher for published/validated cohorts, lower for local drafts</li></ul>
+<p>Useful extraction logic:</p>
+<ul><li>Identify target cohorts whose initial event is <code>DrugExposure</code>, <code>DrugEra</code>, ingredient descendants, or RxNorm-related concept sets.</li><li>Extract condition/procedure/measurement concept sets from inclusion criteria and temporal windows.</li><li>Map OMOP concept IDs to source vocabulary IDs and then to UMLS CUIs through the existing code index where possible.</li><li>Prefer ingredient-level drug CUIs by rolling up salts, brands, clinical drugs, and formulations.</li></ul>
+<h3>B. CohortDiagnostics Aggregate Outputs</h3>
+<p>CohortDiagnostics can supply aggregate cohort characterization, temporal comparison, inclusion attrition, index-event breakdown, cohort counts, overlap, and incidence-style summaries. These outputs are valuable because they let us separate &quot;concept appears in a definition&quot; from &quot;concept actually appears frequently before drug initiation.&quot;</p>
+<p>Recommended relationships:</p>
+<pre><code class="language-text">Drug CUI -&gt; likely_indication -&gt; Condition CUI
+Drug CUI -&gt; associated_with -&gt; Finding/Procedure/Measurement CUI
+Condition CUI -&gt; temporal_precedes -&gt; Drug CUI</code></pre>
+<p>Recommended strength metrics:</p>
+<ul><li><code>P(condition | drug_cohort)</code> from characterization/prevalence</li><li><code>lift_vs_background</code> when database-wide or comparator prevalence is available</li><li><code>temporal_precedence_score</code> from temporal distributions</li><li><code>inclusion_rule_prevalence</code> from attrition/inclusion-rule contribution</li></ul>
+<p>Confidence should increase with sample size, multi-database agreement, temporal precedence, and consistency with cohort JSON rules. Confidence should decrease when the relationship only appears as broad background comorbidity.</p>
+<h3>C. Population-Level Estimation / CohortMethod Results</h3>
+<p>Comparative effectiveness and safety studies are the best OHDSI source for true quantitative edge strength. Target/comparator/outcome outputs can create:</p>
+<pre><code class="language-text">Exposure CUI -&gt; affects_risk_of -&gt; Outcome CUI
+Exposure CUI -&gt; increases_risk_of -&gt; Outcome CUI
+Exposure CUI -&gt; decreases_risk_of -&gt; Outcome CUI</code></pre>
+<p>Recommended edge fields:</p>
+<ul><li><code>type</code>: <code>affects_risk_of</code>, <code>increases_risk_of</code>, or <code>decreases_risk_of</code></li><li><code>strength</code>: the reported effect estimate when the edge model supports raw values; otherwise a normalized transform of <code>abs(log(HR))</code></li><li><code>strength_metric</code>: <code>hazard_ratio</code>, <code>risk_ratio</code>, <code>odds_ratio</code>, or <code>log_hazard_ratio_normalized</code></li><li><code>directionality</code>: <code>subject_to_object</code></li><li><code>evidence.method</code>: <code>temporal_analysis</code></li><li><code>evidence.provenance</code>: <code>ohdsi_cohort_method</code> or study package id</li><li><code>context</code>: target cohort, comparator cohort, outcome cohort, time-at-risk, adjustment method, database/network, analysis id</li><li><code>confidence</code>: derived from confidence interval width, calibrated p-value if present, diagnostics, negative-control calibration, sample size, and replication across databases</li></ul>
+<p>Store raw quantitative fields inside evidence/context even if the display strength remains normalized:</p>
+<pre><code class="language-json">{
+  &quot;estimate&quot;: 1.42,
+  &quot;lower_95&quot;: 1.18,
+  &quot;upper_95&quot;: 1.71,
+  &quot;measure&quot;: &quot;hazard_ratio&quot;
+}</code></pre>
+<h3>D. PatientLevelPrediction Outputs</h3>
+<p>PatientLevelPrediction can provide predictor relationships when shared model artifacts include covariates and feature importance. These should not be treated as causal. They are useful for search and hypothesis generation:</p>
+<pre><code class="language-text">Condition CUI -&gt; predicts -&gt; Drug CUI
+Condition CUI -&gt; predicts -&gt; Outcome CUI
+Measurement CUI -&gt; predicts -&gt; Outcome CUI</code></pre>
+<p>Recommended strength metrics:</p>
+<ul><li>permutation feature importance</li><li>standardized model coefficient</li><li>AUC delta when a feature is removed</li><li>model-derived feature contribution when available</li></ul>
+<p>Recommended confidence inputs:</p>
+<ul><li>external validation present</li><li>calibration performance</li><li>discrimination performance</li><li>feature stability across folds/databases</li><li>feature prevalence</li></ul>
+<h3>E. Literature-Backed OHDSI Studies</h3>
+<p>Published OHDSI studies and shared study packages are a high-value bridge between curated definitions and quantitative results. Mine them in two passes:</p>
+<ol><li>Definitions pass: extract target/comparator/outcome cohorts and concept sets.</li><li>Results pass: extract aggregate estimates, diagnostics, and published interpretation.</li></ol>
+<p>These should produce stronger relationship edges than generic literature co-occurrence because the cohorts encode domain-specific design choices and the results include quantitative estimates.</p>
+<h2>Product Rules</h2>
+<ul><li>Mine aggregate/public OHDSI artifacts first; do not depend on any real EHR source.</li><li>Keep <code>evidence.method</code> distinct from <code>confidence</code>: a relationship can be literature-mined but low confidence, or curated but weakly quantified.</li><li>Do not promote <code>likely_indication</code> solely from common comorbidity prevalence. Require at least one of: explicit inclusion criterion, temporal precedence, high lift, published study intent, or repeated network agreement.</li><li>Always preserve the original OMOP concept IDs, cohort IDs, concept set IDs, and source package URLs as provenance.</li><li>Convert concept IDs to UMLS CUIs through existing resolver indexes. If no UMLS concept exists and the relationship is clinically useful, route it to the <code>NEW#######</code> concept lane.</li></ul>
+<h2>Minimal Implementation Order</h2>
+<ol><li>Add an OHDSI artifact reader for exported ATLAS cohort JSON and concept-set JSON.</li><li>Add OMOP concept ID to UMLS CUI resolution using the existing source-code index.</li><li>Emit JSONL relationship candidates using the universal edge object.</li><li>Add a CohortDiagnostics aggregate reader for characterization and temporal-precedence tables.</li><li>Add an estimation-results reader for hazard/risk/odds ratios and confidence intervals.</li><li>Add PLP feature-importance ingestion only after the causal/effect-estimate path is stable, because PLP edges are predictive, not causal.</li></ol>
+<h2>Implemented Local Miner</h2>
+<p>The repository now includes a local aggregate-artifact miner at <code>scripts/mine_ohdsi_relationships.py</code>. It reads files already present on disk and rejects rows with patient-level fields such as <code>person_id</code>, <code>personId</code>, <code>visit_occurrence_id</code>, or <code>note_id</code>. This keeps the implementation aligned with the data-governance rule: mine public/shareable cohort definitions and aggregate results, not real EHR extracts.</p>
+<p>Example:</p>
+<pre><code class="language-sh">python3 scripts/mine_ohdsi_relationships.py \
+  --atlas path/to/cohort_definition.json \
+  --cohort-diagnostics path/to/cohort_diagnostics.csv \
+  --estimation-results path/to/cohort_method_results.csv \
+  --plp-output path/to/plp_feature_importance.csv \
+  --literature-study path/to/published_ohdsi_results.csv \
+  --omop-cui-map path/to/omop_cui_map.tsv \
+  --code-index build/umls_biomedicine_code_index.sqlite \
+  --out build/ohdsi_relationship_edges.jsonl \
+  --unresolved-out build/ohdsi_unresolved.jsonl \
+  --summary-out build/ohdsi_relationship_summary.json</code></pre>
+<p>The output JSONL rows contain the existing universal edge object plus source-class labels. ATLAS cohort JSON produces <code>Drug -&gt; likely_indication -&gt; Condition</code> edges with <code>cohort_rule_score</code>. CohortDiagnostics characterization produces <code>conditional_prevalence</code> edges and, when baseline/prior temporal windows are present, <code>Condition -&gt; precedes -&gt; Drug</code> edges. Population-level estimation outputs retain raw <code>hazard_ratio</code>, <code>risk_ratio</code>, or <code>odds_ratio</code> values and confidence intervals in <code>edge.evidence.quantitative</code> while keeping ranking strength normalized. PLP feature outputs create <code>predicts</code> edges with <code>context.noncausal = true</code>.</p>
+<p>To make mined edges visible in the search interface, build the generic relationship-edge index:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-relationship-edge-index \
+  --edges build/ohdsi_relationship_edges.jsonl \
+  --out build/relationship_edges.sqlite \
+  --replace</code></pre>
+<p><code>scripts/search_quality_server.py</code> loads <code>build/relationship_edges.sqlite</code> by default when it exists. These edges are merged into related semantic views and the separate related result buckets, where their numeric <code>strength</code> and <code>confidence</code> are used for evidence gating.</p>
+<h2>Open Design Adjustment</h2>
+<p>The current edge implementation stores normalized <code>strength</code> with <code>strength_metric = normalized_score</code>. OHDSI effect estimates should add raw quantitative measure fields, either by allowing non-normalized <code>strength</code> when <code>strength_metric</code> is an effect measure or by adding <code>raw_strength</code> and keeping display strength normalized. The second option is safer for ranking because it avoids comparing hazard ratios directly with probabilities and embedding scores.</p>
+</main>
+<!-- Converted from docs/ohdsi_relationship_mining.html. -->
+</body>
+</html>

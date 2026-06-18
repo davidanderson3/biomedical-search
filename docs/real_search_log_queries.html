@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Real Search Log Queries</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>Real Search Log Queries</h1>
+<p>The raw UMLS search log query exports live in:</p>
+<pre><code class="language-text">data/local_search_logs/umls_query_exports/</code></pre>
+<p>They were moved out of the repository root because they are local source inputs, not public project fixtures. <code>data/</code> is gitignored, which is the right default for raw log-derived data.</p>
+<h2>Shape</h2>
+<p>Each CSV has:</p>
+<ul><li><code>search_term</code></li><li><code>unique_users</code></li></ul>
+<p>Current aggregate inventory, counted on 2026-06-05:</p>
+<table><thead><tr><th>File</th><th>Rows</th><th>Sum of per-term <code>unique_users</code></th><th>Max <code>unique_users</code></th></tr></thead><tbody><tr><td><code>one-word-real-queries.csv</code></td><td>10,000</td><td>68,287</td><td>60</td></tr><tr><td><code>two-word-real-queries.csv</code></td><td>10,000</td><td>48,003</td><td>47</td></tr><tr><td><code>three-word-real-queries.csv</code></td><td>10,000</td><td>32,593</td><td>36</td></tr><tr><td><code>four-word-real-queries.csv</code></td><td>10,000</td><td>18,115</td><td>38</td></tr><tr><td><code>five-word-real-queries.csv</code></td><td>10,000</td><td>12,358</td><td>11</td></tr><tr><td><code>six-word-real-queries.csv</code></td><td>10,000</td><td>10,755</td><td>12</td></tr><tr><td><code>seven-word-real-queries.csv</code></td><td>10,000</td><td>10,261</td><td>8</td></tr><tr><td><code>eight-word-real-queries.csv</code></td><td>10,000</td><td>10,088</td><td>4</td></tr><tr><td><code>nine-word-real-queries.csv</code></td><td>6,887</td><td>6,915</td><td>3</td></tr><tr><td><code>ten-word-real-queries.csv</code></td><td>4,720</td><td>4,734</td><td>3</td></tr><tr><td><code>eleven-word-real-queries.csv</code></td><td>3,199</td><td>3,197</td><td>2</td></tr><tr><td><code>12-13-word-real-queries.csv</code></td><td>3,532</td><td>3,529</td><td>2</td></tr><tr><td><code>14-or-more-word-real-queries.csv</code></td><td>3,384</td><td>3,383</td><td>1</td></tr><tr><td>Total</td><td>101,722</td><td>232,218</td><td>60</td></tr></tbody></table>
+<p>The row count is unique within these bucket files. The <code>unique_users</code> values are per term and should not be interpreted as a globally deduplicated user count.</p>
+<h2>Handling Rules</h2>
+<p>Treat these exports as restricted local log data.</p>
+<p>benchmark files.</p>
+<p>inventory found 3 email-like rows, 5 phone-like rows, 83 long digit runs, and 797 rows with non-ASCII characters.</p>
+<p>de-identified.</p>
+<ul><li>Keep raw CSVs under <code>data/</code> or another ignored local path.</li><li>Do not publish raw terms in docs, release candidates, examples, or public</li><li>Before deriving artifacts, flag and review possible identifiers. The</li><li>Checked-in outputs should be aggregate-only or manually curated and</li></ul>
+<h2>Useful Workflows</h2>
+<p>These files are most useful as a private query-demand signal, not as direct training data.</p>
+<p>features, and privacy flags.</p>
+<p>collect no-hit, low-confidence, and wrong-intent cases.</p>
+<p>to a private benchmark or a curated public benchmark.</p>
+<p>the existing <code>ingest-query-log</code> command. The current command expects TSV rows with <code>query</code> and <code>cui</code>; these raw CSVs do not include CUIs.</p>
+<p>Greek-letter variants, pluralization, pasted article titles, and numeric procedure or code-like searches.</p>
+<p>source coverage first, semantic bucket/profile changes second, active-label supplement rows third, and ranker rules only for reusable error classes.</p>
+<p>keeping trial/literature/query-language evidence clearly separated.</p>
+<ol><li>Build a local query inventory with term length, <code>unique_users</code>, normalization</li><li>Run sampled or high-frequency terms against the current search server and</li><li>Manually map reviewed failure cases to expected CUIs, then add only safe rows</li><li>Use reviewed <code>query -&gt; CUI</code> mappings as <code>query_language</code> evidence through</li><li>Mine durable lexical issues: abbreviations, misspellings, punctuation,</li><li>Feed recurring, reviewed fixes into the existing improvement hierarchy:</li><li>Use aggregate demand to prioritize public evidence acquisition topics, while</li></ol>
+<h2>Suggested Next Step</h2>
+<p>Create a local generated inventory under <code>build/local_search_logs/</code>, then use it to drive focused review. The cheap, no-server path is:</p>
+<pre><code class="language-sh">python3 scripts/build_real_query_inventory.py</code></pre>
+<p>This writes:</p>
+<ul><li><code>build/local_search_logs/query_inventory.tsv</code></li><li><code>build/local_search_logs/query_inventory_summary.json</code></li></ul>
+<p>The inventory columns are:</p>
+<pre><code class="language-text">source_file	source_row	token_bucket	search_term	unique_users	normalized_term	normalized_token_count	privacy_flags	server_hit_count	server_top_cui	server_top_label	server_score	server_error	review_status	reviewed_cui	review_note</code></pre>
+<p>For a prioritized local queue without calling the search server, use demand order:</p>
+<pre><code class="language-sh">python3 scripts/build_real_query_inventory.py \
+  --sort demand \
+  --max-rows 5000 \
+  --out build/local_search_logs/query_inventory_demand_top5000.tsv \
+  --summary-out build/local_search_logs/query_inventory_demand_top5000_summary.json \
+  --review-queue-out build/local_search_logs/query_review_queue.tsv</code></pre>
+<p>When the search server is running, score a bounded batch and fill the <code>server_*</code> columns:</p>
+<pre><code class="language-sh">python3 scripts/build_real_query_inventory.py \
+  --sort demand \
+  --max-rows 1000 \
+  --score-api \
+  --out build/local_search_logs/query_inventory_scored_top1000.tsv \
+  --summary-out build/local_search_logs/query_inventory_scored_top1000_summary.json \
+  --review-queue-out build/local_search_logs/query_review_queue.tsv</code></pre>
+<p><code>--score-api</code> requires either <code>--max-rows</code> or <code>--score-all</code> so a command does not accidentally issue the full 101k-query batch. The review queue adds <code>review_priority</code> and <code>review_reasons</code> ahead of the inventory columns. Reasons include privacy flags, no server hit, server errors, low top score, high demand, code-like terms, punctuation variants, and long pasted queries.</p>
+<p>That keeps the raw export private, makes failure review repeatable, and produces the right shape for later curated benchmark rows or reviewed query-log evidence.</p>
+</main>
+<!-- Converted from docs/real_search_log_queries.html. -->
+</body>
+</html>

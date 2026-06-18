@@ -48,7 +48,7 @@ at zero.
 - Added focused tests for preserved active-label local fields, lab-role ranking,
   unreviewed immunologic-factor protection, and the combined Complement 3/SLE
   first-page recall shape.
-- Regenerated `docs/search_rule_inventory.md`.
+- Regenerated `docs/search_rule_inventory.html`.
 
 Rejected diagnostic:
 

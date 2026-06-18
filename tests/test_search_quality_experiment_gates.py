@@ -42,6 +42,7 @@ def smoke_args(tmp_path: Path, **overrides):
         "focused_command": [],
         "docs_only_change": False,
         "ui_report_only_change": False,
+        "development_loop": False,
         "broad_change": False,
         "release_quality": False,
         "force_standing_smoke": False,
@@ -119,6 +120,26 @@ def test_iteration_smoke_ranking_plan_includes_focused_standing_rotating_and_por
     assert "--query-limit 0" in portal_text
     assert "--run-family patient_portal" in portal_text
     assert "--fail-gates" in portal_text
+
+
+def test_iteration_smoke_development_loop_defers_broad_ranking_lanes(tmp_path: Path) -> None:
+    module = load_script_module()
+    args = smoke_args(
+        tmp_path,
+        iteration_type=["ranking"],
+        development_loop=True,
+        focused_command=["python3 -m pytest tests/test_evidence_vectors.py -k focused -q"],
+    )
+
+    types = module.normalize_iteration_types(args.iteration_type)
+    decision = module.smoke_tier_decision(args, types)
+    steps = module.build_iteration_smoke_steps(args, "SQI-dev-loop", types)
+
+    assert decision["standing_smoke"] is True
+    assert decision["rotating_smoke"] is False
+    assert decision["patient_portal_smoke"] is False
+    assert any("development-loop" in reason for reason in decision["reasons"])
+    assert [step["tier"] for step in steps] == ["focused", "standing"]
 
 
 def test_iteration_smoke_can_skip_patient_portal_lane(tmp_path: Path) -> None:

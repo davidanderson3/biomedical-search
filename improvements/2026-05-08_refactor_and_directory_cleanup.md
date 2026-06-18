@@ -7,8 +7,8 @@
   - `suggestions.json`
   - `paragraphs.json`
   - `expansion_profiles.json`
-- Moved the short replacement proposal into `docs/proposals/search_driven_umls_replacement.md`.
-- Added `docs/search_quality/README.md` and `docs/proposals/README.md` to document the new layout.
+- Moved the short replacement proposal into `docs/proposals/search_driven_umls_replacement.html`.
+- Added `docs/search_quality/README.html` and `docs/proposals/README.html` to document the new layout.
 - Updated `src/qe_evidence_vectors/search_quality_http.py` so existing browser routes still work after the file move.
 - Added `.gitignore` entries for generated build artifacts, local vocabulary drops, Python caches, SQLite WAL/SHM files, and local machine files.
 - Removed local `.DS_Store`, `.zsh_history`, and `.pytest_cache/`.

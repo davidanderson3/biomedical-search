@@ -90,6 +90,7 @@ class SearchIndex(
         elastic_exclude_source_prefixes: list[str] | tuple[str, ...] | None = (),
         search_knn_func: Callable[..., list[dict]] | None = None,
         label_index_paths: list[Path] | None = None,
+        umls_search_label_index_paths: list[Path] | None = None,
         label_max_tokens: int = 8,
         label_fallback_limit: int = 120,
         definition_fallback_limit: int = 80,
@@ -112,14 +113,18 @@ class SearchIndex(
         public_output_only: bool = False,
         public_output_sources: list[str] | tuple[str, ...] | None = None,
         public_output_source_allowlist_path: Path | None = None,
+        progress: Callable[[str], None] | None = None,
     ) -> None:
+        self._progress_callback = progress
         self.vector_paths = vector_paths
         self.doc_paths = doc_paths
         self.evidence_paths = evidence_paths
         self.provenance_index_path = provenance_index_path
+        self._report_progress("Preparing result details for the website.")
         self.provenance_index = ProvenanceIndex(provenance_index_path) if provenance_index_path else None
         self.provenance_by_doc_text: dict[tuple[str, str], list[dict]] = {}
         self.dim = dim
+        self._report_progress("Loading the search model used to understand searches.")
         self.embedder = make_embedder(
             provider,
             model=model,
@@ -146,8 +151,13 @@ class SearchIndex(
             label_index_paths or [],
             max_tokens=label_max_tokens,
         )
+        self.umls_search_label_fallback = LabelFallback(
+            umls_search_label_index_paths or [],
+            max_tokens=64,
+        )
         self.label_fallback_limit = max(0, int(label_fallback_limit or 0))
         self.definition_fallback_limit = max(0, int(definition_fallback_limit or 0))
+        self._report_progress("Preparing names, definitions, codes, and related terms.")
         self.code_index_path = code_index_path
         self.code_index = CodeIndex(code_index_path) if code_index_path else None
         self.semantic_type_index_path = semantic_type_index_path
@@ -224,26 +234,41 @@ class SearchIndex(
         self.load_seconds = 0.0
         self._load()
 
+    def _report_progress(self, message: str) -> None:
+        if self._progress_callback is not None:
+            self._progress_callback(message)
+
     def _load(self) -> None:
         started = time.time()
+        self._report_progress("Loading source links for result details.")
         if self.provenance_index:
             self.provenance_count = self.provenance_index.source_count()
         else:
             self.provenance_by_doc_text = load_evidence_provenance(self.evidence_paths)
             self.provenance_count = sum(len(value) for value in self.provenance_by_doc_text.values())
         docs_by_id: dict[str, dict] = {}
-        for docs_path in self.doc_paths:
+        total_doc_files = len(self.doc_paths)
+        for doc_file_index, docs_path in enumerate(self.doc_paths, start=1):
             if not docs_path.exists():
                 continue
+            self._report_progress(
+                f"Loading result detail file {doc_file_index} of {total_doc_files}."
+            )
             for payload in iter_jsonl(docs_path):
                 doc_id = payload.get("doc_id")
                 if doc_id:
                     docs_by_id[doc_id] = payload
+            self._report_progress(f"Loaded {len(docs_by_id):,} result details so far.")
         self.docs_count = len(docs_by_id)
 
         records: list[SearchRecord] = []
         actual_dim: int | None = None
-        for vectors_path in self.vector_paths:
+        next_record_progress = 25_000
+        total_vector_files = len(self.vector_paths)
+        for vector_file_index, vectors_path in enumerate(self.vector_paths, start=1):
+            self._report_progress(
+                f"Loading search result file {vector_file_index} of {total_vector_files}."
+            )
             for vector_row, vector_record in enumerate(iter_vectors(vectors_path)):
                 if actual_dim is None:
                     actual_dim = len(vector_record.vector)
@@ -288,7 +313,13 @@ class SearchIndex(
                         source_bundle=source_bundle,
                     )
                 )
+                if len(records) >= next_record_progress:
+                    self._report_progress(
+                        f"Loading search result records: {len(records):,} loaded so far."
+                    )
+                    next_record_progress += 25_000
         self.records = records
+        self._report_progress("Preparing fast lookups for the website.")
         self.vector_matrix = self._build_vector_matrix(records)
         self.source_bundle_counts = dict(Counter(record.source_bundle for record in records))
         self.vector_file_counts = dict(Counter(record.vector_path for record in records))
@@ -320,6 +351,7 @@ class SearchIndex(
         if actual_dim is not None:
             self.dim = actual_dim
         self.load_seconds = time.time() - started
+        self._report_progress("Website result details are loaded.")
 
     def _build_vector_matrix(self, records: list[SearchRecord]):
         if not records:
@@ -357,6 +389,9 @@ class SearchIndex(
             return str(sources[0])
         name = vector_path.name
         for suffix in (
+            "_sapbert_cls.manifest.json",
+            ".manifest.json",
+            ".vectors.f32",
             ".hashing.jsonl",
             ".sentence_transformers.jsonl",
             ".transformers_cls.jsonl",
@@ -369,6 +404,7 @@ class SearchIndex(
                 break
         for marker in (
             "_concept_vectors",
+            "_sapbert_cls",
             "_vectors",
             ".cumulative",
         ):
@@ -438,6 +474,7 @@ class SearchIndex(
                             "ispref": str(row.get("ispref") or "N").strip() or "N",
                             "sab": str(row.get("sab") or "MTH").strip() or "MTH",
                             "tty": str(row.get("tty") or "PT").strip() or "PT",
+                            "field": str(row.get("field") or "").strip(),
                             "specialty": str(row.get("specialty") or "").strip(),
                             "context_any": str(row.get("context_any") or "").strip(),
                             "block_any": str(row.get("block_any") or "").strip(),
@@ -562,6 +599,9 @@ class SearchIndex(
             "elastic_exclude_source_prefixes": list(self.elastic_exclude_source_prefixes),
             "elastic_disabled_until": round(self.elastic_disabled_until, 3),
             "label_indexes": [str(path) for path in self.label_fallback.paths],
+            "umls_search_label_indexes": [
+                str(path) for path in self.umls_search_label_fallback.paths
+            ],
             "label_fallback_limit": self.label_fallback_limit,
             "definition_fallback_limit": self.definition_fallback_limit,
             "code_index": str(self.code_index_path or ""),

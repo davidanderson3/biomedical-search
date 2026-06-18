@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Biomedical Concept Search API</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>Biomedical Concept Search API</h1>
+<p>This project exposes a local HTTP API from <code>scripts/search_quality_server.py</code>. The API powers the browser UI, but it is also intended for direct client use.</p>
+<p>Start the server:</p>
+<pre><code class="language-sh">python3 scripts/search_quality_server.py --port 8766</code></pre>
+<p>For an unauthenticated/public deployment, start the server with public-output filtering enabled:</p>
+<pre><code class="language-sh">python3 scripts/search_quality_server.py --port 8766 --public-output-only</code></pre>
+<p>In this mode, restricted source-vocabulary content can still be used internally for retrieval and ranking, but API responses use only labels, definitions, source-code rows, and MRREL relation rows from the configured public display source allowlist. Concept-hit source-code mapping fields are omitted, and concepts without an allowed display label are suppressed from public responses.</p>
+<p>Base URL:</p>
+<pre><code class="language-text">http://127.0.0.1:8766</code></pre>
+<p>Machine-readable contract:</p>
+<pre><code class="language-text">GET /api/openapi.json</code></pre>
+<h2>Stability</h2>
+<p>The documented top-level fields are the stable contract. New fields may be added over time, so clients should ignore fields they do not recognize.</p>
+<p>Error responses use a consistent envelope:</p>
+<pre><code class="language-json">{
+  &quot;error&quot;: {
+    &quot;code&quot;: &quot;missing_parameter&quot;,
+    &quot;message&quot;: &quot;missing q&quot;,
+    &quot;status&quot;: 400
+  }
+}</code></pre>
+<h2>Endpoints</h2>
+<h3><code>GET /api/health</code></h3>
+<p>Cheap liveness/readiness check.</p>
+<p>Example:</p>
+<pre><code class="language-sh">curl -s &quot;http://127.0.0.1:8766/api/health&quot;</code></pre>
+<p>Response fields:</p>
+<ul><li><code>ok</code>: boolean readiness flag</li><li><code>api_version</code>: API contract version</li><li><code>records</code>: loaded search-record count</li><li><code>backend</code>: <code>local</code> or <code>elasticsearch</code></li></ul>
+<h3><code>GET /api/status</code></h3>
+<p>Returns loaded artifact paths, record counts, backend, cache counters, and relationship/index availability.</p>
+<p>Example:</p>
+<pre><code class="language-sh">curl -s &quot;http://127.0.0.1:8766/api/status&quot;</code></pre>
+<h3><code>GET /api/search</code></h3>
+<p>Search free text for biomedical concepts.</p>
+<p>Parameters:</p>
+<p>forms like <code>SNOMED CT US 49436004</code>, <code>SNOMEDCT_US 49436004</code>, <code>LOINC LA17084-7</code>, or <code>ICD 10 CM I48.91</code>.</p>
+<p><code>LUI:L0000001</code>, <code>SUI:S0000001</code>, <code>SCUI:...</code>, <code>SDUI:...</code>, <code>TUI:T047</code>, <code>ATUI:AT1</code>, and rebuilt relation indexes can resolve <code>RUI:...</code>. Source-specific <code>SYSTEM:CODE</code> lookup also checks CODE, SCUI, and SDUI.</p>
+<p>CUI/code/label lookup without evidence vector retrieval or evidence snippets</p>
+<p>the response includes span-level <code>mentions</code> as well as linked concept hits.</p>
+<p><code>all</code>, or comma-separated SABs such as <code>SNOMEDCT_US,RXNORM,ICD10CM,LNC</code></p>
+<ul><li><code>q</code> required: free text, CUI, source code, phrase, sentence, or paragraph</li><li>Source-code lookup accepts <code>SYSTEM:CODE</code>, bare codes, and common copied</li><li>Identifier lookup accepts <code>CUI:C0004238</code>, <code>AUI:A0000001</code>,</li><li><code>k</code> optional: result limit, 1-100, default 10</li><li><code>mode</code> optional: <code>balanced</code>, <code>exact</code>, or <code>comprehensive</code></li><li><code>scope</code> optional: <code>umls_evidence</code> default, or <code>umls</code> for UMLS-only</li><li><code>include_related</code> optional: boolean, default true</li><li><code>include_linked_concepts</code> optional: boolean, default true. When enabled,</li><li><code>semantic_bucket</code> optional: comma-separated custom semantic bucket keys</li><li><code>codes</code> optional: source-asserted code systems to return: <code>default</code>, <code>none</code>,</li></ul>
+<p>When <code>--public-output-only</code> is enabled, concept-hit source-code mapping fields are omitted from responses even if <code>codes=all</code>. If a specific allowlisted source-code system is requested, such as <code>RXNORM</code> or <code>LNC</code> in the default public allowlist, strict source-code rows are returned. Requests for non-allowlisted source-code systems are suppressed from public responses.</p>
+<p>Aliases:</p>
+<p>aliases for <code>semantic_bucket</code></p>
+<ul><li><code>top_k</code> and <code>limit</code> are accepted aliases for <code>k</code></li><li><code>related</code> is accepted as an alias for <code>include_related</code></li><li><code>search_mode</code> is accepted as an alias for <code>mode</code></li><li><code>search_scope</code> is accepted as an alias for <code>scope</code></li><li><code>bucket</code>, <code>buckets</code>, <code>semantic_group</code>, and <code>semantic_groups</code> are accepted as</li></ul>
+<p>Example:</p>
+<pre><code class="language-sh">curl -s &quot;http://127.0.0.1:8766/api/search?q=No%20evidence%20of%20pulmonary%20embolism&amp;k=5&amp;mode=balanced&amp;include_related=false&quot;</code></pre>
+<p>Important response fields:</p>
+<p>including <code>start</code>, <code>end</code>, <code>text</code>, <code>cui</code>, <code>name</code>, <code>assertion</code>, <code>section</code>, <code>sentence_index</code>, and compact <code>codes</code> when available</p>
+<ul><li><code>query</code>: normalized request query</li><li><code>top_k</code>: requested result count</li><li><code>search_mode</code>: active search mode</li><li><code>search_scope</code>: active source scope</li><li><code>backend</code>: active retrieval backend</li><li><code>scoring</code>: retrieval/ranking summary</li><li><code>hits</code>: ranked concept hits</li><li><code>mentions</code>: dictionary/entity-recognition spans found in the input text,</li><li><code>mention_count</code>: count of returned span-level mentions</li><li><code>linked_concepts</code>: exact linked concept hits used by the browser UI</li><li><code>semantic_result_buckets</code>: custom semantic group organization for hits</li></ul>
+<p>Important hit fields:</p>
+<p>(<code>SNOMEDCT_US</code>, <code>RXNORM</code>, <code>ICD10CM</code>, and <code>LNC</code>/LOINC when available)</p>
+<p>(<code>source_asserted_code</code>, <code>source_cui</code>/SCUI, and <code>source_dui</code>/SDUI)</p>
+<p><code>historical</code>, <code>family_history</code>, <code>planned</code>, or <code>confirmed</code></p>
+<p>or <code>low</code>), numeric <code>score</code>, <code>abstain</code> flag, and short <code>reasons</code></p>
+<ul><li><code>cui</code>: concept identifier</li><li><code>name</code>: display label</li><li><code>rank_score</code>: final ranking score</li><li><code>semantic_group</code> and <code>semantic_group_label</code>: custom group assignment</li><li><code>semantic_types</code>: source semantic types</li><li><code>codes</code>: compact source-asserted code summaries for common vocabularies</li><li><code>source_asserted_codes</code>: same compact code summaries with source-code metadata</li><li><code>matched_query_span</code>: exact span when available</li><li><code>assertion</code>: mention status, such as <code>current</code>, <code>negated</code>, <code>uncertain</code>,</li><li><code>confidence</code>: result confidence metadata with <code>level</code> (<code>high</code>, <code>medium</code>,</li><li><code>score_breakdown</code>: rank components and penalties</li><li><code>details_lazy</code>: true when expensive details are omitted from the search result</li></ul>
+<p>Fetch details for a hit with <code>/api/detail</code>.</p>
+<h3><code>GET /api/detail</code></h3>
+<p>Fetch lazy details for a concept hit.</p>
+<p>Parameters:</p>
+<p>snippets and evidence-neighbor relations in the detail payload</p>
+<p>values as <code>/api/search</code></p>
+<ul><li><code>doc_id</code> optional if <code>cui</code> is present</li><li><code>cui</code> optional if <code>doc_id</code> is present</li><li><code>q</code> optional: current search query, used to put the most relevant evidence snippets first</li><li><code>include_related</code> optional: boolean, default true</li><li><code>scope</code> optional: same values as <code>/api/search</code>; <code>umls</code> suppresses evidence</li><li><code>codes</code> optional: source-asserted code systems to return, using the same</li></ul>
+<p>Detail responses also include <code>mappings</code>, a broader set of CUI-to-source-code rows from the local code index.</p>
+<p>Example:</p>
+<pre><code class="language-sh">curl -s &quot;http://127.0.0.1:8766/api/detail?cui=C0034065&amp;include_related=true&quot;</code></pre>
+<h3><code>GET /api/resolve</code></h3>
+<p>Resolve direct identifiers or labels before full search.</p>
+<p>Parameters:</p>
+<ul><li><code>q</code> required</li><li><code>limit</code> optional, 1-100, default 10</li></ul>
+<p>Example:</p>
+<pre><code class="language-sh">curl -s &quot;http://127.0.0.1:8766/api/resolve?q=C0034065&quot;</code></pre>
+<p>Identifier examples:</p>
+<pre><code class="language-sh">curl -s &quot;http://127.0.0.1:8766/api/resolve?q=SNOMED:49436004&quot;
+curl -s &quot;http://127.0.0.1:8766/api/resolve?q=TUI:T047&quot;
+curl -s &quot;http://127.0.0.1:8766/api/resolve?q=AUI:A0000001&quot;</code></pre>
+<p>The current runtime can resolve only identifier classes present in its SQLite indexes. Rebuild the code, definition, semantic-type, or relation indexes to enable newly added AUI/LUI/SUI/ATUI/RUI columns.</p>
+<h3><code>GET /api/related</code></h3>
+<p>Fetch related concepts, mappings, and relationship evidence for a CUI.</p>
+<p>Parameters:</p>
+<ul><li><code>cui</code> required</li><li><code>k</code> optional, 1-100, default 10</li><li><code>vocab</code> optional, repeatable or comma-separated source vocabulary filter</li></ul>
+<p>Example:</p>
+<pre><code class="language-sh">curl -s &quot;http://127.0.0.1:8766/api/related?cui=C0004238&amp;k=10&amp;vocab=ICD10CM&quot;</code></pre>
+<h3><code>GET /api/judgments</code></h3>
+<p>Read local search-quality judgments.</p>
+<h3><code>POST /api/judgments</code></h3>
+<p>Replace local search-quality judgments.</p>
+<p>Request body:</p>
+<pre><code class="language-json">{
+  &quot;judgments&quot;: [
+    {
+      &quot;query&quot;: &quot;chest pain&quot;,
+      &quot;doc_id&quot;: &quot;C0008031:example&quot;,
+      &quot;cui&quot;: &quot;C0008031&quot;,
+      &quot;view&quot;: &quot;example&quot;,
+      &quot;score&quot;: 1.23,
+      &quot;grade&quot;: &quot;relevant&quot;,
+      &quot;labels&quot;: [&quot;Chest Pain&quot;]
+    }
+  ]
+}</code></pre>
+<p>Valid <code>grade</code> values:</p>
+<ul><li><code>relevant</code></li><li><code>partial</code></li><li><code>wrong</code></li></ul>
+<h2>Quality Benchmark</h2>
+<p>Run a repeatable search-quality smoke or regression benchmark against a running server:</p>
+<pre><code class="language-sh">scripts/run_search_regression_benchmark.py config/search_quality_clinical_queries.tsv \
+  --base-url http://127.0.0.1:8766 \
+  --top-k 10 \
+  --rows-out build/search_regression_rows.csv \
+  --json-out build/search_regression_summary.json</code></pre>
+<p>The runner accepts headered CSV/TSV files with a <code>query</code>/<code>q</code> column and optional expected CUI columns such as <code>expected_cui</code>, <code>acceptable_cuis</code>, <code>target_cui</code>, or <code>gold_cuis</code>. Headerless one-query-per-line files are also accepted. When expected CUIs are present, the summary includes top-1, top-3, top-k, and MRR.</p>
+<h3>Private Real-Query Diagnostic</h3>
+<p>Raw UMLS query exports stay out of public smoke tests. To inspect real query behavior, run a private diagnostic against an Elasticsearch-backed local API and the actual UMLS UTS API:</p>
+<pre><code class="language-sh">python3 scripts/run_private_real_query_diagnostic.py \
+  --base-url http://127.0.0.1:8766 \
+  --scope umls \
+  --api-key &quot;$UMLS_API_KEY&quot;</code></pre>
+<p>The diagnostic requires <code>--api-key</code> or <code>UMLS_API_KEY</code>; it does not use fallback environment variables and it does not provide a local-only mode. If your local interactive zsh exports the key as <code>APIKEY</code>, pass it explicitly with <code>zsh -ic &#x27;python3 scripts/run_private_real_query_diagnostic.py ... --api-key &quot;$APIKEY&quot;&#x27;</code>.</p>
+<p>Each run defaults to 50 queries. By default, those are the next unseen real queries from the export files, ordered by demand. The rotation state lives in <code>build/private_real_query_diagnostics/seen_query_ids.json</code>; use <code>--reset-seen-state</code> only when you intentionally want to start the rotation over.</p>
+<p>The diagnostic writes raw query text only under <code>build/private_real_query_diagnostics/</code>. It measures local no-hit rate, low-score rate, UMLS API no-hit rate, top-result agreement, and creates a top-result review queue. Do not auto-promote rows. After human review, copy only safe query/CUI pairs into <code>config/search_quality_real_query_regression.tsv</code>, then run that reviewed file with:</p>
+<pre><code class="language-sh">python3 scripts/run_search_regression_benchmark.py \
+  config/search_quality_real_query_regression.tsv \
+  --base-url http://127.0.0.1:8766 \
+  --scope umls \
+  --top-k 10</code></pre>
+<h2>Display Name Overrides</h2>
+<p>Poor CUI display names can be fixed without rebuilding UMLS indexes:</p>
+<pre><code class="language-sh">python3 scripts/search_quality_server.py \
+  --display-name-overrides config/display_name_overrides.tsv</code></pre>
+<p>The override file is TSV or CSV with <code>CUI</code> and <code>display_name</code> columns. Overrides are applied after active/suppressed CUI checks and before source-preferred terms.</p>
+</main>
+<!-- Converted from docs/api.html. -->
+</body>
+</html>

@@ -42,7 +42,7 @@ audited generic suppression class.
   tokens.
 - Added focused unit tests for post-rerank recovery, strong top-10 concept
   protection, and the grade-rank generic suppression class.
-- Regenerated `docs/search_rule_inventory.md`.
+- Regenerated `docs/search_rule_inventory.html`.
 
 ## Result
 

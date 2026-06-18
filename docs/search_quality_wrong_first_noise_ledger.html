@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wrong-First and Noise Ledger</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>Wrong-First and Noise Ledger</h1>
+<p>This ledger is the actionable worklist for user-visible trust failures: cases where the first result is not the clinical target, plus protected rows for noise classes that were already closed and should not regress.</p>
+<p>Machine-readable rows live in <code>config/search_quality_wrong_first_noise_ledger.tsv</code>.</p>
+<h2>Current Snapshot</h2>
+<p>Current checks combine the latest rotating smoke <code>SQI-2026-06-17-001_rotating_50_sqi-2026-06-17-001-automated-50-query-smoke</code>, the full clinical rerun <code>SQI-2026-06-11-017_full_clinical_objective_condition_alt_sqi-2026-06-11-017-full-clinical-objective-confirmed-condition-a</code>, the source-specific lane <code>SQI-2026-06-15-003-dailymed-warning-context-source_specific_evidence_search-quality-test-suite-source-specific-evidence</code>, and focused regression/payload replay from <code>SQI-2026-06-17-001</code>.</p>
+<p>No reviewed wrong-first rows are currently open. <code>WFN-015</code> and <code>WFN-016</code> were exposed by the <code>SQI-2026-06-16-002</code> rotating smoke and closed by <code>SQI-2026-06-17-001</code>; the rerun rotating smoke has 50/50 top-on-target and 0 wrong-first rows after judging <code>NEW4840890</code> acute deep vein thrombosis as valid for <code>paragraph_02</code>.</p>
+<ul><li>Seeded: 2026-06-11, SQI-2026-06-11-012.</li><li>Updated: 2026-06-17, SQI-2026-06-17-001.</li><li>Source artifacts: latest rotating smoke, current full clinical benchmark, source-specific lane, and focused ranker replay.</li><li>Open observations: 0 reviewed wrong-first rows after WFN-015 and WFN-016 were closed.</li><li>Closed observations: 14 rows from the current ledger are no longer wrong-first on their protected checks.</li><li>Protected closed rows: 2 rows for the related-panel yes/no leak and the CYP2C19/clopidogrel pharmacogenomic wrong-first fix.</li></ul>
+<h2>Open Wrong-First Rows</h2>
+<p>No reviewed wrong-first rows are currently open.</p>
+<h2>Closed Current Rows</h2>
+<table><thead><tr><th>ID</th><th>Query ID</th><th>Closed behavior</th><th>Evidence</th></tr></thead><tbody><tr><td>WFN-001</td><td><code>paragraph_111</code></td><td>Gestational Diabetes now outranks Abnormal oral glucose tolerance.</td><td>SQI-2026-06-11-013 focused live probe and comparable SQI-2026-06-11-011 rotating seed check.</td></tr><tr><td>WFN-002</td><td><code>paragraph_11</code></td><td>Structure of right middle cerebral artery is no longer first.</td><td>Current full clinical rerun is top-on-target, with Facial Paresis first.</td></tr><tr><td>WFN-003</td><td><code>paragraph_16</code></td><td>Rheumatoid Factor Measurement is no longer first.</td><td>Current full clinical rerun is top-on-target, with Rheumatoid Factor first and Rheumatoid Arthritis at rank 5.</td></tr><tr><td>WFN-004</td><td><code>paragraph_95</code></td><td>Autoimmune hepatitis now ranks first.</td><td>Current full clinical rerun ranks Autoimmune hepatitis first, though the row still has a top-10 miss.</td></tr><tr><td>WFN-005</td><td><code>paragraph_111</code></td><td>Gestational Diabetes now outranks Glucose tolerance test in the full clinical row.</td><td>Current full clinical rerun ranks Gestational Diabetes first with <code>diagnosis_statement_component</code> 0.16.</td></tr><tr><td>WFN-008</td><td><code>paragraph_05</code></td><td>Thyrotoxicosis now outranks heat intolerance and suppressed TSH when the note says <code>suspected thyrotoxicosis</code>.</td><td>SQI-2026-06-11-014 focused live probe, rotating smoke, and full clinical rerun rank Thyrotoxicosis first with <code>asserted_diagnosis_component</code> 0.38.</td></tr><tr><td>WFN-009</td><td><code>paragraph_43</code></td><td>Anaphylaxis now outranks the bee-sting trigger when the note says the patient developed anaphylaxis after the sting.</td><td>SQI-2026-06-11-016 focused live probe, rotating smoke, and full clinical rerun rank Anaphylaxis first with <code>reaction_diagnosis_component</code> 0.62; direct <code>bee sting</code> search does not boost Anaphylaxis.</td></tr><tr><td>WFN-010</td><td><code>paragraph_87</code></td><td>Cystic Fibrosis now outranks Chronic Cough when genetic testing confirmed cystic fibrosis.</td><td>SQI-2026-06-11-014 focused live probe, rotating smoke, and full clinical rerun rank Cystic Fibrosis first with <code>asserted_diagnosis_component</code> 0.40.</td></tr><tr><td>WFN-011</td><td><code>paragraph_91</code></td><td>Lead Poisoning now outranks Blood lead level above reference range when the sentence says the toddler had lead poisoning after the elevated level.</td><td>SQI-2026-06-11-015 focused live probe, rotating smoke, and full clinical rerun rank Lead Poisoning first with <code>active_diagnosis_component</code> 0.14; direct <code>elevated blood lead level</code> search does not boost Lead Poisoning.</td></tr><tr><td>WFN-012</td><td><code>paragraph_135</code></td><td>Pulmonary Embolism now outranks Chest Pain when CT angiography shows the embolism in search-style wording.</td><td>SQI-2026-06-11-017 focused live probe and full clinical rerun rank Pulmonary Embolism first with <code>objective_confirmed_condition_component</code> 0.56; direct <code>pleuritic chest pain</code> and <code>CT angiography</code> searches do not receive the boost.</td></tr><tr><td>WFN-013</td><td><code>pubmed_pmc_lit_02</code></td><td>Colonoscopy and Colorectal Carcinoma now outrank broad Screening for cancer in the source-specific literature query.</td><td>SQI-2026-06-11-020 source-specific rerun ranks <code>C0009378</code> colonoscopy first, <code>C0009402</code> Colorectal Carcinoma second, and <code>C0199230</code> Screening for cancer fifth; the lane has 0 wrong-first rows.</td></tr><tr><td>WFN-014</td><td><code>paragraph_112</code></td><td>Explicit opioid-use-disorder treatment anchors now outrank broad Addictive Behavior.</td><td>SQI-2026-06-11-021 rotating smoke ranks <code>C0015846</code> fentanyl first, <code>C1169989</code> buprenorphine / naloxone second, <code>C0202274</code> drug screen urine third, and <code>C0085281</code> Addictive Behavior sixth; <code>C4324621</code> remains a separate recall follow-up.</td></tr><tr><td>WFN-015</td><td><code>paragraph_03</code></td><td>Diabetic foot ulcer now outranks background Type 2 diabetes and generic Foot Ulcer when the note says the patient presented with foot ulcer drainage.</td><td>SQI-2026-06-17-001 focused ranker replay ranks <code>C1456868</code> Diabetic foot ulcer first with a presentation-problem component and local numeric-specificity scoping.</td></tr><tr><td>WFN-016</td><td><code>paragraph_62</code></td><td>Lyme Disease now outranks generic Erythema when the text says Lyme disease was diagnosed.</td><td>SQI-2026-06-17-001 focused regression and payload replay rank <code>C0024198</code> Lyme Disease first with the diagnosis-statement component.</td></tr></tbody></table>
+<h2>Protected Closed Rows</h2>
+<table><thead><tr><th>ID</th><th>Protected behavior</th><th>Previous bad result</th><th>Gate</th></tr></thead><tbody><tr><td>WFN-006</td><td>Cardiology related output must not expose standalone <code>yes</code> or <code>no</code> answer-value relation labels.</td><td>Standalone <code>no</code> appeared through related-panel relation paths.</td><td>Focused cardiology related-output probes, rotating smoke, and patient-message smoke from SQI-2026-06-11-011.</td></tr><tr><td>WFN-007</td><td>Pharmacogenomic target/response context should beat incidental background therapy.</td><td>Aspirin ranked ahead of the CYP2C19/clopidogrel response target.</td><td>Focused PubMed 7-row lane, rotating smoke, and patient-message smoke from SQI-2026-06-11-010.</td></tr></tbody></table>
+<h2>Next Fix Order</h2>
+<ol><li>Keep the closed current rows (<code>WFN-001</code> through <code>WFN-005</code> and <code>WFN-008</code> through <code>WFN-016</code>) plus protected rows <code>WFN-006</code> and <code>WFN-007</code> in smoke or focused regression coverage.</li><li>Resume P0 recall work with <code>SQB-015</code> realistic note-format recall and <code>SQB-002</code> approved PubMed long-document recall.</li><li>Continue bad-result mining when fresh rotating or release-lane smoke finds new wrong-first rows.</li></ol>
+</main>
+<!-- Converted from docs/search_quality_wrong_first_noise_ledger.html. -->
+</body>
+</html>

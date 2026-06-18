@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import Counter
+from copy import deepcopy
 import time
 
 from qe_evidence_vectors.search_mrrel import (
@@ -44,6 +46,7 @@ from qe_evidence_vectors.clinical_query_expansion import clinical_query_variants
 from qe_evidence_vectors.entity_mentions import (
     context_window,
     detect_parenthetical_abbreviations,
+    sentence_context_for_span,
     section_for_offset,
     sentence_index_for_offset,
     token_spans,
@@ -105,6 +108,20 @@ LONG_DOCUMENT_SUPPORT_RESULT_GROUPS = {
     "PROC",
 }
 LONG_DOCUMENT_SUPPORT_TEXT_LIMIT = 180
+LONG_DOCUMENT_MAX_ENTITY_MENTION_OCCURRENCES_PER_SPAN = 7
+ACTIVE_LABEL_METADATA_FIELDS = (
+    "active_label_field",
+    "active_label_specialty",
+    "active_label_context_any",
+    "active_label_block_any",
+)
+
+
+def merge_active_label_metadata(target: dict, source: dict) -> None:
+    for key in ACTIVE_LABEL_METADATA_FIELDS:
+        value = source.get(key)
+        if value and not target.get(key):
+            target[key] = value
 
 
 def active_label_context_values(value: str) -> list[str]:
@@ -216,13 +233,21 @@ def linked_label_candidate_is_rankable(hit: dict, *, query_tokens: set[str]) -> 
     assertion = hit.get("assertion") or {}
     if assertion.get("status") == "negated":
         return False
+    sources = {str(source) for source in hit.get("sources") or []}
     span_tokens = content_tokens(str(hit.get("matched_query_span") or ""))
     span_norm_tokens = normalized_key(str(hit.get("matched_query_span") or "")).split()
-    if len(span_norm_tokens) < MIN_RANKED_LINKED_LABEL_TOKEN_COUNT:
+    min_token_count = (
+        2
+        if "active_label_supplement" in sources
+        else MIN_RANKED_LINKED_LABEL_TOKEN_COUNT
+    )
+    if len(span_norm_tokens) < min_token_count:
         return False
     span_set = set(span_tokens)
     if query_tokens and not span_set <= query_tokens:
         return False
+    if "active_label_supplement" in sources:
+        return linked_concept_hit_is_highlightable(hit)
     span_norm_set = set(span_norm_tokens)
     labels = [
         str(hit.get("name") or ""),
@@ -236,7 +261,6 @@ def linked_label_candidate_is_rankable(hit: dict, *, query_tokens: set[str]) -> 
     ]
     if not any(label_tokens <= span_norm_set for label_tokens in label_token_sets):
         return False
-    sources = {str(source) for source in hit.get("sources") or []}
     if "active_label_supplement" not in sources and int(hit.get("evidence_count") or 0) <= 0:
         return False
     return linked_concept_hit_is_highlightable(hit)
@@ -310,6 +334,66 @@ def suppress_nested_entity_mentions(mentions: list[dict], *, limit: int) -> list
     return accepted[: max(0, int(limit or 0))]
 
 
+def entity_mention_hydration_cache_key(
+    row: dict,
+    *,
+    score: float,
+    lookup_norm: str,
+    span_norm: str,
+) -> tuple:
+    return (
+        str(row.get("source") or ""),
+        str(row.get("doc_id") or ""),
+        str(row.get("cui") or ""),
+        str(row.get("label") or ""),
+        str(row.get("sab") or ""),
+        str(row.get("tty") or ""),
+        str(row.get("ispref") or ""),
+        str(row.get("field") or ""),
+        str(row.get("specialty") or ""),
+        str(row.get("context_any") or ""),
+        str(row.get("block_any") or ""),
+        str(lookup_norm or ""),
+        str(span_norm or ""),
+        round(float(score or 0.0), 6),
+    )
+
+
+def cached_entity_mention_context(
+    text: str,
+    start: int,
+    end: int,
+    cache: dict[tuple[int, int], dict] | None,
+) -> dict:
+    key = (int(start or 0), int(end or 0))
+    if cache is not None and key in cache:
+        return cache[key]
+    context = {
+        "sentence": sentence_context_for_span(text, start, end),
+        "sentence_index": sentence_index_for_offset(text, start),
+        "section": section_for_offset(text, start),
+        "window": context_window(text, start, end),
+    }
+    if cache is not None:
+        cache[key] = context
+    return context
+
+
+def capped_entity_mention_occurrence_ordinals(total: int, limit: int) -> set[int]:
+    total = max(0, int(total or 0))
+    limit = max(0, int(limit or 0))
+    if total <= limit:
+        return set(range(total))
+    if limit <= 0:
+        return set()
+    if limit == 1:
+        return {0}
+    return {
+        round(index * (total - 1) / (limit - 1))
+        for index in range(limit)
+    }
+
+
 class SearchRerankMixin:
     def capped_fallback_limit(self, requested: int, attr: str) -> int:
         requested = max(1, int(requested or 1))
@@ -349,6 +433,7 @@ class SearchRerankMixin:
         hydrated["matched_sab"] = label_hit.get("matched_sab") or ""
         hydrated["matched_tty"] = label_hit.get("matched_tty") or ""
         hydrated["matched_ispref"] = label_hit.get("matched_ispref") or ""
+        merge_active_label_metadata(hydrated, label_hit)
         hydrated["label_fallback_doc_id"] = label_hit.get("doc_id") or ""
         hydrated["label_fallback_score"] = float(label_hit.get("score") or 0.0)
         hydrated["labels"] = self.labels_for_cui(
@@ -470,6 +555,10 @@ class SearchRerankMixin:
                     "matched_sab": row.get("sab") or "",
                     "matched_tty": row.get("tty") or "",
                     "matched_ispref": row.get("ispref") or "",
+                    "active_label_field": row.get("field") or "",
+                    "active_label_specialty": row.get("specialty") or "",
+                    "active_label_context_any": row.get("context_any") or "",
+                    "active_label_block_any": row.get("block_any") or "",
                     "text": (
                         f"CUI: {row['cui']}\n"
                         "Evidence view: active_label_supplement\n"
@@ -637,6 +726,7 @@ class SearchRerankMixin:
                 list(candidate.get("sources") or []),
                 list(current.get("sources") or []),
             )
+            merge_active_label_metadata(current, candidate)
             if current.get("match_type") != "umls_label" or candidate_span_tokens >= current_span_tokens:
                 current["match_type"] = "umls_label"
                 current["matched_label"] = candidate.get("matched_label") or current.get("matched_label") or ""
@@ -738,6 +828,11 @@ class SearchRerankMixin:
         )
         abbreviations = detect_parenthetical_abbreviations(text)
         candidates: dict[tuple[str, int, int], dict] = {}
+        lookup_norm_cache: dict[tuple[str, str], list[str]] = {}
+        rows_cache: dict[str, list[dict]] = {}
+        hydrated_cache: dict[tuple, dict] = {}
+        context_cache: dict[tuple[int, int], dict] = {}
+        span_specs = []
         max_len = min(self.label_fallback.max_tokens, len(tokens))
         for token_length in range(max_len, 0, -1):
             for start_index in range(0, len(tokens) - token_length + 1):
@@ -760,46 +855,88 @@ class SearchRerankMixin:
                 span_content_tokens = self.label_fallback.content_token_count(span_norm_tokens)
                 if span_content_tokens <= 0:
                     continue
-                lookup_norms = list(self.label_fallback.lookup_norms_for_span(span_norm))
                 abbreviation_expansion = abbreviations.get(span_norm, "")
+                span_specs.append(
+                    (
+                        token_length,
+                        span_tokens,
+                        span_norm_tokens,
+                        span_norm,
+                        span_content_tokens,
+                        abbreviation_expansion,
+                    )
+                )
+        span_occurrence_totals = Counter(spec[3] for spec in span_specs)
+        span_occurrence_seen: dict[str, int] = {}
+        span_allowed_ordinals: dict[str, set[int]] = {}
+        for (
+            token_length,
+            span_tokens,
+            span_norm_tokens,
+            span_norm,
+            span_content_tokens,
+            abbreviation_expansion,
+        ) in span_specs:
+            occurrence_index = span_occurrence_seen.get(span_norm, 0)
+            span_occurrence_seen[span_norm] = occurrence_index + 1
+            allowed_ordinals = span_allowed_ordinals.get(span_norm)
+            if allowed_ordinals is None:
+                allowed_ordinals = capped_entity_mention_occurrence_ordinals(
+                    span_occurrence_totals[span_norm],
+                    LONG_DOCUMENT_MAX_ENTITY_MENTION_OCCURRENCES_PER_SPAN,
+                )
+                span_allowed_ordinals[span_norm] = allowed_ordinals
+            if occurrence_index not in allowed_ordinals:
+                continue
+            lookup_cache_key = (span_norm, abbreviation_expansion)
+            lookup_norms = lookup_norm_cache.get(lookup_cache_key)
+            if lookup_norms is None:
+                lookup_norms = list(self.label_fallback.lookup_norms_for_span(span_norm))
                 if abbreviation_expansion:
                     lookup_norms.extend(self.label_fallback.lookup_norms_for_span(abbreviation_expansion))
                 lookup_norms = list(dict.fromkeys(norm for norm in lookup_norms if norm))
-                span_start = span_tokens[0].start
-                span_end = span_tokens[-1].end
-                surface = text[span_start:span_end]
-                for lookup_norm in lookup_norms:
+                lookup_norm_cache[lookup_cache_key] = lookup_norms
+            span_start = span_tokens[0].start
+            span_end = span_tokens[-1].end
+            surface = text[span_start:span_end]
+            for lookup_norm in lookup_norms:
+                if lookup_norm in rows_cache:
+                    rows = rows_cache[lookup_norm]
+                else:
                     rows = self.entity_mention_rows_for_lookup(
                         lookup_norm,
                         query_norm=query_norm,
                     )
-                    if not rows:
+                    rows_cache[lookup_norm] = rows
+                if not rows:
+                    continue
+                unique_cuis = {row["cui"] for row in rows if row.get("cui")}
+                lexical_variant = lookup_norm != span_norm
+                for row in rows:
+                    candidate = self.entity_mention_from_row(
+                        row,
+                        text=text,
+                        surface=surface,
+                        span_norm=span_norm,
+                        lookup_norm=lookup_norm,
+                        start=span_start,
+                        end=span_end,
+                        token_count=token_length,
+                        query_content_tokens=query_content_tokens,
+                        span_content_tokens=span_content_tokens,
+                        unique_cui_count=len(unique_cuis),
+                        lexical_variant=lexical_variant,
+                        abbreviation_expansion=abbreviation_expansion,
+                        return_code_sabs=return_code_sabs,
+                        hydrated_cache=hydrated_cache,
+                        context_cache=context_cache,
+                    )
+                    if not candidate:
                         continue
-                    unique_cuis = {row["cui"] for row in rows if row.get("cui")}
-                    lexical_variant = lookup_norm != span_norm
-                    for row in rows:
-                        candidate = self.entity_mention_from_row(
-                            row,
-                            text=text,
-                            surface=surface,
-                            span_norm=span_norm,
-                            lookup_norm=lookup_norm,
-                            start=span_start,
-                            end=span_end,
-                            token_count=token_length,
-                            query_content_tokens=query_content_tokens,
-                            span_content_tokens=span_content_tokens,
-                            unique_cui_count=len(unique_cuis),
-                            lexical_variant=lexical_variant,
-                            abbreviation_expansion=abbreviation_expansion,
-                            return_code_sabs=return_code_sabs,
-                        )
-                        if not candidate:
-                            continue
-                        key = (candidate["cui"], span_start, span_end)
-                        current = candidates.get(key)
-                        if current is None or entity_mention_priority(candidate) > entity_mention_priority(current):
-                            candidates[key] = candidate
+                    key = (candidate["cui"], span_start, span_end)
+                    current = candidates.get(key)
+                    if current is None or entity_mention_priority(candidate) > entity_mention_priority(current):
+                        candidates[key] = candidate
         return suppress_nested_entity_mentions(list(candidates.values()), limit=limit)
 
     def entity_mention_rows_for_lookup(self, lookup_norm: str, *, query_norm: str) -> list[dict]:
@@ -852,6 +989,8 @@ class SearchRerankMixin:
         lexical_variant: bool,
         abbreviation_expansion: str,
         return_code_sabs: object = None,
+        hydrated_cache: dict[tuple, dict] | None = None,
+        context_cache: dict[tuple[int, int], dict] | None = None,
     ) -> dict:
         cui = str(row.get("cui") or "").strip().upper()
         label = str(row.get("label") or "").strip()
@@ -884,15 +1023,44 @@ class SearchRerankMixin:
             "text": "",
             "evidence_items": [],
         }
-        hydrated = self.hydrate_label_hit(label_hit)
+        cache_key = entity_mention_hydration_cache_key(
+            row,
+            score=score,
+            lookup_norm=lookup_norm,
+            span_norm=span_norm,
+        )
+        if hydrated_cache is not None and cache_key in hydrated_cache:
+            hydrated = deepcopy(hydrated_cache[cache_key])
+        else:
+            hydrated = self.hydrate_label_hit(label_hit)
+            if not hydrated:
+                if hydrated_cache is not None:
+                    hydrated_cache[cache_key] = {}
+                return {}
+            if should_suppress_label_fallback_hit(hydrated):
+                if hydrated_cache is not None:
+                    hydrated_cache[cache_key] = {}
+                return {}
+            if temporal_word_chemical_mention_false_positive(hydrated):
+                if hydrated_cache is not None:
+                    hydrated_cache[cache_key] = {}
+                return {}
+            if hydrated_cache is not None:
+                hydrated_cache[cache_key] = deepcopy(hydrated)
         if not hydrated:
             return {}
-        if should_suppress_label_fallback_hit(hydrated):
-            return {}
-        if temporal_word_chemical_mention_false_positive(hydrated):
-            return {}
+        hydrated["matched_label"] = hydrated.get("matched_label") or label
+        hydrated["matched_query_span"] = surface
+        hydrated["matched_sab"] = row.get("sab") or ""
+        hydrated["matched_tty"] = row.get("tty") or ""
+        hydrated["matched_ispref"] = row.get("ispref") or ""
         labels = [str(label or "") for label in hydrated.get("labels") or []]
-        assertion = assertion_context_for_hit(query=text, labels=labels, hit=hydrated)
+        mention_context = cached_entity_mention_context(text, start, end, context_cache)
+        assertion = assertion_context_for_hit(
+            query=str(mention_context.get("sentence") or ""),
+            labels=labels,
+            hit=hydrated,
+        )
         mention = {
             "mention_id": "",
             "start": int(start),
@@ -913,9 +1081,9 @@ class SearchRerankMixin:
             "semantic_types": list(hydrated.get("semantic_types") or []),
             "semantic_group": hydrated.get("semantic_group") or "",
             "semantic_group_label": hydrated.get("semantic_group_label") or "",
-            "sentence_index": sentence_index_for_offset(text, start),
-            "section": section_for_offset(text, start),
-            "context": context_window(text, start, end),
+            "sentence_index": mention_context.get("sentence_index") or 0,
+            "section": mention_context.get("section") or "",
+            "context": mention_context.get("window") or "",
         }
         if abbreviation_expansion:
             mention["abbreviation_expansion"] = abbreviation_expansion
@@ -1355,6 +1523,10 @@ class SearchRerankMixin:
                     "matched_sab": row.get("sab") or "",
                     "matched_tty": row.get("tty") or "",
                     "matched_ispref": row.get("ispref") or "",
+                    "active_label_field": row.get("field") or "",
+                    "active_label_specialty": row.get("specialty") or "",
+                    "active_label_context_any": row.get("context_any") or "",
+                    "active_label_block_any": row.get("block_any") or "",
                     "text": (
                         f"CUI: {row['cui']}\n"
                         "Evidence view: active_label_supplement\n"
@@ -1554,6 +1726,7 @@ class SearchRerankMixin:
             hydrated_sources = [str(source) for source in hydrated.get("sources") or []]
             hydrated_score = float(hydrated.get("score") or 0.0)
             if current is not None and "active_label_supplement" in hydrated_sources:
+                merge_active_label_metadata(current, hydrated)
                 current["label_fallback_score"] = max(
                     float(current.get("label_fallback_score") or 0.0),
                     hydrated_score,
@@ -1601,6 +1774,7 @@ class SearchRerankMixin:
                     list(current.get("sources") or []),
                     list(hydrated.get("sources") or []),
                 )
+                merge_active_label_metadata(current, hydrated)
                 if int(current.get("evidence_count") or 0) > 0:
                     if hydrated_span_tokens >= current_span_tokens:
                         current["matched_label"] = hydrated.get("matched_label") or current.get("matched_label") or ""
@@ -1643,6 +1817,7 @@ class SearchRerankMixin:
                     list(hydrated.get("sources") or []),
                     list(current.get("sources") or []),
                 )
+                merge_active_label_metadata(current, hydrated)
                 current.setdefault("matched_label", hydrated.get("matched_label") or "")
                 current.setdefault("matched_query_span", hydrated.get("matched_query_span") or "")
                 current.setdefault("label_fallback_doc_id", hydrated.get("label_fallback_doc_id") or "")

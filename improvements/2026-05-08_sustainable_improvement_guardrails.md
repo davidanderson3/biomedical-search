@@ -7,7 +7,7 @@ Added executable guardrails for the curated active-label supplement:
 - New validator module: `src/qe_evidence_vectors/active_label_supplement.py`.
 - New CLI: `scripts/validate_active_label_supplement.py`.
 - New tests requiring the actual `config/active_label_supplement.tsv` file to pass validation.
-- New sustainability policy doc: `docs/search_quality_sustainable_improvements.md`.
+- New sustainability policy doc: `docs/search_quality_sustainable_improvements.html`.
 
 The validator checks:
 

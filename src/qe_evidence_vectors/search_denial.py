@@ -80,6 +80,7 @@ def denied_positive_finding_penalty_for_hit(
         "finding",
         "injury or poisoning",
         "mental or behavioral dysfunction",
+        "neoplastic process",
         "pathologic function",
         "sign or symptom",
     }
@@ -133,6 +134,7 @@ def denied_context_mismatch_penalty_for_hit(
         "finding",
         "injury or poisoning",
         "mental or behavioral dysfunction",
+        "neoplastic process",
         "pathologic function",
         "sign or symptom",
     }

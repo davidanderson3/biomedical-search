@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UMLS Semantic Evidence Index Technical Pipeline</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>UMLS Semantic Evidence Index Technical Pipeline</h1>
+<p>Last updated: 2026-05-06</p>
+<p>This document is the living technical reference for the UMLS Semantic Evidence Index. Update it whenever the pipeline shape, current artifacts, counts, quality metrics, or scaling assumptions change.</p>
+<h2>Purpose</h2>
+<p>The project is building a successor search layer on top of UMLS. UMLS remains the concept identity layer: CUIs, labels, semantic types, and source vocabulary metadata still define what each concept is. The new layer adds real-world biomedical language, semantic vectors, provenance, search evaluation, and incremental release artifacts.</p>
+<p>When the evidence shows a useful biomedical idea that UMLS does not represent cleanly, the pipeline can create a local extension concept. These extension concepts use local <code>NEW#######</code> identifiers; they are not official NLM UMLS CUIs unless they are later promoted through a terminology governance process.</p>
+<p>The goal is not to create a larger synonym dump. Elasticsearch can already deal with many lexical problems such as capitalization, punctuation, and word-order variation. The hard problem is mapping real biomedical language to the right CUI when the language is contextual, abbreviated, clinical, or evidence-driven.</p>
+<h2>Current State</h2>
+<p>Current local status:</p>
+<p>restriction-level-0/category-0 vocabularies identified in <code>MRSAB.RRF</code>, plus separately supplied direct LOINC files</p>
+<p><code>pubmed_bulk_recent_1321_1320</code></p>
+<p>shards <code>1321</code> and <code>1320</code> for the latest review run</p>
+<p>compact float32 vectors</p>
+<p>records, down from the earlier eager-provenance <code>134.309s</code></p>
+<p>source CUIs</p>
+<p><code>24,061</code> source CUIs and seven target categories</p>
+<p>extension concepts are loaded into the current assessment alias yet</p>
+<p>corpora are not part of the tracked default pipeline</p>
+<ul><li>UMLS input: current local indexes; the successor seed should use</li><li>Latest reviewed PubMed batch loaded into the assessment path:</li><li>Current assessment server: <code>http://127.0.0.1:8767/</code>, hydrated through PubMed</li><li>Progress view: <code>http://127.0.0.1:8767/progress</code></li><li>Elasticsearch alias: <code>qe-scaling-sapbert-cls</code></li><li>Elasticsearch alias count after <code>1321/1320</code> promotion: <code>535,683</code></li><li>Search backend: resolver-first CUI/code lookup, Elasticsearch ANN, and UMLS label fallback</li><li>Embedding model: <code>cambridgeltl/SapBERT-from-PubMedBERT-fulltext</code></li><li>Embedding provider: <code>transformers-cls</code></li><li>Pooling: CLS token</li><li>Dimensions: <code>768</code></li><li>Loaded vector records in latest assessment server: <code>533,540</code></li><li>Full tracker CUI/view document rows represented by artifacts: <code>516,028</code></li><li>Indexed display provenance references: <code>1,531,116</code></li><li>Raw linked evidence rows represented by the current server/provenance set: <code>10,093,683</code></li><li>Evidence files loaded by server: <code>0</code> for provenance; source lookup is SQLite-backed</li><li>Provenance index: <code>build/search_quality_provenance.sqlite</code></li><li>Provenance index size: about <code>736 MB</code></li><li>Compact vector exports: <code>build/compact_vectors/*.manifest.json</code></li><li>Compact vector export size: about <code>1.6 GB</code>, including the <code>1321/1320</code></li><li>Last measured assessment server startup time: <code>97.263s</code> at 533,540 vector</li><li>UMLS search label index: <code>build/umls_biomedicine_search_label_index.sqlite</code></li><li>UMLS search label index size: about <code>961 MB</code></li><li>UMLS search label rows built: <code>7,049,993</code></li><li>UMLS CUI/code resolver index: <code>build/cui_code_index.sqlite</code></li><li>UMLS CUI/code resolver rows built: <code>9,112,359</code></li><li>UMLS CUI/code resolver index size: about <code>1.4 GB</code></li><li>UMLS semantic type index: <code>build/umls_semantic_types.sqlite</code></li><li>UMLS semantic type rows built: <code>3,876,927</code></li><li>Related-concepts mode: evidence-vector neighbors first, MRREL as supporting/fallback graph links</li><li>Related-concepts index: <code>build/umls_related_concepts.sqlite</code></li><li>Related-concepts index size: about <code>48 MB</code></li><li>Related-concepts links indexed for search UI: <code>483,677</code> links across <code>88,773</code></li><li>Research cross-type relation index: <code>build/umls_research_relations.sqlite</code></li><li>Research cross-type links indexed for search UI: <code>152,326</code> links across</li><li>HPO external annotation files staged under <code>data/external/hpo/</code></li><li>Extension concept lane: implemented for local <code>NEW#######</code> concepts; no</li><li>Public-source evidence collection is the active path; credentialed clinical</li></ul>
+<p>Last reviewed quality sample:</p>
+<p>mean weighted P@5 <code>0.570</code>, mean MRR <code>1.0</code></p>
+<ul><li>Query count: <code>8</code></li><li>Judgments: <code>40</code></li><li>Mean weighted P@5: <code>0.750</code></li><li>Mean MRR: <code>1.0</code></li><li>Relevant top-1 queries: <code>8 / 8</code></li><li>Judgment file: <code>build/scaling_runs/pubmed_bulk_recent_1321_1320/search_quality_judgments.csv</code></li><li>Summary file: <code>build/scaling_runs/pubmed_bulk_recent_1321_1320/search_quality_summary.json</code></li><li>Additional 10-query mixed clinical smoke: <code>10 / 10</code> relevant top-1,</li></ul>
+<p>Current full-pipeline tracker progress:</p>
+<p>promotion, using judged query misses before adding more PubMed shards</p>
+<ul><li>Artifact readiness: <code>79 / 82</code> steps</li><li>Effort-weighted progress: <code>91.1%</code></li><li>Next planned processing step: targeted PubMed weakness acquisition and</li></ul>
+<h2>Design Principles</h2>
+<p>evidence-backed concepts that are missing or poorly represented in UMLS.</p>
+<p>minutes or less where possible.</p>
+<p>if they were independent evidence.</p>
+<p>review status, and UMLS anchor metadata where a close, broader, or related CUI exists.</p>
+<p>layer. Procedure coverage should use open/permitted vocabularies, including SNOMED CT by default in local procedure bundles, structured procedure bundles, evidence-backed <code>NEW#######</code> concepts, and an optional private CPT adapter for licensed deployments. See <code>docs/procedure_coverage_without_cpt.html</code>.</p>
+<ul><li>Use UMLS CUIs as stable identifiers.</li><li>Use local <code>NEW#######</code> extension IDs, not official-looking NLM CUIs, for useful</li><li>Use real-world evidence to represent how concepts are actually discussed.</li><li>Use SapBERT or another biomedical BERT model for quality-bearing vectors.</li><li>Do not use mean pooling for the current quality path.</li><li>Do not use hashing vectors except as a smoke test.</li><li>Keep raw evidence and searchable product artifacts separable.</li><li>Keep provenance pointers so a user can inspect why a result was retrieved.</li><li>Gate every scale increase with search-quality review.</li><li>Keep chunks small enough to iterate. Local chunk work should target 10</li><li>Exclude DRG-derived evidence.</li><li>Do not pull new synonym sources from vocabularies already present in UMLS as</li><li>Do not emit extension concepts into the release surface without evidence,</li><li>Do not ingest or ship CPT codes or CPT descriptors in the open procedure</li></ul>
+<h2>Data Model</h2>
+<p>The core record types live in <code>src/qe_evidence_vectors/schema.py</code>.</p>
+<h3>CorpusDocument</h3>
+<p>Raw source text normalized into a common local shape.</p>
+<p>Fields:</p>
+<p>another registered corpus source</p>
+<p>or item id</p>
+<ul><li><code>doc_id</code>: stable source document id</li><li><code>source</code>: source family, such as <code>pubmed</code>, <code>pubmed_bulk</code>, <code>europepmc</code>, or</li><li><code>text</code>: title, abstract, snippet, or other evidence text</li><li><code>title</code>: optional title</li><li><code>metadata</code>: source-specific fields such as PMID, PMCID, DOI, file name, table,</li></ul>
+<h3>EvidenceRecord</h3>
+<p>A linked mention of a UMLS CUI in a source document.</p>
+<p>Fields:</p>
+<ul><li><code>evidence_id</code>: stable id for this linked evidence item</li><li><code>cui</code>: UMLS CUI</li><li><code>text</code>: evidence text that should support retrieval</li><li><code>source</code>: source family</li><li><code>evidence_type</code>: typed view, for example <code>pubmed_clinical_context</code></li><li><code>weight</code>: evidence weight</li><li><code>metadata</code>: provenance and linker metadata</li></ul>
+<p>For extension concepts, <code>cui</code> contains the local <code>NEW#######</code> id. Extension evidence keeps <code>extension_concept_id</code>, preferred label, and review status in metadata so it remains auditable.</p>
+<h3>Universal Relationship Edge</h3>
+<p>Mined relationship artifacts can be stored as JSONL rows with an <code>edge</code> object. The edge object contains <code>subject</code>, <code>object</code>, <code>type</code>, numeric <code>strength</code>, <code>strength_metric</code>, <code>directionality</code>, <code>evidence</code>, structured <code>context</code>, and numeric <code>confidence</code>. Public aggregate OHDSI artifacts and procedure-bundle relations use this path when they need to contribute relationships rather than new text evidence.</p>
+<p>Build the searchable relationship-edge index with:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-relationship-edge-index \
+  --edges config/curated_relationship_edges.jsonl \
+  --out build/relationship_edges.sqlite \
+  --replace</code></pre>
+<p>The search-quality server loads <code>build/relationship_edges.sqlite</code> by default when present. Those edges are merged into related semantic views and use their stored strength/confidence for related-result gating.</p>
+<p><code>config/curated_relationship_edges.jsonl</code> is a small seed layer for stable clinical relationships and procedure-bundle attributes. Mined public aggregate files, such as OHDSI cohort edges, should be appended to <code>--edges</code> as they become available.</p>
+<h3>ExtensionConcept</h3>
+<p>A reviewed local concept that represents a useful biomedical idea not covered cleanly by an existing UMLS CUI.</p>
+<p>The input is JSONL. Required fields:</p>
+<p>a lower <code>--min-evidence</code></p>
+<ul><li><code>preferred_label</code></li><li><code>evidence</code>: one or more evidence text entries unless the command is run with</li></ul>
+<p>Recommended fields:</p>
+<p>permutation variants</p>
+<ul><li><code>aliases</code>: concise labels that are genuinely useful, not capitalization or</li><li><code>semantic_type</code>: UMLS-style semantic type or local semantic class</li><li><code>definition</code></li><li><code>status</code>: <code>candidate</code>, <code>reviewed</code>, <code>promoted</code>, <code>rejected</code>, or <code>deprecated</code></li><li><code>broader_cuis</code>, <code>related_cuis</code>, <code>close_match_cuis</code>: anchors back to UMLS</li><li><code>metadata</code>: reviewer, rationale, harvest/build references, or notes</li></ul>
+<p>Generated ids are deterministic from preferred label plus semantic type:</p>
+<pre><code class="language-text">NEW#######</code></pre>
+<p>The builder rejects ids that look like official UMLS CUIs (<code>C</code> followed by seven digits). This prevents accidental publication of local concepts as if they were assigned by NLM.</p>
+<h3>ConceptDocument</h3>
+<p>An aggregate search document for one CUI and one evidence view.</p>
+<p>Fields:</p>
+<ul><li><code>doc_id</code>: usually <code>{CUI}:{view}</code></li><li><code>cui</code>: UMLS CUI</li><li><code>view</code>: context-specific view</li><li><code>text</code>: UMLS labels plus selected real-world evidence</li><li><code>evidence_count</code>: total linked evidence records contributing to the document</li><li><code>sources</code>: source families represented in selected evidence</li><li><code>labels</code>: selected UMLS labels</li><li><code>metadata</code>: build metadata</li></ul>
+<p>The text format is intentionally simple:</p>
+<pre><code class="language-text">CUI: C0036983
+Evidence view: pubmed_clinical_context
+UMLS labels:
+- Septic shock
+- Shock, Septic
+Real-world evidence:
+- ...</code></pre>
+<h3>VectorRecord</h3>
+<p>A semantic vector for one <code>ConceptDocument</code>.</p>
+<p>Fields:</p>
+<p>and evidence count</p>
+<ul><li><code>doc_id</code></li><li><code>cui</code></li><li><code>view</code></li><li><code>vector</code></li><li><code>text</code>, optionally omitted for compact exports</li><li><code>metadata</code>, including embedding provider, model, pooling, labels, source list,</li></ul>
+<h2>Pipeline Stages</h2>
+<h3>1. Build UMLS Label Indexes</h3>
+<p>The pipeline builds semantic profile indexes from <code>MRCONSO.RRF</code> and <code>MRSTY.RRF</code>. These indexes let the linker restrict matching to broad biomedical profiles:</p>
+<ul><li><code>clinical</code></li><li><code>chemicals-drugs</code></li><li><code>genes-proteins</code></li><li><code>anatomy</code></li><li><code>procedures-devices</code></li><li><code>organisms</code></li><li><code>labs-measurements</code></li></ul>
+<p>There is also a separate search-only UMLS label fallback index:</p>
+<pre><code class="language-text">build/umls_biomedicine_search_label_index.sqlite</code></pre>
+<p>That index includes single-token labels because it is used at search time, not as the evidence linker. It is intentionally separate from profile linking so exact UMLS labels can rescue missing evidence hits without changing the linked evidence corpus.</p>
+<p>There is now a separate CUI/code resolver index:</p>
+<pre><code class="language-text">build/cui_code_index.sqlite</code></pre>
+<p>It is built from <code>MRCONSO.RRF</code> and stores <code>cui</code>, <code>sab</code>, <code>code</code>, <code>scui</code>, <code>sdui</code>, <code>tty</code>, <code>label</code>, <code>ispref</code>, and <code>suppress</code>. The resolver uses it before ANN search so direct CUI inputs and source vocabulary code inputs such as <code>ICD10CM:I48.91</code> or unqualified code-like strings can resolve to candidate CUIs deterministically instead of being embedded as arbitrary text.</p>
+<p>Generic labels and generic concepts are suppressed through <code>src/qe_evidence_vectors/generic_filters.py</code>.</p>
+<h3>2. Acquire Real-World Evidence</h3>
+<p>Current sources:</p>
+<ul><li>PubMed topic harvests through E-utilities</li><li>Europe PMC topic harvests</li><li>PubMed bulk baseline pilot from NCBI FTP</li></ul>
+<p>Planned sources:</p>
+<ul><li>Full PubMed baseline and update files</li></ul>
+<p>The project started with E-utilities topic chunks for iteration. The scaling path is bulk PubMed ingestion because repeated search API calls are not the right way to cover all of PubMed.</p>
+<p>Current PubMed bulk pilot:</p>
+<pre><code class="language-text">data/pubmed/baseline/pubmed26n1334.xml.gz
+build/pubmed_bulk_recent_baseline_corpus.jsonl</code></pre>
+<p>The second bulk pilot adds:</p>
+<pre><code class="language-text">data/pubmed/baseline/pubmed26n1333.xml.gz
+data/pubmed/baseline/pubmed26n1332.xml.gz
+build/pubmed_bulk_recent_next2_corpus.jsonl</code></pre>
+<p>The third bulk pilot adds:</p>
+<pre><code class="language-text">data/pubmed/baseline/pubmed26n1331.xml.gz
+data/pubmed/baseline/pubmed26n1330.xml.gz
+build/pubmed_bulk_recent_1331_1330_corpus.jsonl</code></pre>
+<p>The fourth bulk pilot adds:</p>
+<pre><code class="language-text">data/pubmed/baseline/pubmed26n1329.xml.gz
+data/pubmed/baseline/pubmed26n1328.xml.gz
+build/pubmed_bulk_recent_1329_1328_corpus.jsonl</code></pre>
+<p>The fifth bulk pilot adds:</p>
+<pre><code class="language-text">data/pubmed/baseline/pubmed26n1327.xml.gz
+data/pubmed/baseline/pubmed26n1326.xml.gz
+build/pubmed_bulk_recent_1327_1326_corpus.jsonl</code></pre>
+<p>The sixth bulk pilot adds:</p>
+<pre><code class="language-text">data/pubmed/baseline/pubmed26n1325.xml.gz
+data/pubmed/baseline/pubmed26n1324.xml.gz
+build/pubmed_bulk_recent_1325_1324_corpus.jsonl</code></pre>
+<p>The seventh bulk pilot adds:</p>
+<pre><code class="language-text">data/pubmed/baseline/pubmed26n1323.xml.gz
+data/pubmed/baseline/pubmed26n1322.xml.gz
+build/pubmed_bulk_recent_1323_1322_corpus.jsonl</code></pre>
+<p>These pilots start with high-numbered 2026 baseline files because those files are newer PMID ranges and are useful for testing recent language.</p>
+<h3>3. Link Evidence To UMLS CUIs</h3>
+<p>The linker matches corpus documents against profile-specific UMLS label indexes. Evidence is emitted as JSONL shards, usually one file per semantic profile.</p>
+<p>Current example:</p>
+<pre><code class="language-text">build/profile_evidence_pubmed_bulk_recent_baseline/*.jsonl</code></pre>
+<p>The linker records provenance in each evidence record. For PubMed and Europe PMC this includes PMID, PMCID, DOI where available, corpus document id, and the matched label. Public artifacts must not include raw patient text from credentialed clinical corpora.</p>
+<h3>4. Aggregate Evidence Into CUI/View Documents</h3>
+<p>Evidence records are grouped by <code>(CUI, evidence_view)</code>. The document builder deduplicates evidence text, keeps top weighted evidence, attaches selected UMLS labels, and writes one <code>ConceptDocument</code> per CUI/view.</p>
+<p>Current bulk pilot output:</p>
+<pre><code class="language-text">build/pubmed_bulk_recent_baseline_concept_documents.jsonl
+build/pubmed_bulk_recent_next2_concept_documents.jsonl
+build/pubmed_bulk_recent_1331_1330_concept_documents.jsonl
+build/pubmed_bulk_recent_1329_1328_concept_documents.jsonl
+build/pubmed_bulk_recent_1327_1326_concept_documents.jsonl
+build/pubmed_bulk_recent_1325_1324_concept_documents.jsonl
+build/pubmed_bulk_recent_1323_1322_concept_documents.jsonl</code></pre>
+<h3>4A. Create Reviewed Extension Concepts When Needed</h3>
+<p>Extension concepts are used only when they add a useful biomedical entity or meaningful concept boundary that UMLS does not currently cover well. They are not a synonym-mining mechanism.</p>
+<p>Example input row:</p>
+<pre><code class="language-json">{&quot;preferred_label&quot;:&quot;post-viral exertional intolerance phenotype&quot;,&quot;aliases&quot;:[&quot;post viral exertional intolerance&quot;],&quot;semantic_type&quot;:&quot;Finding&quot;,&quot;definition&quot;:&quot;Persistent exertional intolerance after viral illness.&quot;,&quot;status&quot;:&quot;reviewed&quot;,&quot;broader_cuis&quot;:[&quot;C0012634&quot;],&quot;close_match_cuis&quot;:[&quot;C5203670&quot;],&quot;evidence&quot;:[{&quot;text&quot;:&quot;Patients described persistent exertional intolerance after infection.&quot;,&quot;source&quot;:&quot;pmc_oa&quot;,&quot;weight&quot;:1.5,&quot;metadata&quot;:{&quot;pmcid&quot;:&quot;PMC1&quot;}}],&quot;metadata&quot;:{&quot;reviewer&quot;:&quot;local-review&quot;}}</code></pre>
+<p>Build command pattern:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-extension-concepts \
+  --input config/extension_concepts.new.jsonl \
+  --out-docs build/extension_concept_documents.jsonl \
+  --out-evidence build/extension_concept_evidence.jsonl \
+  --out-registry build/extension_concept_registry.jsonl</code></pre>
+<p>Outputs:</p>
+<p>with the same SapBERT CLS path</p>
+<p>extension ids</p>
+<ul><li><code>extension_concept_documents.jsonl</code>: search documents that can be embedded</li><li><code>extension_concept_evidence.jsonl</code>: provenance-bearing evidence records</li><li><code>extension_concept_registry.jsonl</code>: release/governance registry for local</li></ul>
+<p>Before alias promotion, extension concepts should be evaluated in the search UI and by Codex/LLM judging. Human feedback is useful, but human approval is not a hard gate for creating a local <code>NEW#######</code> CUI. Promotion means the record can be shipped as a UMLS Semantic Evidence Index extension record. It does not mean it has become an official UMLS CUI.</p>
+<p>The broader <code>NEW#######</code> iteration loop is codified in <code>docs/new_umls_iteration_loop.html</code>.</p>
+<h3>5. Embed Documents</h3>
+<p>Quality-bearing embeddings use SapBERT with CLS pooling:</p>
+<pre><code class="language-text">provider: sapbert
+model: cambridgeltl/SapBERT-from-PubMedBERT-fulltext
+pooling: CLS
+max sequence length: 128 in the current server path
+dimensions: 768</code></pre>
+<p>Current vector metadata stores the backend provider as <code>transformers-cls</code>; the SapBERT identity is the model plus <code>embedding_pooling=cls</code>.</p>
+<p>Every newly written vector record includes <code>document_text_hash</code>, so omitted-text vector files can still be audited against the concept-document manifest.</p>
+<p>Hashing vectors remain useful only for pipeline smoke tests. They should not be used for quality judgments or release artifacts.</p>
+<p>Current bulk pilot vector output:</p>
+<pre><code class="language-text">build/pubmed_bulk_recent_baseline_concept_vectors.sapbert_cls.jsonl
+build/pubmed_bulk_recent_next2_concept_vectors.sapbert_cls.jsonl
+build/pubmed_bulk_recent_1331_1330_concept_vectors.sapbert_cls.jsonl
+build/pubmed_bulk_recent_1329_1328_concept_vectors.sapbert_cls.jsonl
+build/pubmed_bulk_recent_1327_1326_concept_vectors.sapbert_cls.jsonl
+build/pubmed_bulk_recent_1325_1324_concept_vectors.sapbert_cls.jsonl
+build/pubmed_bulk_recent_1323_1322_concept_vectors.sapbert_cls.jsonl
+build/pubmed_bulk_recent_1321_1320_concept_vectors.sapbert_cls.jsonl</code></pre>
+<p>The <code>pubmed_bulk_recent_next2</code>, <code>pubmed_bulk_recent_1331_1330</code>, <code>pubmed_bulk_recent_1329_1328</code>, <code>pubmed_bulk_recent_1327_1326</code>, and <code>pubmed_bulk_recent_1325_1324</code>, <code>pubmed_bulk_recent_1323_1322</code>, and <code>pubmed_bulk_recent_1321_1320</code> vector files omit duplicated document text and therefore must be loaded with their matching concept document JSONL files when using the assessment server.</p>
+<h3>6. Export And Load Elasticsearch</h3>
+<p>Vector JSONL is exported to Elasticsearch mapping JSON and bulk NDJSON. The mapping uses a <code>dense_vector</code> field with cosine similarity and metadata fields for CUI, view, labels, evidence counts, source list, embedding provider, and embedding model.</p>
+<p>The cumulative alias is:</p>
+<pre><code class="language-text">qe-scaling-sapbert-cls</code></pre>
+<p>The assessment server searches the alias rather than a single chunk index.</p>
+<p>Local bulk-load note: a 195 MB NDJSON bulk request failed with a broken pipe while loading <code>pubmed_bulk_recent_next2</code>. Re-exporting the same 54,906 documents into 11 parts of about 38-39 MB loaded with zero Elasticsearch errors. Keep future local bulk parts around 5,000 documents or roughly 40 MB unless the local Elasticsearch HTTP limits are tuned.</p>
+<p>Assessment-server note: eager provenance loading previously took <code>134s</code> at an earlier scale because sources were loaded from many JSONL files. The current server uses <code>build/search_quality_provenance.sqlite</code> for on-demand provenance lookup and last measured startup around <code>97s</code> after the 1321/1320 review restart.</p>
+<h3>6A. Indexed Provenance And Compact Vectors</h3>
+<p>The assessment UI does not need every mention-level source row at startup. It only displays source provenance for the first six evidence bullets per hit, with up to five citations per bullet. The current indexed provenance artifact stores that display/audit surface only:</p>
+<pre><code class="language-text">build/search_quality_provenance.sqlite</code></pre>
+<p>Build command pattern:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-provenance-index \
+  --sqlite build/search_quality_provenance.sqlite \
+  --replace \
+  --sources-per-text 5 \
+  --max-document-items 6 \
+  --docs ...concept_documents.jsonl \
+  --evidence ...evidence.jsonl</code></pre>
+<p>The lookup key is a 128-bit BLAKE2b hash of normalized evidence text. This keeps the index compact while still allowing the server to look up sources from the displayed evidence bullet text.</p>
+<p>SapBERT JSONL vector files are also exported to compact float32 files plus metadata JSONL:</p>
+<pre><code class="language-text">build/compact_vectors/*.vectors.f32
+build/compact_vectors/*.metadata.jsonl
+build/compact_vectors/*.manifest.json</code></pre>
+<p>The compact files are not yet the primary server input, but they define the smaller reusable vector artifact shape for larger releases.</p>
+<h3>7. Search And Label Fallback</h3>
+<p>The server in <code>scripts/search_quality_server.py</code> provides the assessment UI and JSON endpoints.</p>
+<p>Search flow:</p>
+<ol><li>Resolve direct identifiers before ANN search.</li></ol>
+<p>through to text search.</p>
+<ul><li><code>C\d{7}</code> inputs resolve as direct CUIs.</li><li><code>SAB:CODE</code> inputs resolve through <code>build/cui_code_index.sqlite</code>.</li><li>Code-like strings are looked up as source vocabulary codes before falling</li></ul>
+<p>fallback wins and the CUI has an evidence-bearing document, the server returns that document instead of a zero-evidence label-only hit.</p>
+<p>graph links are still returned separately and are used as a fallback when a CUI has no evidence-vector neighbors.</p>
+<p>This uses full MRREL plus MRSTY semantic categories to expose disease-drug, disease-gene/protein, disease-procedure/test, organism, device, and safety links without relying on generic nearest-neighbor search.</p>
+<p>exists. This is the serving path for public aggregate edges such as OHDSI-derived <code>Drug -&gt; likely_indication -&gt; Condition</code> relationships and structured procedure-bundle relationships.</p>
+<p>related concepts. Each returned CUI is hydrated with MRSTY semantic type metadata for display.</p>
+<ol><li>For text inputs, embed the query with the same SapBERT CLS model.</li><li>Search Elasticsearch ANN against <code>qe-scaling-sapbert-cls</code>.</li><li>Deduplicate to the best hit per CUI.</li><li>Merge in UMLS label fallback hits from the search label index. When a label</li><li>Attach related concepts from the result CUI&#x27;s own evidence vectors. MRREL</li><li>Attach a researcher-focused cross-semantic relation pack when available.</li><li>Attach mined universal relationship edges when <code>build/relationship_edges.sqlite</code></li><li>Rank and return results with labels, evidence snippets, provenance, and</li></ol>
+<p>The UMLS label fallback is coverage-aware. It can rescue exact missing labels such as <code>Appendectomy</code>, but single-token component hits should not dominate multi-term evidence queries such as <code>sepsis lactate vasopressor</code>.</p>
+<p>The related-concepts panel is evidence-first. For each returned CUI, the server uses that CUI&#x27;s own CUI/view evidence vectors as seed vectors and asks Elasticsearch for nearby CUI/view documents. Those neighbors are collapsed by target CUI and displayed as evidence-related concepts. This is the main related concept signal because it reflects how concepts co-occur or behave similarly in real-world evidence text.</p>
+<p>MRREL graph support is still available as a secondary/fallback signal through:</p>
+<pre><code class="language-text">build/umls_related_concepts.sqlite</code></pre>
+<p>A separate research relation index is available through:</p>
+<pre><code class="language-text">build/umls_research_relations.sqlite</code></pre>
+<p>It is intentionally narrower than the generic MRREL index. It keeps cross-semantic-type links that are useful for biomedical research workflows: conditions to genes/proteins, drugs/chemicals, procedures/tests, devices, organisms, causes, safety relationships, phenotypes, and inverse directions where the queried CUI is the drug, gene, procedure, organism, or phenotype-linked gene.</p>
+<p>Build command pattern:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-code-index \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --out build/cui_code_index.sqlite \
+  --replace</code></pre>
+<p>Build relation index command pattern:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-relation-index \
+  --mrrel /path/to/UMLS/META/MRREL.RRF \
+  --mrconso /path/to/UMLS/META/MRCONSO.RRF \
+  --docs ...concept_documents.jsonl \
+  --out build/umls_related_concepts.sqlite \
+  --max-relations-per-cui 8 \
+  --replace</code></pre>
+<p>The MRREL builder restricts links to CUIs present in the current search documents, keeps a small ranked set per source CUI, and stores display labels from MRCONSO. This avoids scanning the 6 GB relationship file on server startup or query execution. MRREL should be interpreted as vocabulary graph support, not as the primary evidence-relatedness signal.</p>
+<p>Build research relation index command pattern:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-research-relation-index \
+  --mrrel ~/Downloads/2025AB/META/MRREL.RRF \
+  --mrconso ~/Downloads/2025AB/META/MRCONSO.RRF \
+  --mrsty ~/Downloads/2025AB/META/MRSTY.RRF \
+  --docs ...concept_documents.jsonl \
+  --out build/umls_research_relations.sqlite \
+  --max-relations-per-category 12 \
+  --hpo-obo data/external/hpo/hp.obo \
+  --hpo-phenotype-annotations data/external/hpo/phenotype.hpoa \
+  --hpo-genes-to-phenotype data/external/hpo/genes_to_phenotype.txt \
+  --replace</code></pre>
+<p>The HPO augmentation adds direct disease-phenotype and gene-phenotype links, plus disease-gene and gene-disease links derived from <code>genes_to_phenotype.txt</code> where both sides can be mapped back to UMLS CUIs.</p>
+<p>OHDSI artifacts are a high-value source for quantitative relationship edges. Public ATLAS cohort definitions can supply curated drug/condition cohort logic; CohortDiagnostics aggregate outputs can supply conditional prevalence and temporal precedence; population-level estimation outputs can supply hazard ratios, odds ratios, risk ratios, confidence intervals, and diagnostic quality signals; PatientLevelPrediction outputs can supply predictive, non-causal feature links. The local miner emits universal relationship-edge JSONL, and the default serving path is:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-relationship-edge-index \
+  --edges build/ohdsi_relationship_edges.jsonl \
+  --out build/relationship_edges.sqlite \
+  --replace</code></pre>
+<p><code>scripts/search_quality_server.py</code> auto-loads <code>build/relationship_edges.sqlite</code> when it exists. The detailed mining plan is in <code>docs/ohdsi_relationship_mining.html</code>. Mine public or shareable aggregate artifacts first; do not ingest patient-level EHR data into this path.</p>
+<p>The server exposes a documented HTTP API for the browser UI and external clients. The API guide is <code>docs/api.html</code>, and the machine-readable contract is available from a running server at <code>/api/openapi.json</code>. The main endpoints are:</p>
+<p>and relationship/index availability.</p>
+<p><code>comprehensive</code> modes plus custom semantic bucket filtering.</p>
+<p>one search hit.</p>
+<p>text-label inputs.</p>
+<p>concepts, full evidence-vector neighbors from the seed CUI&#x27;s own CUI/view vectors, MRREL graph neighbors, cross-semantic research relations, and source vocabulary mappings for requested vocabularies.</p>
+<ul><li><code>/api/health</code>: cheap liveness/readiness check.</li><li><code>/api/status</code>: loaded artifact paths, record counts, backend, cache counters,</li><li><code>/api/search?q=...</code>: ranked concept search with <code>balanced</code>, <code>exact</code>, and</li><li><code>/api/detail?doc_id=...</code> or <code>/api/detail?cui=...</code>: lazy detail hydration for</li><li><code>/api/resolve?q=...</code>: candidate CUIs for direct CUI, source-code, or</li><li><code>/api/related?cui=C0004238&amp;k=10&amp;vocab=ICD10CM</code>: evidence-first related</li></ul>
+<h3>7A. Incremental UMLS Release Delta</h3>
+<p>The first reproducible incremental-build artifact is a CUI atom fingerprint table. It scans <code>MRCONSO.RRF</code>, deduplicates atom-level searchable content in a temporary SQLite database, groups it by CUI, and writes one deterministic hash per CUI. The default fingerprint uses English, non-suppressed atoms and ignores atom identifier churn (<code>AUI</code>, <code>SAUI</code>, <code>LUI</code>, <code>SUI</code>) unless <code>--include-atom-ids</code> is passed. This means unchanged concepts can reuse existing documents/vectors even when a new UMLS release is available.</p>
+<p>Build one fingerprint file per release:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-atom-fingerprints \
+  --mrconso /path/to/2025AB/META/MRCONSO.RRF \
+  --release 2025AB \
+  --out build/incremental/umls_atom_fingerprints_2025AB.tsv
+
+python3 scripts/evidence_vectors.py build-atom-fingerprints \
+  --mrconso /path/to/2026AA/META/MRCONSO.RRF \
+  --release 2026AA \
+  --out build/incremental/umls_atom_fingerprints_2026AA.tsv</code></pre>
+<p>Use <code>--temp-dir /path/with/free/space</code> if the output directory is not a good place for the temporary SQLite dedupe file.</p>
+<p>Diff two releases to get the conservative reprocessing list:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py diff-atom-fingerprints \
+  --old build/incremental/umls_atom_fingerprints_2025AB.tsv \
+  --new build/incremental/umls_atom_fingerprints_2026AA.tsv \
+  --old-release 2025AB \
+  --new-release 2026AA \
+  --out build/incremental/changed_cuis_2025AB_to_2026AA.tsv \
+  --summary-out build/incremental/changed_cuis_2025AB_to_2026AA.summary.json</code></pre>
+<p><code>changed_cuis_*.tsv</code> contains <code>added_cui</code>, <code>removed_cui</code>, and <code>atoms_changed</code> rows.</p>
+<p>After rebuilding candidate concept documents for the new release, build a document manifest for the old build:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-document-manifest \
+  --docs build/old_concept_documents.jsonl \
+  --release 2025AB \
+  --out build/incremental/concept_document_manifest_2025AB.tsv</code></pre>
+<p>Then partition the new documents into reusable vectors and documents that still need embedding:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py plan-vector-reuse \
+  --old-manifest build/incremental/concept_document_manifest_2025AB.tsv \
+  --new-docs build/new_concept_documents.jsonl \
+  --old-vectors build/old_concept_vectors.sapbert_cls.jsonl \
+  --old-release 2025AB \
+  --new-release 2026AA \
+  --out-plan build/incremental/vector_reuse_plan_2025AB_to_2026AA.tsv \
+  --out-reused-vectors build/incremental/reused_vectors_2025AB_to_2026AA.jsonl \
+  --out-docs-to-embed build/incremental/docs_to_embed_2026AA.jsonl \
+  --out-new-manifest build/incremental/concept_document_manifest_2026AA.tsv \
+  --require-old-vector-text-hash \
+  --summary-out build/incremental/vector_reuse_plan_2025AB_to_2026AA.summary.json</code></pre>
+<p>A vector is carried forward only when <code>doc_id</code>, <code>cui</code>, <code>view</code>, and the embedded document text hash are unchanged. Full document hashes are still recorded, so metadata-only drift can be audited without triggering SapBERT work. With <code>--require-old-vector-text-hash</code>, legacy old vectors that cannot prove the old manifest text are sent back through embedding. Embed only <code>docs_to_embed_*.jsonl</code>, then assemble the fresh vectors with the reused vectors against the new manifest:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py assemble-incremental-vectors \
+  --manifest build/incremental/concept_document_manifest_2026AA.tsv \
+  --vectors \
+    build/incremental/reused_vectors_2025AB_to_2026AA.jsonl \
+    build/incremental/fresh_vectors_2026AA.sapbert_cls.jsonl \
+  --expect-provider transformers-cls \
+  --expect-model cambridgeltl/SapBERT-from-PubMedBERT-fulltext \
+  --expect-pooling cls \
+  --expect-dims 768 \
+  --require-text-hash \
+  --release 2026AA \
+  --out build/new_concept_vectors.sapbert_cls.jsonl \
+  --summary-out build/incremental/assembled_vectors_2026AA.summary.json</code></pre>
+<p>The assembly command fails before writing output if a manifest document is missing a vector, a vector record is duplicated, a vector belongs to an unknown <code>doc_id</code>, or a vector <code>cui</code>/<code>view</code> does not match the new manifest. When <code>--summary-out</code> is set, failures still write a JSON summary with diagnostic samples. Assembly also rejects empty vectors, mixed dimensions, and mixed embedding provider/model/pooling metadata so incompatible non-SapBERT shards cannot be silently merged into a SapBERT release vector set. <code>--require-text-hash</code> additionally requires each vector to match the manifest text hash, including vectors written with omitted text bodies.</p>
+<h3>8. Review Search Quality</h3>
+<p>The server-backed UI persists judgments to CSV through <code>/api/judgments</code>.</p>
+<p>Judgment values:</p>
+<ul><li><code>relevant</code>: the result is a good answer for the query</li><li><code>partial</code>: the result is related or useful but not the full answer</li><li><code>wrong</code>: the result should not be retrieved for this query</li></ul>
+<p>Current metrics are computed from the top five results:</p>
+<ul><li>weighted P@5: relevant = 1.0, partial = 0.5, wrong = 0.0</li><li>MRR: first relevant or partial result</li><li>relevant top-1 count: how often rank 1 is fully relevant</li></ul>
+<p>The quality gate is deliberately small right now. It is useful for catching ranking regressions, but it is not yet a release benchmark. The benchmark needs many more reviewed queries across clinical conditions, drugs, procedures, labs, organisms, genes, abbreviations, and lay language.</p>
+<h3>9. Track Progress</h3>
+<p>Progress plans live in <code>config/*.plan.json</code>. The reporter is:</p>
+<pre><code class="language-sh">python3 scripts/scaling_status.py \
+  --plan config/full_pipeline.plan.json \
+  --out-json build/scaling_runs/full_pipeline/progress.json \
+  --out-markdown build/scaling_runs/full_pipeline/progress.md</code></pre>
+<p>The progress percentages are artifact and effort weighted. They are not wall-clock ETAs and should not be presented as time remaining.</p>
+<h2>Important Local Commands</h2>
+<p>Start the current assessment server:</p>
+<pre><code class="language-sh">python3 scripts/search_quality_server.py \
+  --port 8767 \
+  --vectors \
+    build/scaling_chunk_001_gap_topics_concept_vectors.sapbert_cls.jsonl \
+    build/scaling_chunk_002_common_clinical_concept_vectors.sapbert_cls.jsonl \
+    build/scaling_chunk_003_abbreviation_language_concept_vectors.sapbert_cls.jsonl \
+    build/scaling_chunk_004_drug_safety_therapeutics_concept_vectors.sapbert_cls.jsonl \
+    build/scaling_chunk_005_diagnostics_procedures_devices_concept_vectors.sapbert_cls.jsonl \
+    build/pubmed_bulk_recent_baseline_concept_vectors.sapbert_cls.jsonl \
+    build/pubmed_bulk_recent_next2_concept_vectors.sapbert_cls.jsonl \
+    build/pubmed_bulk_recent_1331_1330_concept_vectors.sapbert_cls.jsonl \
+    build/pubmed_bulk_recent_1329_1328_concept_vectors.sapbert_cls.jsonl \
+    build/pubmed_bulk_recent_1327_1326_concept_vectors.sapbert_cls.jsonl \
+    build/pubmed_bulk_recent_1325_1324_concept_vectors.sapbert_cls.jsonl \
+    build/pubmed_bulk_recent_1323_1322_concept_vectors.sapbert_cls.jsonl \
+    build/pubmed_bulk_recent_1321_1320_concept_vectors.sapbert_cls.jsonl \
+  --docs \
+    build/scaling_chunk_001_gap_topics_concept_documents.jsonl \
+    build/scaling_chunk_002_common_clinical_concept_documents.jsonl \
+    build/scaling_chunk_003_abbreviation_language_concept_documents.jsonl \
+    build/scaling_chunk_004_drug_safety_therapeutics_concept_documents.jsonl \
+    build/scaling_chunk_005_diagnostics_procedures_devices_concept_documents.jsonl \
+    build/pubmed_bulk_recent_baseline_concept_documents.jsonl \
+    build/pubmed_bulk_recent_next2_concept_documents.jsonl \
+    build/pubmed_bulk_recent_1331_1330_concept_documents.jsonl \
+    build/pubmed_bulk_recent_1329_1328_concept_documents.jsonl \
+    build/pubmed_bulk_recent_1327_1326_concept_documents.jsonl \
+    build/pubmed_bulk_recent_1325_1324_concept_documents.jsonl \
+    build/pubmed_bulk_recent_1323_1322_concept_documents.jsonl \
+    build/pubmed_bulk_recent_1321_1320_concept_documents.jsonl \
+  --evidence \
+  --provenance-index build/search_quality_provenance.sqlite \
+  --provider sapbert \
+  --local-files-only \
+  --max-seq-length 128 \
+  --elastic-url http://localhost:9200 \
+  --elastic-index qe-scaling-sapbert-cls \
+  --elastic-num-candidates 50 \
+  --require-elasticsearch \
+  --label-fallback-limit 120 \
+  --definition-fallback-limit 80 \
+  --label-index build/umls_biomedicine_search_label_index.sqlite \
+  --code-index build/cui_code_index.sqlite \
+  --relation-index build/umls_related_concepts.sqlite \
+  --progress-plan config/pubmed_bulk_recent_1321_1320.plan.json \
+  --judgments-out build/scaling_runs/pubmed_bulk_recent_1321_1320/search_quality_judgments.csv</code></pre>
+<p><code>build/umls_research_relations.sqlite</code> and <code>build/relationship_edges.sqlite</code> are loaded automatically by the server when present, so the basic start command does not need explicit flags for them.</p>
+<p>Check server status:</p>
+<pre><code class="language-sh">curl -s http://127.0.0.1:8767/api/status</code></pre>
+<p>Update full-pipeline progress:</p>
+<pre><code class="language-sh">python3 scripts/scaling_status.py \
+  --plan config/full_pipeline.plan.json \
+  --out-json build/scaling_runs/full_pipeline/progress.json \
+  --out-markdown build/scaling_runs/full_pipeline/progress.md</code></pre>
+<p>Run tests:</p>
+<pre><code class="language-sh">python3 -m pytest -q</code></pre>
+<h2>Scaling Plan</h2>
+<p>The latest reviewed chunk is <code>pubmed_bulk_recent_1321_1320</code>: it has <code>59,881</code> corpus documents, <code>821,042</code> linked evidence rows, <code>55,371</code> CUI/view documents, <code>55,371</code> SapBERT CLS vectors, a compact float32 export, and 12 Elasticsearch bulk part files. It loaded cleanly into <code>qe-scaling-pubmed-bulk-recent-1321-1320-sapbert-cls</code>, passed the comparable 8-query quality gate at <code>0.750</code> mean weighted P@5 with mean MRR <code>1.0</code> and <code>8 / 8</code> relevant top-1 queries, and was then added to the cumulative <code>qe-scaling-sapbert-cls</code> alias. A harder 10-query mixed clinical smoke pass also had <code>10 / 10</code> relevant top-1 queries, but lower mean weighted P@5 (<code>0.570</code>) from generic follow-up, anatomy, and denied-positive lower-rank hits.</p>
+<p>The previous three reviewed two-file pilots were: <code>1327/1326</code> and <code>1325/1324</code> at <code>0.600</code> mean weighted P@5, then <code>1323/1322</code> at <code>0.750</code> after the anchor-recall, fragment-precision, procedure-neighbor, composite-context, and sepsis-shock intent ranker updates. Those pilots proved the bulk machinery, but the product gap is now judged query behavior, not arbitrary coverage volume. Remaining ranking cleanup is mostly below-rank-1 specificity and component-heavy mixed queries.</p>
+<p>A sound targeted PubMed path should:</p>
+<p>more source records.</p>
+<p>miss after local ranking fixes.</p>
+<p>smoke gates pass.</p>
+<ol><li>Start from <code>config/search_quality_targeted_pubmed_weaknesses.tsv</code>.</li><li>Separate rerank-window misses from true evidence/linking gaps.</li><li>Fix section/chunk linking, merge behavior, and reranking before acquiring</li><li>Add or relink PubMed evidence only for benchmarked expected CUIs that still</li><li>Re-embed only promoted CUI/view documents.</li><li>Move the cumulative alias only after the focused PubMed lane and regular</li><li>Preserve manifests so future changes can be incremental.</li></ol>
+<p>If broad PubMed ingest becomes necessary later, keep the same release shape:</p>
+<p>monolithic mention-level provenance database for all PubMed.</p>
+<ol><li>Download PubMed baseline and update files with manifests and MD5 checks.</li><li>Stream-parse XML into compact corpus records.</li><li>Link documents through profile shards without holding all PubMed in memory.</li><li>Aggregate evidence into CUI/view documents.</li><li>Re-embed only new or changed CUI/view documents where possible.</li><li>Export sharded Elasticsearch bulk files.</li><li>Load into versioned indexes.</li><li>Move the cumulative alias only after quality review.</li><li>Preserve manifests so future changes can be incremental.</li><li>Keep provenance indexes display-scoped or shard-scoped; do not build a</li></ol>
+<p>Expected storage should stay closer to the compact/reproducible path than the naive JSONL-for-everything path. Keep full raw intermediates only when they are needed for reproducibility or debugging.</p>
+<h2>Documentation Maintenance</h2>
+<p>When the pipeline changes, update this file and <code>docs/explain_like_im_5.html</code> in the same turn.</p>
+<p>Update this file when:</p>
+<ul><li>a new source is added</li><li>a source is paused or removed</li><li>a pipeline stage changes</li><li>a new artifact becomes canonical</li><li>Elasticsearch aliases or index names change</li><li>vector model, pooling, dimensions, or sequence length change</li><li>quality metrics change</li><li>progress-plan steps change</li><li>scale, runtime, or storage estimates change</li></ul>
+<p>At minimum, update:</p>
+<ul><li><code>Last updated</code></li><li><code>Current State</code></li><li><code>Current quality sample</code></li><li><code>Current full-pipeline progress</code></li><li><code>Scaling Plan</code></li></ul>
+</main>
+<!-- Converted from docs/technical_pipeline.html. -->
+</body>
+</html>

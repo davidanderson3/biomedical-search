@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import html
 import json
 import sys
 from collections import Counter
@@ -41,7 +42,7 @@ from qe_evidence_vectors.search_ranking import (  # noqa: E402
 )
 
 
-DEFAULT_OUTPUT = ROOT / "docs" / "search_rule_inventory.md"
+DEFAULT_HTML_OUTPUT = ROOT / "docs" / "search_rule_inventory.html"
 
 
 RULE_SOURCES = {
@@ -70,7 +71,10 @@ STATUS_ORDER = [
 
 
 def relative(path: Path) -> str:
-    return str(path.relative_to(ROOT))
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
 
 
 def read_tsv(path: Path) -> list[dict[str, str]]:
@@ -128,6 +132,97 @@ def inline_list(values: Iterable[str], *, limit: int = 18) -> str:
     shown = items[:limit]
     suffix = "" if len(items) <= limit else f", ... +{len(items) - limit} more"
     return ", ".join(f"`{item}`" for item in shown) + suffix
+
+
+def html_escape(value: object) -> str:
+    return html.escape(str(value), quote=True)
+
+
+def html_inline_list(values: Iterable[str], *, limit: int = 18) -> str:
+    items = list(values)
+    shown = items[:limit]
+    suffix = "" if len(items) <= limit else f", ... +{len(items) - limit} more"
+    return ", ".join(f"<code>{html_escape(item)}</code>" for item in shown) + html_escape(suffix)
+
+
+def html_table(headers: list[str], rows: list[list[object]], *, class_name: str = "") -> str:
+    class_attr = f' class="{html_escape(class_name)}"' if class_name else ""
+    header_html = "".join(f"<th>{html_escape(header)}</th>" for header in headers)
+    row_html = []
+    for row in rows:
+        row_html.append(
+            "<tr>"
+            + "".join(f"<td>{cell if isinstance(cell, HtmlCell) else html_escape(cell)}</td>" for cell in row)
+            + "</tr>"
+        )
+    if not row_html:
+        row_html.append(f"<tr><td colspan=\"{len(headers)}\">None.</td></tr>")
+    return (
+        f"<table{class_attr}>"
+        f"<thead><tr>{header_html}</tr></thead>"
+        f"<tbody>{''.join(row_html)}</tbody>"
+        "</table>"
+    )
+
+
+class HtmlCell(str):
+    pass
+
+
+def source_link(path_text: str) -> HtmlCell:
+    first_path = str(path_text).split(";")[0].strip()
+    href = first_path if "://" in first_path else f"../{first_path}"
+    return HtmlCell(f'<code><a href="{html_escape(href)}">{html_escape(path_text)}</a></code>')
+
+
+def inventory_totals(inventory: dict) -> dict[str, int]:
+    classes = {item["name"]: item for item in inventory["rule_classes"]}
+    generic = classes["generic_meta_suppression"]["counts"]
+    active = classes["clinical_alias_supplement"]["counts"]
+    assertion = classes["assertion_context"]["counts"]
+    portal = classes["patient_portal_meta_context"]["counts"]
+    ranking = classes["ranking_score_guards"]["counts"]
+    precision = classes["precision_audit_outcomes"]["counts"]
+    guardrails = classes["benchmark_guardrails"]["counts"]
+    active_heuristic_items = (
+        generic["blocked_labels"]
+        + generic["blocked_queries"]
+        + generic["blocked_cuis"]
+        + active["rows"]
+        + assertion["before_cues"]
+        + assertion["after_cues"]
+        + assertion["chart_history_cues"]
+        + portal["context_tokens"]
+        + portal["self_tokens"]
+        + portal["noise_tokens"]
+        + portal["clinical_confusion_exception_tokens"]
+        + ranking["named_guards"]
+    )
+    audit_guardrail_rows = (
+        precision["review_rows"]
+        + precision["useful_extra_rows"]
+        + guardrails["paragraph_rows"]
+        + guardrails["patient_portal_rows"]
+    )
+    return {
+        "rule_classes": len(inventory["rule_classes"]),
+        "active_heuristic_items": active_heuristic_items,
+        "audit_guardrail_rows": audit_guardrail_rows,
+        "generic_suppression_items": (
+            generic["blocked_labels"] + generic["blocked_queries"] + generic["blocked_cuis"]
+        ),
+        "clinical_alias_rows": active["rows"],
+        "assertion_cues": (
+            assertion["before_cues"] + assertion["after_cues"] + assertion["chart_history_cues"]
+        ),
+        "patient_portal_tokens": (
+            portal["context_tokens"]
+            + portal["self_tokens"]
+            + portal["noise_tokens"]
+            + portal["clinical_confusion_exception_tokens"]
+        ),
+        "ranking_score_guards": ranking["named_guards"],
+    }
 
 
 def build_inventory() -> dict:
@@ -270,6 +365,7 @@ def build_inventory() -> dict:
 
 def render_markdown(inventory: dict) -> str:
     classes = {item["name"]: item for item in inventory["rule_classes"]}
+    totals = inventory_totals(inventory)
     generic = classes["generic_meta_suppression"]
     active = classes["clinical_alias_supplement"]
     assertion = classes["assertion_context"]
@@ -295,6 +391,17 @@ def render_markdown(inventory: dict) -> str:
         "5. **Apply narrow ranking score guards** when a recurring error class cannot be represented as suppression or alias data.",
         "6. **Audit useful extras versus false positives** so ranking changes target real errors.",
         "7. **Guard with benchmark rows** so each improvement is repeatable.",
+        "",
+        "## Inventory Summary",
+        "",
+        f"- Active heuristic items in the live search path: {totals['active_heuristic_items']}",
+        f"- Rule classes: {totals['rule_classes']}",
+        f"- Audit and benchmark guardrail rows: {totals['audit_guardrail_rows']}",
+        f"- Generic suppression items: {totals['generic_suppression_items']}",
+        f"- Clinical alias supplement rows: {totals['clinical_alias_rows']}",
+        f"- Assertion/currentness cues: {totals['assertion_cues']}",
+        f"- Patient-portal/meta tokens and exceptions: {totals['patient_portal_tokens']}",
+        f"- Named ranking score guards: {totals['ranking_score_guards']}",
         "",
         "## Rule Classes",
         "",
@@ -608,13 +715,443 @@ def render_markdown(inventory: dict) -> str:
     return "\n".join(lines)
 
 
+def render_html(inventory: dict) -> str:
+    classes = {item["name"]: item for item in inventory["rule_classes"]}
+    totals = inventory_totals(inventory)
+    generic = classes["generic_meta_suppression"]
+    active = classes["clinical_alias_supplement"]
+    assertion = classes["assertion_context"]
+    portal = classes["patient_portal_meta_context"]
+    ranking_guards = classes["ranking_score_guards"]
+    precision = classes["precision_audit_outcomes"]
+    guardrails = classes["benchmark_guardrails"]
+
+    rule_class_rows = [
+        [
+            "generic_meta_suppression",
+            source_link(generic["source"]),
+            generic["purpose"],
+            (
+                f"{generic['counts']['blocked_labels']} labels; "
+                f"{generic['counts']['blocked_cuis']} CUIs; "
+                f"{generic['counts']['blocked_queries']} query blocks"
+            ),
+        ],
+        [
+            "clinical_alias_supplement",
+            source_link(active["source"]),
+            active["purpose"],
+            f"{active['counts']['rows']} rows; {active['counts']['unique_cuis']} CUIs",
+        ],
+        [
+            "assertion_context",
+            source_link(assertion["source"]),
+            assertion["purpose"],
+            (
+                f"{assertion['counts']['before_cues']} before-cues; "
+                f"{assertion['counts']['after_cues']} after-cues"
+            ),
+        ],
+        [
+            "patient_portal_meta_context",
+            source_link(portal["source"]),
+            portal["purpose"],
+            (
+                f"{portal['counts']['context_tokens']} context tokens; "
+                f"{portal['counts']['noise_tokens']} noise tokens"
+            ),
+        ],
+        [
+            "precision_audit_outcomes",
+            source_link(precision["source"]),
+            precision["purpose"],
+            f"{precision['counts']['review_rows']} reviewed rows",
+        ],
+        [
+            "ranking_score_guards",
+            source_link(ranking_guards["source"]),
+            ranking_guards["purpose"],
+            f"{ranking_guards['counts']['named_guards']} named guards",
+        ],
+        [
+            "benchmark_guardrails",
+            source_link(guardrails["source"]),
+            guardrails["purpose"],
+            (
+                f"{guardrails['counts']['paragraph_rows']} paragraph rows; "
+                f"{guardrails['counts']['patient_portal_rows']} portal rows"
+            ),
+        ],
+    ]
+    placement_rows = [
+        [
+            "UMLS concept is generic prose or chart metadata.",
+            source_link("src/qe_evidence_vectors/generic_filters.py"),
+            "Add a focused regression row with disallowed CUIs or a unit test proving a valid clinical phrase still survives.",
+        ],
+        [
+            "A real clinical phrase is missing or under-ranked, but the target CUI is known.",
+            source_link("config/active_label_supplement.tsv"),
+            "Include why, semantic type, field, context gates for risky aliases, and run active-label validation.",
+        ],
+        [
+            "The mention is current versus old/history, negated, uncertain, planned, or family history.",
+            source_link("src/qe_evidence_vectors/search_assertions.py"),
+            "Add a patient/clinical benchmark row showing active CUIs above context CUIs, plus reusable unit coverage.",
+        ],
+        [
+            "Patient portal prose contains conversational uncertainty or workflow words.",
+            source_link("src/qe_evidence_vectors/search_ranking.py"),
+            "Add a portal row with active/current CUIs, context CUIs, and disallowed meta CUIs.",
+        ],
+        [
+            "A valid but broad ranked concept should remain searchable but stop winning in a repeatable context.",
+            source_link("src/qe_evidence_vectors/search_ranking.py"),
+            "Add a focused test for the failing context, a direct-search protection test, and a score-breakdown field.",
+        ],
+        [
+            "A non-primary concept is expected and useful, not a false positive.",
+            source_link("config/search_quality_useful_extra_cuis.tsv"),
+            "Record audit classification with a human-readable why.",
+        ],
+        [
+            "A new class of user-visible failure needs tracking.",
+            source_link("config/search_quality_*queries.tsv"),
+            "Include expected CUIs, disallowed CUIs when relevant, and a short expected-behavior statement.",
+        ],
+    ]
+    guard_rows = [
+        [
+            guard["name"],
+            guard["purpose"],
+            HtmlCell(
+                f"Penalty {guard['penalty']}; min query tokens "
+                f"{guard['minimum_query_tokens']}; matched spans "
+                f"{html_inline_list(guard['matched_spans'], limit=8)}"
+            ),
+            HtmlCell(f"<code>{html_escape(guard['guardrail'])}</code>"),
+        ]
+        for guard in ranking_guards["guards"]
+    ]
+    summary_cards = [
+        ("Active heuristic items", totals["active_heuristic_items"], "Live search path"),
+        ("Rule classes", totals["rule_classes"], "Named layers"),
+        ("Guardrail rows", totals["audit_guardrail_rows"], "Audit and benchmark"),
+        ("Generic suppression", totals["generic_suppression_items"], "Labels, CUIs, queries"),
+        ("Clinical aliases", totals["clinical_alias_rows"], "Reviewed rows"),
+        ("Assertion cues", totals["assertion_cues"], "Before, after, chart history"),
+        ("Portal meta tokens", totals["patient_portal_tokens"], "Tokens and exceptions"),
+        ("Score guards", totals["ranking_score_guards"], "Named guards"),
+    ]
+    summary_html = "".join(
+        (
+            '<div class="metric">'
+            f"<span>{html_escape(label)}</span>"
+            f"<strong>{value:,}</strong>"
+            f'<div class="muted">{html_escape(detail)}</div>'
+            "</div>"
+        )
+        for label, value, detail in summary_cards
+    )
+    audit_guardrail_rows = [
+        ["Precision audit review rows", precision["counts"]["review_rows"]],
+        ["Known useful extra CUI rows", precision["counts"]["useful_extra_rows"]],
+        ["Paragraph benchmark rows", guardrails["counts"]["paragraph_rows"]],
+        [
+            "Paragraph rows with disallowed CUIs",
+            guardrails["counts"]["paragraph_rows_with_disallowed_cuis"],
+        ],
+        ["Patient portal benchmark rows", guardrails["counts"]["patient_portal_rows"]],
+        [
+            "Patient portal rows with disallowed CUIs",
+            guardrails["counts"]["portal_rows_with_disallowed_cuis"],
+        ],
+        ["Patient portal active CUI values", guardrails["counts"]["portal_active_cui_values"]],
+        ["Patient portal context CUI values", guardrails["counts"]["portal_context_cui_values"]],
+    ]
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Search Rule Inventory</title>
+  <style>
+    :root {{
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #5d6978;
+      --line: #d7dde5;
+      --accent: #176b87;
+      --accent-soft: #e8f4f7;
+      --warn: #8c5b14;
+      --warn-soft: #fff4dc;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    main {{
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }}
+    header {{
+      margin-bottom: 22px;
+    }}
+    h1 {{
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }}
+    h2 {{
+      margin: 34px 0 12px;
+      font-size: 20px;
+      letter-spacing: 0;
+    }}
+    h3 {{
+      margin: 24px 0 8px;
+      font-size: 16px;
+      letter-spacing: 0;
+    }}
+    p {{
+      margin: 0 0 12px;
+    }}
+    .muted {{
+      color: var(--muted);
+    }}
+    .summary-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 10px;
+      margin: 18px 0 26px;
+    }}
+    .metric {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }}
+    .metric strong {{
+      display: block;
+      font-size: 26px;
+      line-height: 1;
+      margin-bottom: 7px;
+    }}
+    .metric span {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }}
+    .note {{
+      background: var(--accent-soft);
+      border: 1px solid #b7dce5;
+      border-radius: 8px;
+      padding: 14px;
+      margin: 16px 0;
+    }}
+    .warning {{
+      background: var(--warn-soft);
+      border-color: #f1d6a3;
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 10px 0 20px;
+    }}
+    th, td {{
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }}
+    th {{
+      background: #eef2f6;
+      color: #233142;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }}
+    tr:last-child td {{
+      border-bottom: 0;
+    }}
+    code {{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      background: #eef2f6;
+      border-radius: 4px;
+      padding: 1px 4px;
+    }}
+    a {{
+      color: var(--accent);
+      text-decoration: none;
+    }}
+    a:hover {{
+      text-decoration: underline;
+    }}
+    ul, ol {{
+      margin: 8px 0 16px 22px;
+      padding: 0;
+    }}
+    li {{
+      margin: 6px 0;
+    }}
+    .two-col {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 18px;
+    }}
+    .panel {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }}
+    @media (max-width: 720px) {{
+      main {{
+        width: min(100vw - 20px, 1180px);
+        padding-top: 18px;
+      }}
+      table {{
+        display: block;
+        overflow-x: auto;
+      }}
+      h1 {{
+        font-size: 25px;
+      }}
+    }}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Search Rule Inventory</h1>
+    <p class="muted">Generated from the current checkout by <code>python3 scripts/build_search_rule_inventory.py</code>.</p>
+    <p class="muted">Use this as the review surface for heuristic changes. Every rule should have a class, a source artifact, and a benchmark or audit artifact explaining why it exists.</p>
+  </header>
+
+  <section class="summary-grid" aria-label="Inventory summary">
+    {summary_html}
+  </section>
+
+  <section class="note">
+    <p><strong>Interpretation:</strong> active heuristic items are entries that can directly shape live search behavior. Guardrail rows are review and benchmark data that govern changes, but they are not all runtime rules.</p>
+  </section>
+
+  <h2>Rule Classes</h2>
+  {html_table(["Class", "Source", "Purpose", "Current Size"], rule_class_rows)}
+
+  <h2>Why This Exists</h2>
+  <ol>
+    <li>Suppress generic/meta concepts when UMLS exposes ordinary prose as concepts.</li>
+    <li>Rescue clinical aliases when a real clinical phrase should map to a known CUI.</li>
+    <li>Classify assertion/currentness when a mention is old, negated, uncertain, planned, or active.</li>
+    <li>Handle patient-message meta language when conversational words should not outrank clinical entities.</li>
+    <li>Apply narrow ranking score guards when a recurring error class cannot be represented as suppression or alias data.</li>
+    <li>Audit useful extras versus false positives so ranking changes target real errors.</li>
+    <li>Guard with benchmark rows so each improvement is repeatable.</li>
+  </ol>
+
+  <h2>Where To Put A New Rule</h2>
+  {html_table(["Problem", "Preferred Artifact", "Required Guardrail"], placement_rows)}
+
+  <h2>Current Generic Suppression</h2>
+  <ul>
+    <li>Blocked labels: <strong>{generic['counts']['blocked_labels']}</strong></li>
+    <li>Blocked CUIs: <strong>{generic['counts']['blocked_cuis']}</strong></li>
+    <li>Blocked exact queries: <strong>{generic['counts']['blocked_queries']}</strong></li>
+    <li>Label examples: {html_inline_list(generic['examples']['labels'])}</li>
+    <li>CUI examples: {html_inline_list(generic['examples']['cuis'])}</li>
+  </ul>
+
+  <h2>Current Clinical Alias Supplement</h2>
+  <ul>
+    <li>Rows: <strong>{active['counts']['rows']}</strong></li>
+    <li>Unique CUIs: <strong>{active['counts']['unique_cuis']}</strong></li>
+    <li>Rows with <code>context_any</code>: <strong>{active['counts']['rows_with_context_any']}</strong></li>
+    <li>Rows with <code>block_any</code>: <strong>{active['counts']['rows_with_block_any']}</strong></li>
+  </ul>
+  <div class="two-col">
+    <section>
+      <h3>Field Counts</h3>
+      {html_table(["Field", "Rows"], [[row["value"] or "(blank)", row["count"]] for row in active["field_counts"]])}
+    </section>
+    <section>
+      <h3>Top Semantic Type Counts</h3>
+      {html_table(["Semantic Type", "Rows"], [[row["value"] or "(blank)", row["count"]] for row in active["semantic_type_counts"][:12]])}
+    </section>
+  </div>
+
+  <h2>Current Assertion And Currentness Cues</h2>
+  <div class="two-col">
+    <section>
+      <h3>Before-Cue Counts</h3>
+      {html_table(["Status", "Cue Count"], [[status, assertion["before_counts"].get(status, 0)] for status in STATUS_ORDER])}
+    </section>
+    <section>
+      <h3>After-Cue Counts</h3>
+      {html_table(["Status", "Cue Count"], [[status, assertion["after_counts"].get(status, 0)] for status in STATUS_ORDER])}
+    </section>
+  </div>
+  <p>Chart-history cues: {html_inline_list(assertion['chart_history_cues'])}</p>
+
+  <h2>Current Patient Portal Meta Layer</h2>
+  <ul>
+    <li>Context tokens: {html_inline_list(portal['tokens']['context'])}</li>
+    <li>Self tokens: {html_inline_list(portal['tokens']['self'])}</li>
+    <li>Noise tokens: {html_inline_list(portal['tokens']['noise'])}</li>
+    <li>Clinical confusion exception tokens: {html_inline_list(portal['tokens']['clinical_confusion_exceptions'])}</li>
+  </ul>
+
+  <h2>Current Ranking Score Guards</h2>
+  {html_table(["Guard", "Purpose", "Scope", "Guardrail"], guard_rows)}
+
+  <h2>Current Audit And Benchmark Guardrails</h2>
+  {html_table(["Artifact", "Rows / Values"], audit_guardrail_rows)}
+  <div class="two-col">
+    <section>
+      <h3>Precision Audit Review Classes</h3>
+      {html_table(["Review Class", "Rows"], [[row["value"] or "(blank)", row["count"]] for row in precision["review_class_counts"]])}
+    </section>
+    <section>
+      <h3>Precision Audit Actions</h3>
+      {html_table(["Action", "Rows"], [[row["value"] or "(blank)", row["count"]] for row in precision["action_counts"]])}
+    </section>
+  </div>
+
+  <h2>Review Standard</h2>
+  <ol>
+    <li>It has a named class from this inventory.</li>
+    <li>The rule source is the narrowest artifact that can express it.</li>
+    <li>The why is readable by someone who did not write the code.</li>
+    <li>It has a focused query, disallowed CUI, useful-extra audit row, or unit test.</li>
+    <li>The full clinical smoke is run when the rule can affect broad ranking behavior.</li>
+  </ol>
+</main>
+</body>
+</html>
+"""
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output",
         type=Path,
-        default=DEFAULT_OUTPUT,
-        help="Markdown inventory to write.",
+        default=None,
+        help="Optional Markdown inventory to write.",
     )
     parser.add_argument(
         "--json-output",
@@ -622,16 +1159,30 @@ def main() -> int:
         default=None,
         help="Optional JSON inventory to write for automated diffs.",
     )
+    parser.add_argument(
+        "--html-output",
+        type=Path,
+        default=DEFAULT_HTML_OUTPUT,
+        help="HTML inventory to write.",
+    )
+    parser.add_argument(
+        "--no-html-output",
+        action="store_true",
+        help="Skip writing the HTML inventory.",
+    )
     args = parser.parse_args()
 
     inventory = build_inventory()
-    markdown = render_markdown(inventory)
+    html_report = render_html(inventory)
 
-    output = args.output.expanduser()
-    if not output.is_absolute():
-        output = ROOT / output
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(markdown, encoding="utf-8")
+    output = None
+    if args.output:
+        markdown = render_markdown(inventory)
+        output = args.output.expanduser()
+        if not output.is_absolute():
+            output = ROOT / output
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(markdown, encoding="utf-8")
 
     if args.json_output:
         json_output = args.json_output.expanduser()
@@ -643,7 +1194,18 @@ def main() -> int:
             encoding="utf-8",
         )
 
-    print(f"wrote {relative(output)}")
+    html_output = None
+    if not args.no_html_output and args.html_output:
+        html_output = args.html_output.expanduser()
+        if not html_output.is_absolute():
+            html_output = ROOT / html_output
+        html_output.parent.mkdir(parents=True, exist_ok=True)
+        html_output.write_text(html_report, encoding="utf-8")
+
+    if output:
+        print(f"wrote {relative(output)}")
+    if html_output:
+        print(f"wrote {relative(html_output)}")
     return 0
 
 

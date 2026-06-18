@@ -46,7 +46,7 @@ from qe_evidence_vectors.embeddings import (
 from qe_evidence_vectors.evidence import iter_filtered_evidence_files
 from qe_evidence_vectors.external_cui_vectors import build_external_cui_vector_index
 from qe_evidence_vectors.corpus import merge_corpus_documents, read_tabular_corpus
-from qe_evidence_vectors.code_index import build_code_index
+from qe_evidence_vectors.code_index import CodeIndex, build_code_index, build_runtime_code_index
 from qe_evidence_vectors.fetchers import (
     fetch_clinicaltrials_documents,
     fetch_dailymed_documents,
@@ -75,7 +75,11 @@ from qe_evidence_vectors.incremental_build import (
     write_incremental_vector_assembly,
     write_vector_reuse_plan,
 )
-from qe_evidence_vectors.label_index import LabelIndex, build_label_index
+from qe_evidence_vectors.label_index import (
+    LabelIndex,
+    build_label_index,
+    build_label_index_from_code_index,
+)
 from qe_evidence_vectors.linker import iter_linked_corpus_evidence
 from qe_evidence_vectors.profile_workflow import build_profile_indexes, link_profile_shards
 from qe_evidence_vectors.pubmed_bulk import (
@@ -763,6 +767,7 @@ def cmd_build_label_index(args: argparse.Namespace) -> int:
         min_chars=args.min_chars,
         min_tokens=args.min_tokens,
         max_tokens=args.max_tokens,
+        allow_short_labels=args.allow_short_labels,
         include_lexical_variants=not args.no_lexical_variants,
         replace=args.replace,
     )
@@ -770,16 +775,43 @@ def cmd_build_label_index(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_build_label_index_from_code_index(args: argparse.Namespace) -> int:
+    count = build_label_index_from_code_index(
+        source_path=args.source,
+        out_path=args.out,
+        include_generic=args.include_generic,
+        min_chars=args.min_chars,
+        min_tokens=args.min_tokens,
+        max_tokens=args.max_tokens,
+        allow_short_labels=args.allow_short_labels,
+        include_lexical_variants=not args.no_lexical_variants,
+        replace=args.replace,
+        batch_size=args.batch_size,
+    )
+    print(f"Indexed {count:,} code-index labels into {args.out}")
+    return 0
+
+
 def cmd_build_code_index(args: argparse.Namespace) -> int:
     count = build_code_index(
         mrconso_path=args.mrconso,
         out_path=args.out,
+        legacy_mrconso_history_path=args.legacy_mrconso_history,
         language=args.language,
         include_suppressed=args.include_suppressed,
         replace=args.replace,
         batch_size=args.batch_size,
+        legacy_identifier_types=args.legacy_identifier_type,
     )
     print(f"Indexed {count:,} UMLS code mappings into {args.out}")
+    if args.legacy_mrconso_history:
+        code_index = CodeIndex(args.out)
+        try:
+            print(
+                f"Indexed {code_index.legacy_identifier_count():,} legacy-only UMLS identifiers into {args.out}"
+            )
+        finally:
+            code_index.close()
     return 0
 
 
@@ -1170,6 +1202,23 @@ def cmd_build_provenance_index(args: argparse.Namespace) -> int:
         f"evidence rows into {args.sqlite}"
     )
     print(f"Indexed {stats['doc_text_keys']:,} evidence text keys across {stats['docs']:,} concept docs")
+    return 0
+
+
+def cmd_slim_code_index(args: argparse.Namespace) -> int:
+    stats = build_runtime_code_index(
+        source_path=args.source,
+        out_path=args.out,
+        replace=args.replace,
+    )
+    print(
+        f"Wrote runtime code index with {stats['code_mappings']:,} code mappings, "
+        f"{stats['preferred_terms']:,} preferred terms, "
+        f"{stats['aui_mappings']:,} AUI mappings, "
+        f"{stats['search_labels']:,} compact search-label rows, "
+        f"and {stats['legacy_identifier_mappings']:,} legacy identifiers to {stats['out']} "
+        f"({int(stats['bytes']):,} bytes)"
+    )
     return 0
 
 
@@ -1922,12 +1971,42 @@ def build_parser() -> argparse.ArgumentParser:
     label_parser.add_argument("--min-tokens", type=int, default=1)
     label_parser.add_argument("--max-tokens", type=int, default=8)
     label_parser.add_argument(
+        "--allow-short-labels",
+        action="store_true",
+        help="Keep short one-token labels for UMLS /search-style indexes.",
+    )
+    label_parser.add_argument(
         "--no-lexical-variants",
         action="store_true",
         help="Only index literal normalized labels; by default SPECIALIST-style lexical variants are also indexed.",
     )
     label_parser.add_argument("--replace", action="store_true")
     label_parser.set_defaults(func=cmd_build_label_index)
+
+    label_from_code_parser = subparsers.add_parser("build-label-index-from-code-index")
+    label_from_code_parser.add_argument(
+        "--source",
+        required=True,
+        help="Existing SQLite CUI/code index with a code_mappings table.",
+    )
+    label_from_code_parser.add_argument("--out", required=True, help="Output SQLite label index")
+    label_from_code_parser.add_argument("--include-generic", action="store_true")
+    label_from_code_parser.add_argument("--min-chars", type=int, default=3)
+    label_from_code_parser.add_argument("--min-tokens", type=int, default=1)
+    label_from_code_parser.add_argument("--max-tokens", type=int, default=8)
+    label_from_code_parser.add_argument(
+        "--allow-short-labels",
+        action="store_true",
+        help="Keep short one-token labels for UMLS /search-style indexes.",
+    )
+    label_from_code_parser.add_argument(
+        "--no-lexical-variants",
+        action="store_true",
+        help="Only index literal normalized labels.",
+    )
+    label_from_code_parser.add_argument("--batch-size", type=int, default=50_000)
+    label_from_code_parser.add_argument("--replace", action="store_true")
+    label_from_code_parser.set_defaults(func=cmd_build_label_index_from_code_index)
 
     code_parser = subparsers.add_parser("build-code-index")
     code_parser.add_argument("--mrconso", required=True, help="Path to MRCONSO.RRF")
@@ -1936,7 +2015,23 @@ def build_parser() -> argparse.ArgumentParser:
     code_parser.add_argument("--include-suppressed", action="store_true")
     code_parser.add_argument("--replace", action="store_true")
     code_parser.add_argument("--batch-size", type=int, default=50_000)
+    code_parser.add_argument(
+        "--legacy-mrconso-history",
+        help="Optional MRCONSO_HISTORY.txt path. Adds retired CUI/code/AUI rows absent from current MRCONSO as weak lookup signals.",
+    )
+    code_parser.add_argument(
+        "--legacy-identifier-type",
+        action="append",
+        choices=["CUI", "CODE", "SCUI", "SDUI", "AUI"],
+        help="Legacy identifier type to index from MRCONSO_HISTORY.txt. Repeat to override the default CUI/CODE/SCUI/SDUI/AUI set.",
+    )
     code_parser.set_defaults(func=cmd_build_code_index)
+
+    slim_code_parser = subparsers.add_parser("slim-code-index")
+    slim_code_parser.add_argument("--source", required=True, help="Existing full SQLite CUI/code index")
+    slim_code_parser.add_argument("--out", required=True, help="Output runtime SQLite CUI/code index")
+    slim_code_parser.add_argument("--replace", action="store_true")
+    slim_code_parser.set_defaults(func=cmd_slim_code_index)
 
     semantic_type_parser = subparsers.add_parser("build-semantic-type-index")
     semantic_type_parser.add_argument("--mrsty", required=True, help="Path to MRSTY.RRF")

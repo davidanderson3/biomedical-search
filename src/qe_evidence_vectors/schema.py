@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -52,7 +53,8 @@ def write_jsonl(path: str | Path, records: Iterable[Any]) -> int:
     path = Path(path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
     count = 0
-    with path.open("w", encoding="utf-8") as handle:
+    opener = gzip.open if path.suffix == ".gz" else Path.open
+    with opener(path, "wt", encoding="utf-8") as handle:
         for record in records:
             payload = asdict(record) if hasattr(record, "__dataclass_fields__") else record
             handle.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
@@ -62,7 +64,9 @@ def write_jsonl(path: str | Path, records: Iterable[Any]) -> int:
 
 
 def iter_jsonl(path: str | Path) -> Iterator[dict[str, Any]]:
-    with Path(path).expanduser().open("r", encoding="utf-8") as handle:
+    path = Path(path).expanduser()
+    opener = gzip.open if path.suffix == ".gz" else Path.open
+    with opener(path, "rt", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue

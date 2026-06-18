@@ -24,7 +24,7 @@ Baseline observations:
   queries remain protected.
 - Added focused tests covering the gestational diabetes sentence and direct oral
   glucose tolerance test intent.
-- Regenerated `docs/search_rule_inventory.md`.
+- Regenerated `docs/search_rule_inventory.html`.
 
 ## Result
 

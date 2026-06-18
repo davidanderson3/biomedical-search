@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reproducibility Guide</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>Reproducibility Guide</h1>
+<p>This project can be reproduced externally, but not from the repository alone. The code and benchmark configuration can be shared; several source vocabularies and generated indexes must be rebuilt locally because they are licensed or too large to commit.</p>
+<p>For a fresh GitHub clone, start with <a href="github_quickstart.html">GitHub Quickstart</a>. It separates commands that work without local artifacts from commands that require a completed local build.</p>
+<h2>Reproducibility Levels</h2>
+<h3>Level 1: Benchmark Reproduction On An Existing Build</h3>
+<p>Use this when a machine already has the generated <code>build/</code> artifacts.</p>
+<pre><code class="language-sh">python3 scripts/reproducibility_manifest.py \
+  --hash-small-files \
+  --out build/reproducibility_manifest.json
+
+python3 scripts/evaluate_paragraph_quality.py \
+  --output-dir build/improvements/reproduce_current_quality \
+  --top-k 60
+
+python3 scripts/audit_paragraph_precision.py \
+  --payloads build/improvements/reproduce_current_quality/paragraph_search_payloads.jsonl \
+  --output-dir build/improvements/reproduce_current_quality \
+  --top-n 10</code></pre>
+<p>Expected current quality:</p>
+<ul><li>116 paragraph queries</li><li>570 expected concepts</li><li>100% recall@10</li><li>116/116 good verdicts</li><li>0 calibrated suspect top-10 hits</li></ul>
+<h3>Level 2: Public/Shareable Build</h3>
+<p>Use this for an external public build that avoids real EHR data. Public/shareable inputs may include PubMed, PMC Open Access, Europe PMC, bounded ClinicalTrials.gov, MedlinePlus, MedlinePlus Genetics, DailyMed subsets, NCBI Bookshelf / NLM LitArch Open Access packages, reusable government reference pages such as NCI/CDC/FDA/NIDDK, OpenAlex metadata, Wikipedia/Wikimedia-derived enrichment where license-compatible, public OHDSI aggregate artifacts, and any open source vocabularies that can be redistributed under their terms.</p>
+<p>This level should not use credentialed EHR data by default.</p>
+<h3>Level 3: Licensed Local Build</h3>
+<p>Use this when the builder has local rights to UMLS, LOINC, SNOMED CT, or other restricted vocabularies. Generated indexes derived from those sources should not be redistributed unless the source license permits it.</p>
+<h2>Required Source Inputs</h2>
+<p>Repo-provided configuration:</p>
+<ul><li><code>config/search_quality_paragraph_queries.tsv</code></li><li><code>config/search_quality_acceptable_cui_alternatives.tsv</code></li><li><code>config/search_quality_useful_extra_cuis.tsv</code></li><li><code>config/active_label_supplement.tsv</code></li><li>source-topic configs under <code>config/</code></li></ul>
+<p>External public sources:</p>
+<ul><li>PubMed abstracts through NCBI E-utilities</li><li>PMC Open Access full text through NCBI/PMC OA</li><li>Europe PMC abstracts</li><li>ClinicalTrials.gov API v2 study subsets</li><li>MedlinePlus health topic XML subsets</li><li>MedlinePlus Genetics summary XML subsets</li><li>DailyMed SPL drug label subsets</li><li>NCBI Bookshelf / NLM LitArch Open Access subset packages through the FTP file list</li><li>HPO and MONDO OBO ontology term corpora, with HPO annotation files for opt-in relation augmentation after source-specific reuse review</li><li>OpenAlex cited-work metadata</li><li>Wikipedia/Wikimedia open content where license-compatible</li><li>Public OHDSI aggregate artifacts, not patient-level data</li></ul>
+<p>Licensed or local-only sources:</p>
+<ul><li>UMLS Metathesaurus files, especially <code>MRCONSO.RRF</code>, <code>MRSTY.RRF</code>, <code>MRREL.RRF</code>, and <code>MRDEF.RRF</code></li><li>LOINC release files when direct LOINC enrichment is used</li><li>SNOMED CT only where deployment/license terms permit it</li><li>External CUI vectors such as cui2vec/BioConceptVec only under their own licenses</li><li>Credentialed EHR data should stay out of the public default path</li></ul>
+<h2>Core Generated Artifacts</h2>
+<p>The current search server expects document/vector artifacts plus several SQLite indexes:</p>
+<ul><li>concept documents JSONL</li><li>concept vectors JSONL or Elasticsearch/OpenSearch vector index</li><li><code>build/umls_biomedicine_search_label_index.sqlite</code></li><li><code>build/cui_code_index.sqlite</code></li><li><code>build/umls_semantic_types.sqlite</code></li><li><code>build/umls_related_concepts.sqlite</code></li><li><code>build/umls_research_relations.sqlite</code></li><li><code>build/umls_definitions.sqlite</code></li><li>optional <code>build/relationship_edges.sqlite</code> for relationship display</li><li>optional <code>build/external_cui_vector_neighbors.sqlite</code></li></ul>
+<p>Run this to inventory what exists locally:</p>
+<pre><code class="language-sh">python3 scripts/reproducibility_manifest.py \
+  --umls-meta /path/to/UMLS/META \
+  --loinc-dir data/local_sources/loinc/Loinc_2.82 \
+  --snomed-zip /path/to/SnomedCT_release.zip \
+  --hash-small-files \
+  --out build/reproducibility_manifest.json</code></pre>
+<p>Use <code>--full-hash</code> only when you are willing to spend time hashing large generated artifacts.</p>
+<p>The manifest does not copy any source data. It records existence, size, timestamps, license class, and optional SHA-256 hashes so another builder can tell whether they are using the same local source drops.</p>
+<h2>Source Acquisition Progression</h2>
+<p>Evidence acquisition should be replayable as a measured sequence, not just a set of generated files. The stage ledger in <code>config/source_acquisition_progression.tsv</code> records each acquisition attempt with its hypothesis, scope, query set, metrics, artifacts, decision rule, and decision. Run this after adding or retesting source evidence:</p>
+<pre><code class="language-sh">python3 scripts/source_acquisition_progression.py \
+  --fail-on-regression \
+  --out-json build/source_acquisition/progression_manifest.json \
+  --out-md build/source_acquisition/progression_report.md</code></pre>
+<p>The generated manifest inventories every listed artifact, hashes small files, records the stage-config hash, and evaluates deterministic gates. Diagnostic stages are recorded for learning; <code>no_regression</code> stages must not lose recall or add disallowed top-ranked concepts relative to the previous retained stage in the same group; <code>promote</code> stages must also show a useful improvement. Rejected diagnostic stages are recorded without lowering the next gate. Final group deltas are still reported against the group&#x27;s baseline so the net improvement remains visible.</p>
+<p>Fresh clones do not have the historical <code>build/source_acquisition/</code> metrics. Use this non-strict inspection mode before local artifacts have been rebuilt:</p>
+<pre><code class="language-sh">python3 scripts/source_acquisition_progression.py \
+  --allow-missing-stage-metrics \
+  --out-json build/source_acquisition/progression_manifest.json \
+  --out-md build/source_acquisition/progression_report.md</code></pre>
+<p>Use <code>--fail-on-regression</code> only after the referenced local artifacts exist.</p>
+<h2>Runtime Dependencies</h2>
+<p>The public-first hashing build path is intentionally standard-library only. It does not require <code>pip install</code> for ingestion, UMLS/LOINC/SNOMED local indexing, hashing embeddings, local vector search, the search UI, or the paragraph evaluator.</p>
+<p><code>requirements-public.txt</code> is intentionally empty except for comments. It exists so external users have a stable install step:</p>
+<pre><code class="language-sh">python3 -m pip install -r requirements-public.txt</code></pre>
+<p>Optional features have separate dependencies:</p>
+<p>the Python client code uses the standard-library HTTP stack</p>
+<ul><li>SapBERT/transformer embeddings: <code>torch</code> and <code>transformers</code></li><li>sentence-transformer embeddings: <code>sentence-transformers</code></li><li>external CUI vector indexing: <code>numpy</code></li><li>Elasticsearch/OpenSearch serving: a running Elasticsearch/OpenSearch service;</li></ul>
+<h2>Minimal Public-First Build Outline</h2>
+<p>The exact corpus size can vary, but the reproducible public path is now wrapped by one command:</p>
+<pre><code class="language-sh">python3 scripts/run_public_rebuild.py \
+  --umls-meta /path/to/UMLS/META \
+  --out-dir build/public \
+  --provider hashing</code></pre>
+<p>For a command plan without network calls or file writes:</p>
+<pre><code class="language-sh">python3 scripts/run_public_rebuild.py \
+  --umls-meta /path/to/UMLS/META \
+  --out-dir build/public \
+  --provider hashing \
+  --dry-run</code></pre>
+<p>The wrapper fetches public corpora, builds UMLS-derived indexes from local licensed files, links corpus text to CUIs with multiword semantic-profile shards, builds concept documents/vectors, builds provenance and relationship indexes, runs paragraph evaluation plus precision audit, writes a reproducibility manifest, and writes the server command to <code>build/public/server_command.txt</code>.</p>
+<p>The same steps are shown below for debugging or custom builds.</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py fetch-pubmed-topics \
+  --topics config/pubmed_biomedicine_topics.tsv \
+  --retmax 500 \
+  --out build/public/pubmed_topics_corpus.jsonl
+
+python3 scripts/evidence_vectors.py fetch-europepmc-topics \
+  --topics config/pubmed_biomedicine_topics.tsv \
+  --max-records 500 \
+  --out build/public/europepmc_topics_corpus.jsonl
+
+python3 scripts/evidence_vectors.py fetch-pmc-oa-topics \
+  --topics config/pubmed_biomedicine_topics.tsv \
+  --max-records 200 \
+  --out build/public/pmc_oa_topics_corpus.jsonl</code></pre>
+<p>Build UMLS-derived indexes locally from licensed files:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-label-index \
+  --mrconso /path/to/MRCONSO.RRF \
+  --mrsty /path/to/MRSTY.RRF \
+  --profile biomedicine \
+  --out build/umls_biomedicine_search_label_index.sqlite \
+  --replace
+
+python3 scripts/evidence_vectors.py build-profile-indexes \
+  --mrconso /path/to/MRCONSO.RRF \
+  --mrsty /path/to/MRSTY.RRF \
+  --out-dir build/public/indexes/profile_indexes \
+  --replace
+
+python3 scripts/evidence_vectors.py build-code-index \
+  --mrconso /path/to/MRCONSO.RRF \
+  --out build/cui_code_index.sqlite \
+  --replace
+
+python3 scripts/evidence_vectors.py build-semantic-type-index \
+  --mrsty /path/to/MRSTY.RRF \
+  --out build/umls_semantic_types.sqlite \
+  --replace</code></pre>
+<p>Link public corpus text to CUIs, build concept documents, and embed:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py link-profile-shards \
+  --corpus build/public/pubmed_topics_corpus.jsonl build/public/europepmc_topics_corpus.jsonl build/public/pmc_oa_topics_corpus.jsonl build/public/clinicaltrials_subset_corpus.jsonl build/public/medlineplus_subset_corpus.jsonl build/public/medlineplus_genetics_subset_corpus.jsonl build/public/dailymed_subset_corpus.jsonl build/public/bookshelf_oa_subset_corpus.jsonl \
+  --index-dir build/public/indexes/profile_indexes \
+  --out-dir build/public/profile_evidence \
+  --run-name public_corpus \
+  --matcher trie \
+  --materialize-corpus
+
+python3 scripts/evidence_vectors.py build-docs-sqlite \
+  --evidence build/public/profile_evidence/public_corpus_*_evidence.jsonl \
+  --sqlite build/public/public_docs.sqlite \
+  --mrconso /path/to/MRCONSO.RRF \
+  --out build/public/public_concept_documents.jsonl \
+  --replace
+
+python3 scripts/evidence_vectors.py embed \
+  --docs build/public/public_concept_documents.jsonl \
+  --out build/public/public_concept_vectors.hashing.jsonl \
+  --provider hashing</code></pre>
+<p>Build a provenance index so evidence bullets can resolve to public citations on demand without loading every evidence row into the server:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-provenance-index \
+  --evidence build/public/profile_evidence/public_corpus_*_evidence.jsonl \
+  --docs build/public/public_concept_documents.jsonl \
+  --sqlite build/search_quality_provenance.sqlite \
+  --replace</code></pre>
+<p>Build optional relationship and definition indexes:</p>
+<pre><code class="language-sh">python3 scripts/evidence_vectors.py build-relation-index \
+  --mrrel /path/to/MRREL.RRF \
+  --mrconso /path/to/MRCONSO.RRF \
+  --docs build/public/public_concept_documents.jsonl \
+  --out build/umls_related_concepts.sqlite \
+  --replace
+
+python3 scripts/evidence_vectors.py build-research-relation-index \
+  --mrrel /path/to/MRREL.RRF \
+  --mrconso /path/to/MRCONSO.RRF \
+  --mrsty /path/to/MRSTY.RRF \
+  --docs build/public/public_concept_documents.jsonl \
+  --out build/umls_research_relations.sqlite \
+  --replace
+
+python3 scripts/evidence_vectors.py build-definition-index \
+  --mrdef /path/to/MRDEF.RRF \
+  --docs build/public/public_concept_documents.jsonl \
+  --out build/umls_definitions.sqlite \
+  --replace</code></pre>
+<p>Run the server against public artifacts:</p>
+<pre><code class="language-sh">python3 scripts/search_quality_server.py \
+  --port 8766 \
+  --vectors build/public/public_concept_vectors.hashing.jsonl \
+  --docs build/public/public_concept_documents.jsonl \
+  --label-index build/umls_biomedicine_search_label_index.sqlite \
+  --code-index build/cui_code_index.sqlite \
+  --semantic-type-index build/umls_semantic_types.sqlite \
+  --relation-index build/umls_related_concepts.sqlite \
+  --research-relation-index build/umls_research_relations.sqlite \
+  --definition-index build/umls_definitions.sqlite \
+  --provenance-index build/search_quality_provenance.sqlite \
+  --active-label-supplement config/active_label_supplement.tsv</code></pre>
+<p>Then open:</p>
+<pre><code class="language-text">http://127.0.0.1:8766/</code></pre>
+<p>Evaluate the same rebuilt docs/vectors directly, without renaming them to the current local defaults:</p>
+<pre><code class="language-sh">python3 scripts/evaluate_paragraph_quality.py \
+  --vectors build/public/public_concept_vectors.hashing.jsonl \
+  --docs build/public/public_concept_documents.jsonl \
+  --label-index build/umls_biomedicine_search_label_index.sqlite \
+  --code-index build/cui_code_index.sqlite \
+  --semantic-type-index build/umls_semantic_types.sqlite \
+  --relation-index build/umls_related_concepts.sqlite \
+  --research-relation-index build/umls_research_relations.sqlite \
+  --definition-index build/umls_definitions.sqlite \
+  --active-label-supplement config/active_label_supplement.tsv \
+  --output-dir build/public/paragraph_quality_eval \
+  --top-k 60
+
+python3 scripts/audit_paragraph_precision.py \
+  --payloads build/public/paragraph_quality_eval/paragraph_search_payloads.jsonl \
+  --output-dir build/public/paragraph_quality_eval \
+  --top-n 10</code></pre>
+<p>The same query set is calibrated against the current local benchmark. A smaller public corpus may score lower; record that in the manifest rather than treating it as a build failure.</p>
+<h2>Source And License Matrix</h2>
+<table><thead><tr><th>Source</th><th>Required</th><th>Redistributable in repo</th><th>Used for</th><th>Notes</th></tr></thead><tbody><tr><td>Repo config TSVs</td><td>yes</td><td>yes</td><td>benchmark, active labels, topics</td><td>Versioned with code.</td></tr><tr><td>PubMed abstracts</td><td>public build yes</td><td>derived outputs depend on NCBI terms</td><td>literature evidence</td><td>Fetched by topic at rebuild time.</td></tr><tr><td>PMC Open Access</td><td>public build recommended</td><td>license varies by article</td><td>full-text evidence</td><td>Keep license/provenance metadata.</td></tr><tr><td>Europe PMC</td><td>public build recommended</td><td>derived outputs depend on source terms</td><td>literature evidence</td><td>De-duplicated downstream by identifiers.</td></tr><tr><td>MedlinePlus / MedlinePlus Genetics / DailyMed</td><td>public build optional</td><td>yes with attribution and source caveats</td><td>lay language, genetics, drug labels</td><td>Keep bounded subsets and source URLs.</td></tr><tr><td>NCBI Bookshelf / NLM LitArch Open Access subset</td><td>public build optional</td><td>license varies by package</td><td>clinical guidelines, evidence reports, book chapters</td><td>Fetch only through the NLM LitArch FTP service and preserve package license metadata.</td></tr><tr><td>HPO / MONDO OBO ontologies</td><td>public build optional</td><td>yes with attribution/version metadata</td><td>phenotype and disease labels, definitions, synonyms, xrefs, hierarchy text</td><td>Use <code>fetch-obo-ontology</code>; HPO annotation files can augment research relations with disease/gene/phenotype links when explicitly enabled after source-specific reuse review.</td></tr><tr><td>NCI / CDC / FDA / NIDDK reference pages</td><td>public build optional</td><td>yes for reusable text, with source caveats</td><td>diagnostic and disease reference language</td><td>The rebuild fetches small default subsets; check page-level exceptions.</td></tr><tr><td>Merck/MSD Manual Professional / AAFP / Medscape / BMJ Best Practice / NICE CKS / Patient.info Professional / GPnotebook</td><td>no for public build</td><td>no without permission or licensed access</td><td>high-value clinician reference language</td><td>Tracked in <code>config/reference_source_policy.tsv</code>; use only in private/licensed deployments.</td></tr><tr><td>NCBI Bookshelf StatPearls / WikEM</td><td>no for public build</td><td>restricted by per-source license and access terms</td><td>open-access clinician reference language</td><td>Not default rebuild sources; require explicit license review, attribution/share-alike handling where applicable, and no prohibited automated access.</td></tr><tr><td>UMLS META</td><td>licensed build yes</td><td>no</td><td>CUI backbone, labels, types, relations, definitions</td><td>External users supply their own local release.</td></tr><tr><td>LOINC</td><td>optional</td><td>no unless terms permit</td><td>observation enrichment</td><td>Manifested when supplied.</td></tr><tr><td>SNOMED CT</td><td>optional</td><td>no unless deployment license permits</td><td>procedures, disorders, findings</td><td>Manifested when supplied.</td></tr><tr><td>OpenAlex/Wikipedia/Wikimedia</td><td>optional</td><td>usually yes with attribution/license handling</td><td>enrichment, images, cited evidence</td><td>Keep source URLs and licenses.</td></tr><tr><td>OHDSI aggregate artifacts</td><td>optional</td><td>only if public/shareable aggregate data</td><td>relationship edges</td><td>Do not use patient-level EHR data in public rebuilds.</td></tr><tr><td>Credentialed EHR data</td><td>no for public build</td><td>no</td><td>local-only experimentation</td><td>Excluded from the public rebuild wrapper.</td></tr></tbody></table>
+<h2>What Not To Redistribute</h2>
+<p>Do not commit or publish:</p>
+<ul><li><code>build/</code> artifacts derived from licensed vocabularies unless the source licenses permit redistribution</li><li>raw UMLS, LOINC, or SNOMED CT release files</li><li>credentialed clinical corpora</li><li>raw patient-level OHDSI/EHR data</li></ul>
+<p>The repository <code>.gitignore</code> already excludes <code>build/</code>, <code>data/</code>, local LOINC drops, and SNOMED release archives.</p>
+<h2>External Release Checklist</h2>
+<p>Before publishing an external reproducibility package:</p>
+<p>supplied.</p>
+<p>locally rebuilt licensed indexes.</p>
+<p><code>--docs</code> paths.</p>
+<p>restricted source files or generated indexes derived from non-redistributable sources.</p>
+<ol><li>Generate <code>build/reproducibility_manifest.json</code> with all local source paths</li><li>Confirm the public server command uses only public corpus docs/vectors plus</li><li>Run <code>scripts/evaluate_paragraph_quality.py</code> with explicit <code>--vectors</code> and</li><li>Run <code>scripts/audit_paragraph_precision.py</code> on the evaluator payloads.</li><li>Publish the code, configs, benchmark TSVs, docs, and manifest; do not publish</li></ol>
+<h2>Practical Bundle Split</h2>
+<p>For an external release, create two artifact bundles:</p>
+<ul><li>Public bundle: code, configs, public benchmark queries, public-only enrichment outputs, and reproducibility manifests.</li><li>Local build bundle: scripts and instructions for rebuilding UMLS/LOINC/SNOMED-derived indexes from locally licensed files.</li></ul>
+</main>
+<!-- Converted from docs/reproducibility.html. -->
+</body>
+</html>

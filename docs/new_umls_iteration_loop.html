@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>New UMLS Iteration Loop</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>New UMLS Iteration Loop</h1>
+<p>Last updated: 2026-06-08</p>
+<p>This file defines the operating loop for building a broadly useful biomedical search interface and vector store on top of an open UMLS seed plus local <code>NEW#######</code> extension concepts.</p>
+<h2>Product Goal</h2>
+<p>Build a search system that clinicians, researchers, and terminology maintainers can use for real biomedical language. The system must be:</p>
+<p>codes, LOINC observations, abbreviations, procedures, findings, therapies, and relationship-oriented queries.</p>
+<p>clear release decision.</p>
+<p>broader/narrower assertions can be added without rebuilding everything.</p>
+<p>to understand why it exists and how it was produced.</p>
+<ul><li>Broadly useful: handles common clinical notes, research abstracts, source</li><li>Updatable: every run has a manifest, stable inputs, versioned outputs, and a</li><li>Extensible: new <code>NEW#######</code> concepts, aliases, evidence, and MTH-style</li><li>Documentable: each concept and index change has enough provenance for a person</li></ul>
+<h2>Pipeline Diagram</h2>
+<pre><code class="language-mermaid">flowchart TD
+  subgraph Inputs
+    UMLS[&quot;UMLS META&lt;br/&gt;level-0/category-0 SABs&quot;]
+    LOINC[&quot;Direct LOINC files&quot;]
+    PublicSources[&quot;Core public source products&lt;br/&gt;PubMed/PMC, MedlinePlus, DailyMed,&lt;br/&gt;HPO/MONDO&quot;]
+    AssociationSignals[&quot;Opt-in association signals&lt;br/&gt;CUI2Vec/BioConceptVec,&lt;br/&gt;curated relation candidates&quot;]
+    QueryPressure[&quot;Query pressure&lt;br/&gt;paragraph benchmark, reviewed failures,&lt;br/&gt;private log-derived review queues&quot;]
+    PriorExtensions[&quot;Prior NEW####### concepts&quot;]
+  end
+
+  Manifest[&quot;Run manifest&lt;br/&gt;versions, inputs, boundaries, thresholds&quot;]
+  Coverage[&quot;Known coverage layer&lt;br/&gt;UMLS labels, code resolver, LOINC,&lt;br/&gt;prior extensions, semantic guards&quot;]
+  Normalize[&quot;Normalize candidate language&lt;br/&gt;queries, evidence snippets, labels, source codes&quot;]
+  ExistingCheck{&quot;Already covered&lt;br/&gt;or duplicate?&quot;}
+  EvidenceGate{&quot;Enough evidence&lt;br/&gt;and useful boundary?&quot;}
+  CandidateReview[&quot;Candidate review&lt;br/&gt;label, aliases, semantic type,&lt;br/&gt;definition, anchors, rationale&quot;]
+  Deferred[&quot;Deferred or rejected gaps&lt;br/&gt;weak evidence, duplicate, bad boundary&quot;]
+
+  CorpusDocs[&quot;Corpus documents&lt;br/&gt;source text with provenance&quot;]
+  LinkedEvidence[&quot;Linked evidence records&lt;br/&gt;CUI mentions and source refs&quot;]
+  RelationshipEdges[&quot;Relationship edges&lt;br/&gt;curated, HPO/MONDO, OHDSI/public aggregates&quot;]
+  ExtensionRegistry[&quot;Promoted extension registry&lt;br/&gt;NEW####### concepts&quot;]
+  ConceptDocs[&quot;Concept documents&lt;br/&gt;one CUI/view with labels and evidence&quot;]
+  VectorPlan[&quot;Vector reuse plan&lt;br/&gt;text hashes and changed docs&quot;]
+  Vectors[&quot;SapBERT CLS vectors&lt;br/&gt;new or reused&quot;]
+  SearchIndexes[&quot;Search indexes&lt;br/&gt;vectors, labels, codes, semantic types,&lt;br/&gt;provenance, relations&quot;]
+  SearchUI[&quot;Search API and UI&lt;br/&gt;public-output filter applied at response time&quot;]
+  Evaluation[&quot;Evaluation runs&lt;br/&gt;strict success, recall, false positives,&lt;br/&gt;good/mixed/poor, source drift&quot;]
+  Dashboard[&quot;Source/evidence dashboard&lt;br/&gt;coverage, quality, next steps&quot;]
+  ReleaseDecision{&quot;Release gate&lt;br/&gt;passes?&quot;}
+  ActiveRelease[&quot;Active local release&lt;br/&gt;alias or extension shard promoted&quot;]
+  NextGap[&quot;Next iteration gap queue&quot;]
+
+  UMLS --&gt; Manifest
+  LOINC --&gt; Manifest
+  PublicSources --&gt; Manifest
+  AssociationSignals --&gt; Manifest
+  QueryPressure --&gt; Manifest
+  PriorExtensions --&gt; Manifest
+
+  Manifest --&gt; Coverage
+  Manifest --&gt; CorpusDocs
+  Coverage --&gt; Normalize
+  QueryPressure --&gt; Normalize
+  CorpusDocs --&gt; LinkedEvidence
+  LinkedEvidence --&gt; ConceptDocs
+  PublicSources --&gt; RelationshipEdges
+  Normalize --&gt; ExistingCheck
+  ExistingCheck -- &quot;yes&quot; --&gt; Evaluation
+  ExistingCheck -- &quot;no&quot; --&gt; EvidenceGate
+  EvidenceGate -- &quot;no&quot; --&gt; Deferred
+  EvidenceGate -- &quot;yes&quot; --&gt; CandidateReview
+  CandidateReview --&gt; ExtensionRegistry
+  CandidateReview --&gt; RelationshipEdges
+  ExtensionRegistry --&gt; ConceptDocs
+  ConceptDocs --&gt; VectorPlan
+  VectorPlan --&gt; Vectors
+  Vectors --&gt; SearchIndexes
+  Coverage --&gt; SearchIndexes
+  RelationshipEdges --&gt; SearchIndexes
+  SearchIndexes --&gt; SearchUI
+  SearchUI --&gt; Evaluation
+  Evaluation --&gt; Dashboard
+  Dashboard --&gt; ReleaseDecision
+  ReleaseDecision -- &quot;yes&quot; --&gt; ActiveRelease
+  ReleaseDecision -- &quot;no&quot; --&gt; NextGap
+  Deferred --&gt; NextGap
+  Evaluation --&gt; NextGap
+  NextGap --&gt; Manifest</code></pre>
+<p>Read the diagram as a gated loop, not a one-way ETL job. Source products and UMLS/LOINC identity data create searchable artifacts, but evaluation determines whether those artifacts are promoted, held for review, or routed back into the next gap queue.</p>
+<h2>Current Decisions</h2>
+<p>UMLS restriction level 0 / category 0. Each run must persist the selected SABs and UMLS release when those files are part of the run.</p>
+<p>supplied separately. Preserve raw codes/names and produce clearer clinical observation display names as a product layer, not as proof that a new concept exists.</p>
+<p>not NLM-assigned UMLS CUIs.</p>
+<p>especially observations/results, phenotypes, procedures, clinician shorthand, treatment response, safety/toxicity patterns, and procedure concepts weakened by the absence of CPT in the open subset.</p>
+<p>but not required before creating a local CUI.</p>
+<p>iteration shows acceptable precision and good duplicate control.</p>
+<p>as the mandatory judged query pool. It currently contains 167 query rows plus the header. Normal improvement loops should run a rotating 50-query sample from that pool for speed; use the full pool only for deliberate release or exhaustive checks.</p>
+<p>drug-label, lay-language, and diagnostic-report queries for repeatable search pressure. Current set: <code>config/typical_clinical_research_sentences.tsv</code>.</p>
+<p>test long-input ranking, negation, copied-forward context, and incidental background concepts. Current set: <code>config/full_page_sample_queries.tsv</code>.</p>
+<ul><li>Base UMLS subset: use source vocabularies identified in <code>MRSAB.RRF</code> as</li><li>LOINC: use UMLS level-0 LOINC content where present and direct LOINC files</li><li>New local CUIs: use <code>NEW#######</code> identifiers. These are local product CUIs,</li><li>Weak-area focus: clinically relevant missing or poorly bounded concepts,</li><li>Evaluation: Codex/LLM evaluation is part of the loop. Human feedback is useful</li><li>Threshold policy: start conservative, then lower thresholds only when the last</li><li>Fast regression smoke test: keep <code>config/search_quality_paragraph_queries.tsv</code></li><li>Synthetic query corpus: use 10,000 typical clinical, research, trial-result,</li><li>Page-length stress corpus: use 200 full-page pasted-note/query samples to</li></ul>
+<h2>Fast Regression Smoke Test</h2>
+<p>Use a rotating 50-query paragraph sample for normal candidate rebuilds:</p>
+<pre><code class="language-bash">python3 scripts/run_search_quality_experiment.py \
+  --queries config/search_quality_paragraph_queries.tsv \
+  --query-limit 50 \
+  --query-selection rotate \
+  --search-system api \
+  --scope umls_evidence \
+  --fail-gates</code></pre>
+<p>Pass <code>--query-limit 0</code> only when you intentionally want the full judged pool. Live API runs default to two worker threads and write <code>query_timings.tsv</code> in the run directory. Use <code>--workers 1</code> when you need a serial timing baseline.</p>
+<p>Run <code>--search-system umls-only</code> for the in-process UMLS baseline, or <code>--search-system both</code> to emit adjacent UMLS-only and current-search columns in the experiment report. Use <code>--scope umls</code> when the live API should be exercised without evidence expansion.</p>
+<p>The smoke run&#x27;s primary metric is strict success@10: top result on target, all expected or acceptable CUIs present in the first 10 results, and no known false-positive CUI in the first 10.</p>
+<h2>Source Delta Checks</h2>
+<p>Every source rebuild must produce a source-delta record before release. At minimum, record these fields per source and compare them with the previous retained rebuild:</p>
+<p>and content hash.</p>
+<p>results from the rotating smoke sample, the full judged pool when run, and the source-specific benchmark rows.</p>
+<ul><li>Source identity: URL, source version, source date or release date, fetch date,</li><li>Records fetched.</li><li>Records changed, added, and removed.</li><li>CUIs gained and lost.</li><li>Relationship edges gained and lost.</li><li>Top source changes for benchmark queries, especially changes in the first 10</li></ul>
+<p>Unexpected source-count collapses are release blockers unless the rebuild manifest explains the intended source removal and the benchmark impact is reviewed.</p>
+<p>Source presence alone is not a quality metric. Each search-quality run also writes <code>source_quality_at_10.json</code> and <code>source_quality_at_10.tsv</code>, which tie sources to judged outcomes:</p>
+<p>acceptable hit.</p>
+<ul><li>Queries where the source appears in the top 10.</li><li>Strict-success queries where the source appears in the top 10.</li><li>Queries where the source is attached to an expected or acceptable hit.</li><li>Strict-success queries where the source is attached to an expected or</li><li>Queries where the source is attached to a known false-positive hit.</li><li>Top-1 expected-hit contribution and mean best expected rank.</li></ul>
+<p>Use these as associative contribution metrics, not causal ablations. A source earns useful credit when it is attached to the acceptable CUI hit, not merely when it appears somewhere in a passing result page.</p>
+<p>Use <code>scripts/check_source_rebuild_delta.py</code> to validate the required fields and compare a current source manifest with the previous retained manifest:</p>
+<pre><code class="language-bash">python3 scripts/check_source_rebuild_delta.py \
+  --previous build/source_manifests/previous.json \
+  --current build/source_manifests/current.json \
+  --out build/source_manifests/source_delta_report.json</code></pre>
+<h2>Source Benchmarks</h2>
+<p>In addition to the rotating smoke sample, source rebuilds must run the matching core source-specific benchmark file from <code>config/source_specific_benchmarks.tsv</code>:</p>
+<p><code>config/source_benchmarks/dailymed_drug_label_queries.tsv</code>.</p>
+<p><code>config/source_benchmarks/medlineplus_lay_condition_queries.tsv</code>.</p>
+<p><code>config/source_benchmarks/pubmed_pmc_literature_queries.tsv</code>.</p>
+<ul><li>DailyMed: drug indication, warning, and adverse-reaction queries,</li><li>MedlinePlus: lay-language condition queries,</li><li>PubMed/PMC: literature-backed disease, drug, and procedure queries,</li></ul>
+<p>ClinicalTrials.gov posted outcomes are opt-in only, and PubTator3 stays a sampled relation-candidate stub unless a measured gap requires validation against PubMed/PMC. Neither is a default release gate. CUI2Vec and BioConceptVec are kept in the loop through <code>config/search_quality_external_embedding_neighbor_probe.tsv</code> as bounded association-signal candidates with explicit drift guards.</p>
+<h3>Locked PubMed Abstract Benchmark</h3>
+<p>The long-abstract PubMed check is separate from the clinical smoke score because topic-level expected CUIs can make fetched abstracts look worse or better than they really are. Do not score PubMed abstracts with inherited topic-level expectations. Every scored PubMed abstract must have an approved per-PMID row in <code>config/pubmed_literature_abstract_curation.tsv</code>.</p>
+<p>Use the strict generator to create scored query files:</p>
+<pre><code class="language-bash">python3 scripts/fetch_pubmed_paragraph_queries.py \
+  --topics config/pubmed_paragraph_topics.tsv \
+  --curation config/pubmed_literature_abstract_curation.tsv \
+  --strict-curation \
+  --output-dir build/pubmed_literature_benchmark_seed</code></pre>
+<p>This writes separate <code>pubmed_literature_dev_queries.tsv</code> and <code>pubmed_literature_heldout_queries.tsv</code> files. Tune against the dev split only; run the held-out split as a separate report and keep it out of the clinical smoke headline. Use <code>config/pubmed_literature_candidate_topics.tsv</code> to fetch a larger 50-100 abstract review queue, then promote only reviewed per-abstract rows into the curation file. See <code>docs/pubmed_literature_benchmark.html</code>.</p>
+<h2>Progress Metrics</h2>
+<p>Every iteration should report the same percentages so we can see whether the system is getting better:</p>
+<p>CUI coverage, deferred terms, and unresolved clinically relevant gaps.</p>
+<p>semantic-group coverage, weighted precision at 5, MRR, and the most common failure categories.</p>
+<p>answer whether the returned concepts are clinically useful, not merely present somewhere in the payload.</p>
+<p>vector count, alias/index version, and whether old vectors were retired.</p>
+<p>equivalence guards, and concepts needing review.</p>
+<p>relation assertions needing spot check.</p>
+<p>and terms rescued by LOINC-derived naming.</p>
+<p>review, search payloads, and test summary present for the run.</p>
+<ul><li>Query-term coverage: pre-existing exact coverage, extension coverage, new</li><li>Search quality: top-1 relevance, expected CUI recall at 5/10/20/60,</li><li>Result usefulness: paragraph-level <code>good</code> / <code>mixed</code> / <code>poor</code> judgments that</li><li>Vector-store freshness: changed concept documents, changed vectors, loaded</li><li>Concept growth: new CUIs, carried-forward CUIs, rejected duplicates, semantic</li><li>Relationship growth: MTH <code>RB</code>/<code>RN</code> rows, close matches, related anchors, and</li><li>LOINC usefulness: direct LOINC exact matches, observation display-name rows,</li><li>Documentation completeness: manifest, report, candidate review, relation</li></ul>
+<h2>Efficient Iteration Contract</h2>
+<p>Each iteration has one primary purpose. Do not mix too many goals in one pass. Good purposes are:</p>
+<ul><li>Improve coverage in one weak slice, such as clinical results or procedures.</li><li>Add a batch of high-confidence concepts.</li><li>Improve LOINC display-name normalization.</li><li>Load an extension vector shard into the search alias.</li><li>Fix a ranking or provenance failure found by evaluation.</li><li>Refactor the pipeline after repeated changes.</li></ul>
+<p>The default cadence is:</p>
+<ol><li>Carry forward prior extension concepts as existing coverage.</li><li>Run the same query set to measure regression.</li><li>Identify the biggest remaining gap by slot/domain.</li><li>Add only changes that directly improve that gap.</li><li>Rebuild the smallest affected artifacts.</li><li>Re-run tests and write a release decision.</li></ol>
+<h2>Iteration Steps</h2>
+<p>Record input artifacts, prior extension registries, UMLS/LOINC versions, PubMed shards, restricted-data boundaries, embedding model, vector index names, thresholds, and code revision when available.</p>
+<ol><li>Freeze the run manifest.</li></ol>
+<p>Load the level-0 UMLS label index, code resolver index, direct LOINC lookup, and all promoted <code>NEW#######</code> concepts from prior iterations.</p>
+<ol><li>Load known concept coverage.</li></ol>
+<p>Normalize clinical/research sentences, failed queries, LOINC observation names, and evidence snippets. Before CUI creation, check exact labels, source codes, direct LOINC names, prior extension labels, and curated semantic equivalence guards.</p>
+<ol><li>Normalize candidate language.</li></ol>
+<p>Run the stable query set through the current search interface when available. Save payloads and grade the output using the same rubric: relevant, partial, wrong, unsupported, missing concept, bad label, bad semantic type, bad ranking, or provenance problem. Also assign each paragraph a <code>good</code>, <code>mixed</code>, or <code>poor</code> verdict. <code>Good</code> means the central concepts from the main semantic groups are visible in the first page and the top result is clinically on target. <code>Mixed</code> means the right concepts are recoverable but ranking, semantic typing, or omissions would slow a reviewer down. <code>Poor</code> means a central concept is absent from the first useful result window or the returned set has the wrong clinical focus.</p>
+<ol><li>Search and evaluate.</li></ol>
+<p>For unresolved terms, require both query pressure and evidence support. Favor concepts that are clinically useful as search targets, relation nodes, or result filters.</p>
+<ol><li>Mine unresolved gaps.</li></ol>
+<p>Reject spelling, punctuation, word-order, acronym-expansion, and obvious semantic-equivalent variants. Record close-match and broader anchors when the existing concept is useful but insufficient.</p>
+<ol><li>Compare against existing concepts.</li></ol>
+<p>Emit preferred label, aliases, semantic type, definition, evidence, source provenance, anchors, status, rationale, and iteration metadata.</p>
+<ol><li>Promote high-confidence <code>NEW#######</code> concepts.</li></ol>
+<p>Add MTH <code>RB</code>/<code>RN</code> broader/narrower rows only where the hierarchy is clear. Use close-match anchors for near-equivalents or adjacent concepts that should not be asserted as hierarchy.</p>
+<ol><li>Update relationships.</li></ol>
+<p>Build concept documents and vectors for changed concepts. Load them into a versioned vector index or extension shard. Move aliases only after evaluation passes.</p>
+<ol><li>Rebuild affected vector/search artifacts.</li></ol>
+<p>Write the manifest, report, term evaluation, candidate review, relation quality file, vector/reindex decision, test output, and next-step notes.</p>
+<ol><li>Document the run.</li></ol>
+<p>Every few iterations, clean repeated code, add tests around new behavior, and update the technical pipeline docs.</p>
+<ol><li>Refactor periodically.</li></ol>
+<h2>Release Gates</h2>
+<p>An iteration can be released to the active search interface only when:</p>
+<p>beyond the configured small tolerance. For release promotion, also run the full judged pool with <code>--query-limit 0</code>.</p>
+<p>trial-result lane must exclude protocol, recruitment, eligibility, and planned endpoint text from treatment-effect evidence.</p>
+<p>non-level-0 UMLS/source content.</p>
+<p>the top-10 source mix from the benchmark payloads.</p>
+<p>changed, CUIs gained/lost, relationship edges gained/lost, and benchmark query source changes for each rebuilt source.</p>
+<p>sources; opt-in association probes must show measured benefit before default promotion.</p>
+<ul><li>The rotating 50-query smoke run completes and strict success@10 does not drop</li><li>Known false positives do not increase.</li><li>Default evidence mode does not depend on ClinicalTrials.gov. Any opt-in</li><li>Public display payloads expose no restricted, private, licensed-only, or</li><li>No unexpected source-count collapse is present in the source-delta record or</li><li>Existing high-value queries do not regress.</li><li>New or changed concepts have concept documents and vectors.</li><li>The search alias or extension shard can be rolled back.</li><li>The manifest says exactly which artifacts were loaded.</li><li>The manifest records source URL/version/date/hash, records fetched, records</li><li>Matching core source-specific benchmark suites pass for rebuilt evidence</li><li>Candidate and relation review artifacts exist.</li><li>Tests covering changed code pass.</li></ul>
+<p>If a run creates concepts but does not load them into the active vector store, the report must say so explicitly.</p>
+<h2>Minimum Output Per Iteration</h2>
+<ul><li>Input manifest</li><li>Prior-extension coverage record</li><li>Corpus/evidence artifact manifest</li><li>Term evaluation TSV/JSONL</li><li>Candidate review TSV/Markdown</li><li>Promoted <code>NEW#######</code> concept registry</li><li>Extension concept documents and evidence JSONL</li><li>MTH relation JSONL/SQLite when relations are emitted</li><li>Search payload archive when a live search interface is evaluated</li><li>Vector/reindex/release decision note</li><li>Test summary</li></ul>
+<h2>Promotion Threshold</h2>
+<p>Create a new local CUI only when most of the following are true:</p>
+<p>node.</p>
+<p>contexts.</p>
+<p>one-off sentence.</p>
+<p>represent the idea cleanly.</p>
+<p>evidence.</p>
+<p>reasonable anchor exists.</p>
+<ul><li>The candidate is clinically useful as a search target, result, or relation</li><li>Evidence appears across repeated examples or multiple independent source</li><li>The concept boundary is more specific than a generic phrase but broader than a</li><li>Existing level-0 UMLS, direct LOINC, and prior <code>NEW#######</code> concepts do not</li><li>A preferred label and short definition can be written without contorting the</li><li>At least one broader, related, or close-match anchor can be recorded when a</li><li>Adding the concept should improve retrieval or coverage in a known weak area.</li></ul>
+<p>Lower thresholds only for a named weak slice and only after adding duplicate guards for the variants found in the previous run.</p>
+<h2>Explicit Non-Goals</h2>
+<p>order, spelling-only variants, or trivial modifiers.</p>
+<p>covers the phrase well enough for search.</p>
+<p>concept exists.</p>
+<ul><li>Do not create new CUIs for capitalization, punctuation, pluralization, word</li><li>Do not create a local CUI when a semantic-equivalent level-0 concept already</li><li>Do not treat direct LOINC display-name cleanup as proof that a new clinical</li><li>Do not publish <code>NEW#######</code> concepts as official NLM UMLS CUIs.</li><li>Do not mix restricted clinical text into public artifacts.</li></ul>
+<h2>Completed Iterations</h2>
+<p>clinical/research sentences, the current UMLS label/code indexes, direct LOINC 2.82, five public topic concept-document chunks, and the latest reviewed PubMed bulk shard. It created 10 high-support local <code>NEW#######</code> concepts after treating exact code-resolver matches such as <code>diuresis</code> as existing coverage. It also emits local MTH <code>RB</code>/<code>RN</code> broader/narrower assertions where a defensible broader UMLS anchor exists and writes direct LOINC display-name artifacts for the clinical-observation naming pass. Report: <code>build/new_umls_iterations/iteration_001_existing_data/iteration_report.md</code>.</p>
+<p>the 10 promoted iteration 001 concepts as local coverage, adds curated semantic-equivalent guards for obvious variants, modestly lowers the support threshold for the next weak-slice pass, and creates 3 additional <code>NEW#######</code> concepts. It writes both incremental and cumulative extension concept artifacts so downstream vector indexing can load only the delta or the full current local extension layer. Report: <code>build/new_umls_iterations/iteration_002_existing_data/iteration_report.md</code>.</p>
+<p>embeds and loads the 13 cumulative local extension concepts into the active search path, adds deterministic label fallback for loaded <code>NEW#######</code> concepts, and fixes ranking failures found by the paragraph tests. It creates no new CUIs. Report: <code>build/new_umls_iterations/iteration_003_search_quality/iteration_report.md</code>.</p>
+<p>that adds paragraph-intent ranking signals, demotes comparator-arm concepts in cohort/comparative-study wording, and fixes structured-statement linking for repeated phrase occurrences. It creates no new CUIs. Report: <code>build/new_umls_iterations/iteration_004_search_quality_intent/iteration_report.md</code>.</p>
+<p>hydrates semantic types for promoted <code>NEW#######</code> CUIs, enables default UMLS label fallback, expands the paragraph benchmark to 20 examples, and adds explicit <code>good</code> / <code>mixed</code> / <code>poor</code> usefulness evaluation. It creates no new CUIs. Report: <code>build/new_umls_iterations/iteration_005_semantic_types_and_quality/iteration_report.md</code>.</p>
+<p>first-page exact-mention handling, suppresses low-value single-token label artifacts, and preserves semantic grouping for label-only fallback hits. It improves the stable paragraph benchmark to 11 <code>good</code>, 9 <code>mixed</code>, and 0 <code>poor</code> outputs. It creates no new CUIs. Report: <code>build/new_umls_iterations/iteration_006_exact_mentions/iteration_report.md</code>.</p>
+<p>paragraph benchmark from 20 to 32 examples, adds short biomedical acronym handling, and narrows exact medication ranking so administered drugs stay visible without treating lab analytes as drugs. It corrects benchmark targets where the sentence wording pointed to an existing alternative CUI and improves the expanded benchmark to 25 <code>good</code>, 7 <code>mixed</code>, and 0 <code>poor</code> outputs. It creates no new CUIs. Report: <code>build/new_umls_iterations/iteration_007_more_paragraphs/iteration_report.md</code>.</p>
+<p>adds a curated active-label supplement for existing CUIs hidden by the active semantic-profile label index and adds acceptable-CUI alternative scoring to the paragraph evaluator. It recovers <code>C0877453</code> acute cellular rejection without creating a duplicate local CUI and improves the expanded benchmark to 27 <code>good</code>, 5 <code>mixed</code>, and 0 <code>poor</code> outputs. It creates no new CUIs. Report: <code>build/new_umls_iterations/iteration_008_label_supplement_alternatives/iteration_report.md</code>.</p>
+<p>explicit septic-shock treatment/monitoring component anchors visible, demotes drug-brand labels in non-drug contexts, and treats laterality-only labels as fragments. It improves the expanded benchmark to 28 <code>good</code>, 4 <code>mixed</code>, and 0 <code>poor</code> outputs with 97.0% recall@10 and 100.0% recall@60. It creates no new CUIs. Report: <code>build/new_umls_iterations/iteration_009_sepsis_components/iteration_report.md</code>.</p>
+<p>paragraph benchmark from 32 to 80 examples, updates the web interface example list, adds short clinical acronym handling and active-label supplement rows for fragile existing CUIs, and tunes ranking so vaccine concepts do not outrank infection concepts without vaccination intent. It improves the 80-paragraph benchmark from 45 <code>good</code>, 35 <code>mixed</code>, and 0 <code>poor</code> outputs to 68 <code>good</code>, 12 <code>mixed</code>, and 0 <code>poor</code> outputs with 96.6% recall@10 and 99.0% recall@60. It creates no new CUIs. Report: <code>build/new_umls_iterations/iteration_010_more_paragraphs/iteration_report.md</code>.</p>
+<ul><li><code>iteration_001_existing_data</code>: existing-data-only pass using generated</li><li><code>iteration_002_existing_data</code>: existing-data-only pass that carries forward</li><li><code>iteration_003_search_quality</code>: existing-data-only search-quality pass that</li><li><code>iteration_004_search_quality_intent</code>: existing-data-only search-quality pass</li><li><code>iteration_005_semantic_types_and_quality</code>: existing-data-only pass that</li><li><code>iteration_006_exact_mentions</code>: existing-data-only pass that improves</li><li><code>iteration_007_more_paragraphs</code>: existing-data-only pass that expands the</li><li><code>iteration_008_label_supplement_alternatives</code>: existing-data-only pass that</li><li><code>iteration_009_sepsis_components</code>: existing-data-only pass that keeps</li><li><code>iteration_010_more_paragraphs</code>: existing-data-only pass that expands the</li></ul>
+</main>
+<!-- Converted from docs/new_umls_iteration_loop.html. -->
+</body>
+</html>

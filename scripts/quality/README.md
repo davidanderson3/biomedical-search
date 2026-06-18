@@ -17,5 +17,5 @@ existing command references keep working.
 - `../analyze_search_judgments.py` - canonical judgment file analysis.
 - `../search_quality_shadow_reranker.py` - feature extraction, shadow reranker,
   and current-vs-ML rank report.
-- `../build_search_rule_inventory.py` - heuristic/rule inventory report.
+- `../build_search_rule_inventory.py` - heuristic/rule inventory Markdown/HTML reports.
 - `../validate_active_label_supplement.py` - active-label supplement validation.

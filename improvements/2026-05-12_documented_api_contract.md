@@ -23,8 +23,8 @@ That made the API usable for the UI but less robust for clients that need stable
 ```
 
 - Updated the browser API helper to render structured error messages correctly.
-- Added `docs/api.md` with endpoint parameters, aliases, important response fields, assertion metadata, error shape, and curl examples.
-- Linked the API guide from `README.md` and `docs/technical_pipeline.md`.
+- Added `docs/api.html` with endpoint parameters, aliases, important response fields, assertion metadata, error shape, and curl examples.
+- Linked the API guide from `README.md` and `docs/technical_pipeline.html`.
 - Exported the API contract helpers through `scripts/search_quality_server.py` for tests and external imports.
 
 ## Current Endpoints

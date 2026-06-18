@@ -1084,6 +1084,7 @@ class SearchRelatedMixin:
                 "evidence_count": int(hit.get("evidence_count") or 0),
                 "seed_doc_id": hit.get("seed_doc_id") or "",
             }
+            item = self.related_item_with_semantic_metadata(item)
             if source_cui:
                 item = attach_universal_edge(
                     item,
@@ -1092,6 +1093,49 @@ class SearchRelatedMixin:
                 )
             related.append(item)
         return related
+
+    def related_item_with_semantic_metadata(self, item: dict) -> dict:
+        enriched = dict(item)
+        target_cui = str(enriched.get("cui") or enriched.get("target_cui") or "").strip().upper()
+        if not target_cui:
+            return enriched
+        semantic_types = self.semantic_types_for_cui(target_cui)
+        semantic_group = semantic_group_from_types(semantic_types)
+        label = self.display_label_for_cui(
+            target_cui,
+            [str(enriched.get("label") or enriched.get("name") or "").strip()],
+        )
+        enriched["cui"] = target_cui
+        if "target_cui" in enriched:
+            enriched["target_cui"] = target_cui
+        if label:
+            enriched["label"] = label
+            enriched.setdefault("name", label)
+        enriched["semantic_types"] = semantic_types
+        semantic_type = str(enriched.get("semantic_type") or "").strip()
+        canonical_semantic_type = ""
+        if semantic_types:
+            canonical_semantic_type = str(semantic_types[0].get("name") or semantic_types[0].get("sty") or "").strip()
+        if canonical_semantic_type and (
+            not semantic_type or semantic_type.lower() == canonical_semantic_type.lower()
+        ):
+            semantic_type = canonical_semantic_type
+        if semantic_type:
+            enriched["semantic_type"] = semantic_type
+        semantic_group = str(
+            enriched.get("semantic_group")
+            or enriched.get("target_semantic_group")
+            or semantic_group
+            or ""
+        ).strip()
+        if semantic_group:
+            enriched["semantic_group"] = semantic_group
+            enriched.setdefault("target_semantic_group", semantic_group)
+            enriched["semantic_group_label"] = str(
+                enriched.get("semantic_group_label")
+                or SEMANTIC_GROUP_LABELS.get(semantic_group, "Other")
+            )
+        return enriched
 
     def evidence_related_concepts_for_cui(self, cui: str, *, top_k: int | None = None) -> list[dict]:
         limit = top_k or self.related_limit
@@ -1138,13 +1182,22 @@ class SearchRelatedMixin:
         mapping_sabs: list[str] | None = None,
     ) -> dict:
         cui = cui.strip().upper()
-        mrrel_neighbors = self.related_concepts_for_cui(cui)
+        mrrel_neighbors = [
+            self.related_item_with_semantic_metadata(item)
+            for item in self.related_concepts_for_cui(cui)
+        ]
         vector_neighbors = self.evidence_vector_neighbors_for_cui(cui, top_k=top_k)
         evidence_related = self.compact_evidence_related_hits(vector_neighbors, source_cui=cui)
         self.evidence_related_cache[(cui, top_k)] = evidence_related
-        external_neighbors = self.external_embedding_neighbors_for_cui(cui, limit_per_source=top_k)
+        external_neighbors = [
+            self.related_item_with_semantic_metadata(item)
+            for item in self.external_embedding_neighbors_for_cui(cui, limit_per_source=top_k)
+        ]
         mappings = self.mappings_for_cui(cui, sabs=mapping_sabs, limit=100)
-        research_relations = self.research_relations_for_cui(cui)
+        research_relations = [
+            self.related_item_with_semantic_metadata(item)
+            for item in self.research_relations_for_cui(cui)
+        ]
         return {
             "cui": cui,
             "related_concepts": evidence_related or external_neighbors or mrrel_neighbors,

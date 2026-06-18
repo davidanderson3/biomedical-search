@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import Iterable
 
 from .generic_filters import is_blocked_generic_concept
-from .lexical_normalization import lexical_variant_keys
+from .lexical_normalization import (
+    lexical_normalized_key,
+    lexical_normalized_tokens,
+    lexical_variant_keys,
+)
 from .semantic_profiles import resolve_profiles
 from .text import normalized_key
 
@@ -149,7 +153,14 @@ def load_semantic_type_filter(
     return cuis
 
 
-def _valid_label(label: str, *, min_chars: int, min_tokens: int, max_tokens: int) -> bool:
+def _valid_label(
+    label: str,
+    *,
+    min_chars: int,
+    min_tokens: int,
+    max_tokens: int,
+    allow_short_labels: bool = False,
+) -> bool:
     norm = normalized_key(label)
     if len(norm) < min_chars:
         return False
@@ -158,7 +169,7 @@ def _valid_label(label: str, *, min_chars: int, min_tokens: int, max_tokens: int
     tokens = norm.split()
     if not (min_tokens <= len(tokens) <= max_tokens):
         return False
-    if len(tokens) == 1:
+    if len(tokens) == 1 and not allow_short_labels:
         token = tokens[0]
         if token in BLOCKED_SINGLE_TOKEN_LABELS:
             return False
@@ -187,6 +198,7 @@ def build_label_index(
     min_chars: int = 3,
     min_tokens: int = 1,
     max_tokens: int = 8,
+    allow_short_labels: bool = False,
     include_lexical_variants: bool = True,
     replace: bool = False,
 ) -> int:
@@ -229,6 +241,7 @@ def build_label_index(
                 min_chars=min_chars,
                 min_tokens=min_tokens,
                 max_tokens=max_tokens,
+                allow_short_labels=allow_short_labels,
             ):
                 continue
             norms = label_index_norms(label, include_lexical_variants=include_lexical_variants)
@@ -257,10 +270,90 @@ def build_label_index(
     return count
 
 
+def build_label_index_from_code_index(
+    *,
+    source_path: str | Path,
+    out_path: str | Path,
+    include_generic: bool = False,
+    min_chars: int = 3,
+    min_tokens: int = 1,
+    max_tokens: int = 8,
+    allow_short_labels: bool = False,
+    include_lexical_variants: bool = True,
+    replace: bool = False,
+    batch_size: int = 50_000,
+) -> int:
+    source_path = Path(source_path).expanduser()
+    if not source_path.exists():
+        raise FileNotFoundError(source_path)
+    out_path = Path(out_path).expanduser()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_conn = connect(out_path)
+    if replace:
+        out_conn.execute("DROP TABLE IF EXISTS labels")
+    out_conn.executescript(TABLE_SCHEMA)
+    source_conn = sqlite3.connect(str(source_path))
+    source_conn.row_factory = sqlite3.Row
+    source_conn.execute("PRAGMA temp_store=MEMORY")
+    insert_sql = """
+        INSERT INTO labels(norm, cui, label, sab, tty, ispref, suppress)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """
+    batch = []
+    count = 0
+    try:
+        rows = source_conn.execute(
+            """
+            SELECT cui, label, sab, tty, ispref, suppress
+            FROM code_mappings
+            WHERE label <> ''
+            """
+        )
+        for row in rows:
+            cui = str(row["cui"] or "")
+            label = str(row["label"] or "").strip()
+            if not include_generic and is_blocked_generic_concept(cui, label):
+                continue
+            if not _valid_label(
+                label,
+                min_chars=min_chars,
+                min_tokens=min_tokens,
+                max_tokens=max_tokens,
+                allow_short_labels=allow_short_labels,
+            ):
+                continue
+            norms = label_index_norms(label, include_lexical_variants=include_lexical_variants)
+            for norm in norms:
+                batch.append(
+                    (
+                        norm,
+                        cui,
+                        label,
+                        str(row["sab"] or ""),
+                        str(row["tty"] or ""),
+                        str(row["ispref"] or ""),
+                        str(row["suppress"] or ""),
+                    )
+                )
+            count += 1
+            if len(batch) >= batch_size:
+                out_conn.executemany(insert_sql, batch)
+                out_conn.commit()
+                batch.clear()
+        if batch:
+            out_conn.executemany(insert_sql, batch)
+            out_conn.commit()
+        create_indexes(out_conn)
+    finally:
+        source_conn.close()
+        out_conn.close()
+    return count
+
+
 class LabelIndex:
     def __init__(self, path: str | Path) -> None:
         self.conn = connect(path)
-        self.cache: dict[str, list[sqlite3.Row]] = {}
+        self.cache: dict[tuple, list[sqlite3.Row] | list[dict]] = {}
 
     def close(self) -> None:
         self.conn.close()
@@ -272,7 +365,8 @@ class LabelIndex:
         self.close()
 
     def lookup(self, norm: str, *, limit: int = 100) -> list[sqlite3.Row]:
-        cached = self.cache.get(norm)
+        key = ("lookup", norm, int(limit))
+        cached = self.cache.get(key)
         if cached is not None:
             return cached
         rows = list(
@@ -280,11 +374,208 @@ class LabelIndex:
                 """
                 SELECT norm, cui, label, sab, tty, ispref
                 FROM labels
-                WHERE norm = ?
+                WHERE norm = ? AND suppress = 'N'
                 LIMIT ?
                 """,
                 (norm, limit),
             )
         )
-        self.cache[norm] = rows
+        self.cache[key] = rows
         return rows
+
+    def search(
+        self,
+        query: str,
+        *,
+        search_type: str = "words",
+        sabs: Iterable[str] | None = None,
+        include_obsolete: bool = False,
+        include_suppressible: bool = False,
+        partial: bool = False,
+        limit: int = 200,
+    ) -> list[dict]:
+        search_type = str(search_type or "words").strip()
+        limit = max(1, int(limit or 1))
+        sab_values = tuple(sorted(str(sab or "").strip().upper() for sab in (sabs or []) if str(sab or "").strip()))
+        key = (
+            "search",
+            normalized_key(query),
+            lexical_normalized_key(query),
+            search_type,
+            sab_values,
+            bool(include_obsolete),
+            bool(include_suppressible),
+            bool(partial),
+            limit,
+        )
+        cached = self.cache.get(key)
+        if cached is not None:
+            return [dict(row) for row in cached]
+
+        rows = self._search_rows(
+            query,
+            search_type=search_type,
+            sabs=sab_values,
+            include_obsolete=include_obsolete,
+            include_suppressible=include_suppressible,
+            partial=partial,
+            limit=limit,
+        )
+        results = _dedupe_label_rows(rows, query=query, search_type=search_type)[:limit]
+        self.cache[key] = [dict(row) for row in results]
+        return [dict(row) for row in results]
+
+    def _search_rows(
+        self,
+        query: str,
+        *,
+        search_type: str,
+        sabs: tuple[str, ...],
+        include_obsolete: bool,
+        include_suppressible: bool,
+        partial: bool,
+        limit: int,
+    ) -> list[sqlite3.Row]:
+        norm = normalized_key(query)
+        if not norm:
+            return []
+        if search_type == "normalizedString":
+            norms = [key for key in lexical_variant_keys(query) if key]
+            if partial:
+                clauses = ["norm LIKE ?"]
+                values: list[object] = [f"%{lexical_normalized_key(query) or norm}%"]
+            else:
+                placeholders = ",".join("?" for _ in norms)
+                clauses = [f"norm IN ({placeholders})"]
+                values = list(norms)
+        elif search_type == "exact":
+            if partial:
+                clauses = ["norm LIKE ?"]
+                values = [f"%{norm}%"]
+            else:
+                clauses = ["norm = ?"]
+                values = [norm]
+        elif search_type in {"words", "normalizedWords"}:
+            tokens = (
+                lexical_normalized_tokens(query)
+                if search_type == "normalizedWords"
+                else norm.split()
+            )
+            tokens = [token for token in tokens if token]
+            if not tokens:
+                return []
+            joiner = " OR " if partial else " AND "
+            clauses = [joiner.join("norm LIKE ?" for _ in tokens)]
+            values = [f"%{token}%" for token in tokens]
+        elif search_type == "rightTruncation":
+            clauses = ["norm LIKE ?"]
+            values = [f"{norm}%"]
+        elif search_type == "leftTruncation":
+            clauses = ["norm LIKE ?"]
+            values = [f"%{norm}"]
+        else:
+            return []
+
+        clauses.append(_suppress_visibility_clause(include_obsolete, include_suppressible))
+        if sabs:
+            placeholders = ",".join("?" for _ in sabs)
+            clauses.append(f"sab IN ({placeholders})")
+            values.extend(sabs)
+
+        sql = f"""
+            SELECT norm, cui, label, sab, tty, ispref, suppress
+            FROM labels
+            WHERE {' AND '.join(f'({clause})' for clause in clauses)}
+            LIMIT ?
+        """
+        query_limit = max(limit * 30, limit + 500)
+        rows = list(self.conn.execute(sql, (*values, query_limit)))
+        if search_type in {"words", "normalizedWords"}:
+            wanted_tokens = (
+                lexical_normalized_tokens(query)
+                if search_type == "normalizedWords"
+                else norm.split()
+            )
+            rows = [
+                row
+                for row in rows
+                if _row_word_match(
+                    str(row["norm"] or ""),
+                    wanted_tokens,
+                    partial=partial,
+                )
+            ]
+        return rows
+
+
+def _suppress_visibility_clause(include_obsolete: bool, include_suppressible: bool) -> str:
+    if include_obsolete and include_suppressible:
+        return "1 = 1"
+    if include_obsolete:
+        return "suppress IN ('N', 'O')"
+    if include_suppressible:
+        return "suppress IN ('N', 'E', 'Y')"
+    return "suppress = 'N'"
+
+
+def _row_word_match(row_norm: str, tokens: list[str], *, partial: bool) -> bool:
+    row_tokens = set(row_norm.split())
+    wanted = [token for token in tokens if token]
+    if not wanted:
+        return False
+    if partial:
+        return any(token in row_tokens for token in wanted)
+    return all(token in row_tokens for token in wanted)
+
+
+def _label_sort_key(row: sqlite3.Row | dict, *, query_norm: str) -> tuple:
+    value = row.get if isinstance(row, dict) else row.__getitem__
+    label_norm = normalized_key(str(value("label") or ""))
+    row_norm = str(value("norm") or "")
+    return (
+        0 if row_norm == query_norm or label_norm == query_norm else 1,
+        0 if str(value("suppress") or "") == "N" else 1,
+        0 if str(value("ispref") or "") == "Y" else 1,
+        str(value("sab") or ""),
+        str(value("tty") or ""),
+        len(str(value("label") or "")),
+        str(value("label") or "").lower(),
+        str(value("cui") or ""),
+    )
+
+
+def _dedupe_label_rows(
+    rows: Iterable[sqlite3.Row],
+    *,
+    query: str,
+    search_type: str,
+) -> list[dict]:
+    query_norm = (
+        lexical_normalized_key(query)
+        if search_type in {"normalizedString", "normalizedWords"}
+        else normalized_key(query)
+    )
+    best_by_key: dict[tuple[str, str, str, str], dict] = {}
+    for row in rows:
+        item = {
+            "norm": row["norm"],
+            "cui": row["cui"],
+            "label": row["label"],
+            "sab": row["sab"],
+            "tty": row["tty"],
+            "ispref": row["ispref"],
+            "suppress": row["suppress"],
+        }
+        key = (
+            str(item["cui"] or ""),
+            str(item["label"] or "").lower(),
+            str(item["sab"] or ""),
+            str(item["tty"] or ""),
+        )
+        current = best_by_key.get(key)
+        if current is None or _label_sort_key(item, query_norm=query_norm) < _label_sort_key(
+            current,
+            query_norm=query_norm,
+        ):
+            best_by_key[key] = item
+    return sorted(best_by_key.values(), key=lambda row: _label_sort_key(row, query_norm=query_norm))

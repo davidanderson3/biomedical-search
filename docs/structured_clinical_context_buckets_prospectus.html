@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Structured Clinical Context Buckets Prospectus</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>Structured Clinical Context Buckets Prospectus</h1>
+<h2>Purpose</h2>
+<p>The search interface should help users see not only which concepts were found, but what role each concept plays in the text. A long clinical note can mention the active complaint, current assessment, tests, treatment plan, copied-forward history, and return precautions in the same paragraph. Those should not appear as one flat concept list.</p>
+<p>This prospectus defines the first product layer for role-aware clinical structure. It is English-only for now.</p>
+<h2>Initial Buckets</h2>
+<table><thead><tr><th>Bucket</th><th>Meaning</th><th>Example from stroke note</th></tr></thead><tbody><tr><td>Chief Concern</td><td>Why the patient is seeking care now.</td><td>Worsening left sided weakness.</td></tr><tr><td>Active Assessment</td><td>Current diagnosis or working assessment.</td><td>Acute ischemic stroke.</td></tr><tr><td>Exam &amp; Findings</td><td>Observed signs and bedside findings.</td><td>Facial droop.</td></tr><tr><td>Tests &amp; Objective Data</td><td>Imaging, labs, procedures, and measured findings.</td><td>Brain MRI showed acute infarct in right MCA territory.</td></tr><tr><td>Plan &amp; Treatment</td><td>Treatment, workup, and management decisions.</td><td>Aspirin, statin, and thrombolysis evaluation.</td></tr><tr><td>Watch For</td><td>Warning signs, return precautions, and safety checks.</td><td>Persistent neurologic deficit, recurrent weakness, worsening facial droop.</td></tr><tr><td>Older History / Not Active</td><td>Copied-forward or explicitly inactive history.</td><td>Generalized tonic clonic seizure, prior levetiracetam, no active status epilepticus decision.</td></tr><tr><td>Handoff &amp; Documentation</td><td>Repeated chart text, handoffs, and routine note language.</td><td>ED note, consultant note, discharge summary, medication list, nursing handoff, patient instructions.</td></tr><tr><td>Follow-Up</td><td>Next review, monitoring, and unresolved decisions.</td><td>Follow-up to review brain MRI, aspirin/statin management, and whether thrombolysis evaluation is still needed.</td></tr></tbody></table>
+<h2>Status Dimensions</h2>
+<p>Buckets should not be the only structure. Each mention or bucket item also needs status attributes:</p>
+<ul><li><code>current</code>: active in the present encounter.</li><li><code>historical</code>: old or copied-forward chart context.</li><li><code>negated</code>: explicitly absent or not active.</li><li><code>planned</code>: intended but not completed.</li><li><code>completed</code>: performed or already resulted.</li><li><code>instructional</code>: patient education, return precaution, or follow-up wording.</li><li><code>administrative</code>: scheduling, handoff, repeated-note, or routine chart text.</li></ul>
+<p>For example, <code>acute ischemic stroke</code> is current, <code>brain MRI</code> is completed objective data, <code>thrombolysis evaluation</code> is planned or open, <code>status epilepticus</code> is negated/not active, and <code>generalized tonic clonic seizure</code> is historical.</p>
+<h2>Interface Direction</h2>
+<p>The current prototype adds a compact <strong>Clinical Context</strong> panel below the ranked search results. It uses client-side section cues and linked concept spans to group the submitted text into the initial buckets. This is intentionally a display prototype, not the final extraction engine.</p>
+<p>The target interface should:</p>
+<p>results as a secondary review surface.</p>
+<p>assessment and plan.</p>
+<ul><li>Keep semantic concept groups first, then add role buckets below the ranked</li><li>Show the exact text snippet that triggered each bucket.</li><li>Show linked concepts inside each bucket as clickable CUI chips.</li><li>Keep copied-forward history visible but clearly separated from current</li><li>Show warning signs and follow-up needs as their own review surfaces.</li><li>Avoid treating routine handoff/documentation language as clinical evidence.</li></ul>
+<h2>Data Contract Target</h2>
+<p>The API should eventually return a structured context object alongside hits:</p>
+<pre><code class="language-json">{
+  &quot;clinical_context&quot;: {
+    &quot;buckets&quot;: [
+      {
+        &quot;key&quot;: &quot;active_assessment&quot;,
+        &quot;label&quot;: &quot;Active Assessment&quot;,
+        &quot;items&quot;: [
+          {
+            &quot;text&quot;: &quot;The active assessment is acute ischemic stroke.&quot;,
+            &quot;start&quot;: 72,
+            &quot;end&quot;: 120,
+            &quot;status&quot;: &quot;current&quot;,
+            &quot;concepts&quot;: [
+              {
+                &quot;cui&quot;: &quot;C0948008&quot;,
+                &quot;label&quot;: &quot;Acute ischemic stroke&quot;,
+                &quot;semantic_group&quot;: &quot;DISO&quot;,
+                &quot;role&quot;: &quot;diagnosis&quot;
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}</code></pre>
+<p>The client-side prototype can be replaced by this payload without changing the visual layout.</p>
+<h2>Benchmark Plan</h2>
+<p>Add judged rows that evaluate role assignment, not only CUI recall:</p>
+<ul><li>Current diagnosis outranks copied-forward history.</li><li>Completed tests are distinct from planned tests.</li><li>Watch-for concepts are visible but not treated as active diagnoses.</li><li>Medication list history is separate from current treatment.</li><li>Repeated handoff text does not create duplicate apparent evidence.</li></ul>
+<p>The stroke note supplied for this prospectus should become the first structured context fixture once the API returns bucket annotations.</p>
+</main>
+<!-- Converted from docs/structured_clinical_context_buckets_prospectus.html. -->
+</body>
+</html>

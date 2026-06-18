@@ -2,7 +2,7 @@
 
 ## Change
 
-Added `docs/procedure_coverage_without_cpt.md` and linked the policy from `docs/technical_pipeline.md`.
+Added `docs/procedure_coverage_without_cpt.html` and linked the policy from `docs/technical_pipeline.html`.
 
 ## How It Improved Things
 

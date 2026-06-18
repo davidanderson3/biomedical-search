@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Procedure Coverage Without CPT</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>Procedure Coverage Without CPT</h1>
+<h2>Position</h2>
+<p>Do not ingest, distribute, display, or derive local public concepts directly from CPT codes or CPT descriptors in the open UMLS 2.0 layer. CPT is maintained by the AMA and requires licensing for many uses. The open product should treat CPT as an optional private adapter that can be loaded only inside a licensed deployment, never as shipped content.</p>
+<h2>Product Strategy</h2>
+<p>Use a procedure abstraction layer instead of CPT itself:</p>
+<pre><code class="language-text">procedure bundle -&gt; open vocabulary anchors -&gt; evidence-backed aliases -&gt; optional private CPT mapping</code></pre>
+<p>The public layer should store:</p>
+<ul><li>open/source-allowed procedure concepts and labels</li><li>local <code>NEW#######</code> procedure concepts when clinically useful procedure ideas are missing</li><li>evidence-derived aliases from literature and open reference sources</li><li>structured procedure attributes</li><li>mappings to open or permitted source codes</li></ul>
+<p>The public layer should not store:</p>
+<ul><li>CPT codes</li><li>CPT descriptors</li><li>CPT long descriptors</li><li>CPT short descriptors</li><li>public CPT-to-local crosswalks</li><li>generated concepts that are only paraphrases of CPT descriptors</li></ul>
+<h2>Replacement Sources</h2>
+<p>Use these as the public procedure backbone, subject to each source&#x27;s license:</p>
+<ul><li>MeSH procedure headings for literature-facing procedures.</li><li>LOINC for observations, panels, surveys, laboratory procedures, and clinical measurements.</li><li>ICD-10-PCS for inpatient procedural granularity where applicable.</li><li>HCPCS Level II for non-CPT products, supplies, devices, ambulance services, DMEPOS, and similar non-physician-service billing concepts where licensing permits.</li><li>SNOMED CT procedures are allowed by default in the local procedure-bundle path; deployments that cannot include SNOMED CT can opt out.</li><li>NCI/NCIt, HPO, and other allowed biomedical vocabularies for oncology, genetics, phenotyping, and research procedures.</li><li>Literature-mined and guideline/open-reference text for common clinical procedure names.</li></ul>
+<h2>Procedure Bundle Model</h2>
+<p>Represent procedures with structured attributes so the system can be granular without copying CPT:</p>
+<ul><li>action: excision, drainage, imaging, biopsy, injection, repair, replacement, measurement</li><li>target anatomy: stomach, colon, knee, coronary artery, breast, kidney</li><li>approach/route: open, percutaneous, endoscopic, laparoscopic, transcatheter</li><li>modality: ultrasound, CT, MRI, fluoroscopy, echocardiography</li><li>intent: diagnostic, therapeutic, screening, surveillance, palliative</li><li>specimen/substance/device: tissue, fluid, stent, catheter, contrast, graft</li><li>laterality/site qualifiers: left/right, proximal/distal, segment/level</li><li>acuity/context: emergency, elective, postoperative, inpatient, outpatient</li></ul>
+<p>Examples:</p>
+<pre><code class="language-text">incision and drainage of skin abscess
+endoscopic biopsy of gastric ulcer
+ultrasound-guided central venous catheter placement
+percutaneous coronary intervention with stent placement
+right heart catheterization for pulmonary hypertension</code></pre>
+<p>Each bundle can resolve to one or more open anchors and have broader/narrower relations:</p>
+<pre><code class="language-text">endoscopic biopsy of gastric ulcer -&gt; broader -&gt; endoscopy
+endoscopic biopsy of gastric ulcer -&gt; broader -&gt; biopsy
+endoscopic biopsy of gastric ulcer -&gt; target_anatomy -&gt; stomach
+endoscopic biopsy of gastric ulcer -&gt; evaluates -&gt; gastric ulcer</code></pre>
+<h2>Search Behavior</h2>
+<p>For procedure queries, return clinically meaningful procedure bundles, not billing-level fragments. Prefer:</p>
+<ol><li>exact open-source CUI/procedure labels</li><li>evidence-backed local <code>NEW#######</code> procedure concepts</li><li>composed procedure bundles from action + anatomy + approach + modality</li><li>broader open concepts when no granular concept exists</li></ol>
+<p>Avoid default top results that are only generic actions, modifiers, or billing-like fragments:</p>
+<pre><code class="language-text">procedure
+service
+repair
+diagnostic
+operation
+consultation</code></pre>
+<p>Those can remain in details or broader/narrower context, but should not dominate the Procedures bucket.</p>
+<h2>Optional CPT Adapter</h2>
+<p>For a licensed deployment, support CPT as a private plugin:</p>
+<ul><li>user supplies CPT files or licensed API access locally</li><li>mappings stay outside the public repository and public vector store</li><li>public artifacts contain only local/open concept IDs, not CPT descriptors</li><li>runtime can resolve local procedure bundles to CPT for authorized users</li><li>logs and exported results must avoid leaking CPT descriptors unless the deployment license allows it</li></ul>
+<p>The public system can include an interface like:</p>
+<pre><code class="language-text">procedure_bundle_id -&gt; private_code_system -&gt; private_code</code></pre>
+<p>but the public build should leave the private side empty.</p>
+<h2>Practical Next Steps</h2>
+<ol><li>Build procedure-bundle extraction from clinical/research text using action, anatomy, approach, modality, and intent.</li><li>Create <code>NEW#######</code> procedure concepts only when the procedure is clinically useful and not adequately covered by allowed sources.</li><li>Add broader/narrower relations between granular procedure bundles and open procedure anchors.</li><li>In ranking, penalize generic procedure fragments unless they exactly match a short query.</li><li>Add an optional private CPT adapter interface without shipping CPT content.</li></ol>
+<h2>Implemented Local Builder</h2>
+<p>The repository now includes a public procedure-bundle builder at <code>scripts/build_procedure_bundles.py</code>. It reads local JSONL/JSON/CSV/TSV rows and emits:</p>
+<ul><li>extension concept JSONL for <code>NEW#######</code> procedure concepts</li><li>relation JSONL for broader/narrower, target anatomy, modality, device, specimen, related, and close-match links</li><li>an optional registry JSONL with extracted bundle attributes</li></ul>
+<p>Example:</p>
+<pre><code class="language-sh">python3 scripts/build_procedure_bundles.py \
+  --input config/procedure_bundles.jsonl \
+  --out-concepts build/procedure_bundle_concepts.jsonl \
+  --out-relations build/procedure_bundle_relations.jsonl \
+  --out-registry build/procedure_bundle_registry.jsonl</code></pre>
+<p>Input rows can provide a preferred label, aliases, evidence, open anchors, broader anchors, target anatomy, modality anchors, device anchors, specimen anchors, and related anchors. If structured attributes are not supplied, the builder infers a first-pass bundle from the label:</p>
+<pre><code class="language-json">{
+  &quot;preferred_label&quot;: &quot;ultrasound-guided central venous catheter placement&quot;,
+  &quot;broader&quot;: [{&quot;cui&quot;: &quot;C0007437&quot;, &quot;label&quot;: &quot;Catheterization&quot;, &quot;source&quot;: &quot;MSH&quot;}],
+  &quot;target_anatomy&quot;: [{&quot;cui&quot;: &quot;C0042449&quot;, &quot;label&quot;: &quot;Veins&quot;, &quot;source&quot;: &quot;MSH&quot;}],
+  &quot;modality_anchors&quot;: [{&quot;cui&quot;: &quot;C0041618&quot;, &quot;label&quot;: &quot;Ultrasonography&quot;, &quot;source&quot;: &quot;MSH&quot;}],
+  &quot;device_anchors&quot;: [{&quot;cui&quot;: &quot;C0085590&quot;, &quot;label&quot;: &quot;Catheters&quot;, &quot;source&quot;: &quot;MSH&quot;}]
+}</code></pre>
+<p>The builder rejects CPT/CPT4 content in public bundles. SNOMED CT anchors are allowed by default; use <code>--no-snomed</code> only for deployments that need to reject them. A private CPT adapter can be validated with <code>--private-cpt-adapter</code>, but it must be code-only and is never copied into public outputs.</p>
+</main>
+<!-- Converted from docs/procedure_coverage_without_cpt.html. -->
+</body>
+</html>

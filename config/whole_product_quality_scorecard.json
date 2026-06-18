@@ -1,0 +1,350 @@
+{
+  "version": 1,
+  "name": "Whole Product Quality Scorecard",
+  "description": "Weighted product-level estimate built from current search-quality lanes. This is intentionally broader than any single run's overall_score.",
+  "weights_note": "Weights sum to 100. The weak-note and PubMed lanes carry high weight because dependable search requires realistic clinical text and long-document behavior, not only short curated checks.",
+  "category_policy": "Keep exactly eight user-facing product categories. Add new measurements inside the existing lanes instead of adding new top-level cards or score lanes.",
+  "measurement_dimensions": [
+    "First-page recall and row completeness at top 10/top 20/top 60.",
+    "Near-miss severity: recovered just below the first page versus absent from the candidate window.",
+    "First-answer trust: top-on-target and wrong-first rows.",
+    "Precision and page cleanliness: configured disallowed concepts, clean-page checks, and reviewed false-positive samples.",
+    "Role and context accuracy: active/current versus history, diagnosis versus symptom/test, and medication role where reviewed.",
+    "Coverage stratification by text style, semantic group, and public source.",
+    "Stability and churn across rotating smoke runs and candidate lane expansions.",
+    "Operational signals such as latency, cache behavior, and source/result collapse when available."
+  ],
+  "lanes": [
+    {
+      "id": "broad_clinical_paragraphs",
+      "label": "Broad clinical paragraphs",
+      "weight": 20,
+      "query_file": "search_quality_paragraph_queries.tsv",
+      "query_limit": 0,
+      "run_family": "release",
+      "score_metric": "overall_score",
+      "measurement_status": "release reference",
+      "promotion_status": "blocking broad-clinical benchmark",
+      "metric_focus": [
+        "strict row completeness and expected-concept recall",
+        "near-miss severity across top 20 and top 60",
+        "top-answer trust and wrong-first regression protection",
+        "semantic-group coverage and rotating-smoke stability"
+      ],
+      "risk_note": "Strong first-answer trust, but secondary labs, drugs, procedures, and copied history can still fall just below the first page.",
+      "reference_run": {
+        "run_id": "SQI-2026-06-11-017_full_clinical_objective_condition_alt",
+        "created_at": "2026-06-11T17:52:19Z",
+        "artifact": "build/search_quality_experiments/runs/SQI-2026-06-11-017_full_clinical_objective_condition_alt_sqi-2026-06-11-017-full-clinical-objective-confirmed-condition-a/run.json",
+        "summary": {
+          "paragraphs": 168,
+          "expected_concepts": 874,
+          "queries_all_expected_at_10": 148,
+          "queries_all_expected_at_20": 166,
+          "strict_success_at_10_count": 148,
+          "strict_success_at_20_count": 166,
+          "top_on_target_count": 168,
+          "top_wrong_count": 0,
+          "found_at_10": 844,
+          "found_at_20": 872,
+          "found_at_60": 873,
+          "queries_with_missing_at_10": 20,
+          "queries_with_missing_at_20": 2,
+          "overall_score": 91.5
+        }
+      }
+    },
+    {
+      "id": "realistic_note_formats",
+      "label": "Realistic note formats",
+      "weight": 22,
+      "query_file": "search_quality_clinical_text_variety_queries.tsv",
+      "query_limit": 0,
+      "run_family": "probe",
+      "score_metric": "overall_score",
+      "measurement_status": "diagnostic lane",
+      "promotion_status": "not blocking until recall and first-page drift improve",
+      "metric_focus": [
+        "note-style stratification across radiology, pathology, lab, nursing, therapy, operative, and prior-authorization text",
+        "strict recall at top 10/top 20/top 60",
+        "configured disallowed first-page drift",
+        "top-answer trust while secondary details are missing"
+      ],
+      "risk_note": "Weakest clinical-text lane; the first answer is usually clean, but first-page completeness and note-style breadth are not yet dependable.",
+      "reference_run": {
+        "run_id": "SQI-2026-06-17-004-expanded-post-fix-clinical_text_type_variety",
+        "created_at": "2026-06-17T20:40:42Z",
+        "artifact": "build/search_quality_experiments/runs/SQI-2026-06-17-004-expanded-post-fix-clinical_text_type_variety_search-quality-test-suite-clinical-text-type-variety/run.json",
+        "summary": {
+          "paragraphs": 24,
+          "expected_concepts": 115,
+          "queries_all_expected_at_10": 9,
+          "queries_all_expected_at_20": 15,
+          "strict_success_at_10_count": 8,
+          "strict_success_at_20_count": 13,
+          "top_on_target_count": 24,
+          "top_wrong_count": 0,
+          "queries_with_disallowed_at_10": 2,
+          "found_at_10": 96,
+          "found_at_20": 103,
+          "found_at_60": 106,
+          "queries_with_missing_at_10": 15,
+          "queries_with_missing_at_20": 9,
+          "overall_score": 52.5
+        }
+      }
+    },
+    {
+      "id": "pubmed_long_abstracts",
+      "label": "PubMed long abstracts",
+      "weight": 22,
+      "query_file": "pubmed_literature_approved_queries.tsv",
+      "query_limit": 0,
+      "run_family": "probe",
+      "score_metric": "overall_score",
+      "measurement_status": "diagnostic lane",
+      "promotion_status": "not blocking until expanded long-document recall improves",
+      "metric_focus": [
+        "long-document recall at top 10/top 20/top 60",
+        "near-miss severity and absent-concept count",
+        "primary top-on-target protection",
+        "runtime/stage timing for long-document extraction when uncached"
+      ],
+      "risk_note": "First answers are currently clean, but long abstracts still lose too many secondary concepts before the first page.",
+      "reference_run": {
+        "run_id": "SQI-2026-06-17-004-expanded-post-fix-pubmed_approved_long_documents",
+        "created_at": "2026-06-17T20:40:45Z",
+        "artifact": "build/search_quality_experiments/runs/SQI-2026-06-17-004-expanded-post-fix-pubmed_approved_long_documents_search-quality-test-suite-pubmed-approved-long-documents/run.json",
+        "summary": {
+          "paragraphs": 23,
+          "expected_concepts": 106,
+          "queries_all_expected_at_10": 7,
+          "queries_all_expected_at_20": 11,
+          "strict_success_at_10_count": 7,
+          "strict_success_at_20_count": 11,
+          "top_on_target_count": 23,
+          "top_wrong_count": 0,
+          "found_at_10": 77,
+          "found_at_20": 81,
+          "found_at_60": 89,
+          "queries_with_missing_at_10": 16,
+          "queries_with_missing_at_20": 12,
+          "overall_score": 49.9
+        }
+      }
+    },
+    {
+      "id": "short_clinical_searches",
+      "label": "Short clinical searches",
+      "weight": 8,
+      "query_file": "search_quality_real_query_regression.tsv",
+      "query_limit": 0,
+      "paragraphs": 20,
+      "run_family": "release",
+      "score_metric": "overall_score",
+      "measurement_status": "release gate",
+      "promotion_status": "blocking short-query gate",
+      "metric_focus": [
+        "obvious primary concept recall for terse clinician searches",
+        "top-answer trust",
+        "separation of reviewed release rows from failed candidate expansions",
+        "wrong-first regression protection"
+      ],
+      "risk_note": "The reviewed 20-row gate is green; the larger candidate expansion remains excluded until it passes.",
+      "reference_run": {
+        "run_id": "SQI-2026-06-11-real-short-query-live",
+        "created_at": "2026-06-11T18:06:27Z",
+        "artifact": "build/search_quality_experiments/runs/SQI-2026-06-11-real-short-query-live_real-short-query-regression-live-run-2026-06-11/run.json",
+        "summary": {
+          "paragraphs": 20,
+          "expected_concepts": 20,
+          "queries_all_expected_at_10": 20,
+          "strict_success_at_10_count": 20,
+          "top_on_target_count": 20,
+          "top_wrong_count": 0,
+          "found_at_10": 20,
+          "found_at_20": 20,
+          "found_at_60": 20,
+          "queries_with_missing_at_10": 0,
+          "queries_with_missing_at_20": 0,
+          "queries_with_disallowed_at_10": 0,
+          "queries_with_disallowed_at_20": 0,
+          "overall_score": 100.0
+        }
+      }
+    },
+    {
+      "id": "consumer_lay_language",
+      "label": "Consumer lay language",
+      "weight": 8,
+      "query_file": "search_quality_consumer_lay_queries.tsv",
+      "query_limit": 0,
+      "run_family": "probe",
+      "score_metric": "overall_score",
+      "measurement_status": "candidate gate",
+      "promotion_status": "awaiting blocking/diagnostic policy decision",
+      "metric_focus": [
+        "lay phrase expected-concept recall",
+        "clean first-page precision against configured literal/anatomy/device/gene drift",
+        "top-answer trust",
+        "gate-promotion status"
+      ],
+      "risk_note": "The current run is clean, but the lane still needs a policy decision before it becomes a release gate.",
+      "reference_run": {
+        "run_id": "SQI-2026-06-16-002-consumer-lay-literal-drift-smoke-helper-consumer_lay_language",
+        "created_at": "2026-06-16T20:14:12Z",
+        "artifact": "build/search_quality_experiments/runs/SQI-2026-06-16-002-consumer-lay-literal-drift-smoke-helper-consumer_lay_language_search-quality-test-suite-consumer-lay-language/run.json",
+        "summary": {
+          "paragraphs": 13,
+          "expected_concepts": 13,
+          "queries_all_expected_at_10": 13,
+          "strict_success_at_10_count": 13,
+          "top_on_target_count": 13,
+          "top_wrong_count": 0,
+          "found_at_10": 13,
+          "found_at_20": 13,
+          "found_at_60": 13,
+          "queries_with_missing_at_10": 0,
+          "queries_with_missing_at_20": 0,
+          "queries_with_disallowed_at_10": 0,
+          "queries_with_disallowed_at_20": 0,
+          "overall_score": 100.0
+        }
+      }
+    },
+    {
+      "id": "patient_portal_current_issue",
+      "label": "Patient portal current issue",
+      "weight": 7,
+      "query_file": "search_quality_patient_portal_queries.tsv",
+      "query_limit": 0,
+      "run_family": "patient_portal",
+      "score_metric": "top_on_target_rate",
+      "measurement_status": "role/context gate",
+      "promotion_status": "blocking for current-issue ranking, not for full copied-history recall",
+      "metric_focus": [
+        "active/current issue versus copied-forward history",
+        "wrong-first protection",
+        "secondary copied-detail recall tracked separately from the score metric",
+        "medication-history role accuracy"
+      ],
+      "risk_note": "The score intentionally rewards current-issue ranking; full recall of old copied-forward details remains a separate weakness.",
+      "reference_run": {
+        "run_id": "SQI-2026-06-16-001_patient_portal",
+        "created_at": "2026-06-16T13:56:04Z",
+        "artifact": "build/search_quality_experiments/runs/SQI-2026-06-16-001_patient_portal_sqi-2026-06-16-001-patient-portal-current-versus-history-lane/run.json",
+        "summary": {
+          "paragraphs": 12,
+          "expected_concepts": 88,
+          "queries_all_expected_at_10": 0,
+          "strict_success_at_10_count": 0,
+          "top_on_target_count": 12,
+          "top_on_target_rate": 1.0,
+          "top_wrong_count": 0,
+          "found_at_10": 73,
+          "found_at_20": 80,
+          "found_at_60": 81,
+          "queries_with_missing_at_10": 12,
+          "queries_with_missing_at_20": 6,
+          "queries_with_disallowed_at_10": 1,
+          "queries_with_disallowed_at_20": 2,
+          "overall_score": 28.3
+        }
+      }
+    },
+    {
+      "id": "core_public_sources",
+      "label": "Core public sources",
+      "weight": 7,
+      "query_file": "search_quality_source_specific_queries.tsv",
+      "query_limit": 0,
+      "run_family": "release",
+      "score_metric": "overall_score",
+      "measurement_status": "release gate",
+      "promotion_status": "blocking core public-source gate",
+      "metric_focus": [
+        "source-specific expected-concept recall",
+        "source-retention and source-collapse checks",
+        "configured disallowed concepts",
+        "future DailyMed section-aware coverage"
+      ],
+      "risk_note": "The current core source lane is green, but expanded section-aware DailyMed coverage is still future work.",
+      "reference_run": {
+        "run_id": "SQI-2026-06-15-003-dailymed-warning-context-source_specific_evidence",
+        "created_at": "2026-06-15T17:47:03Z",
+        "artifact": "build/search_quality_experiments/runs/SQI-2026-06-15-003-dailymed-warning-context-source_specific_evidence_search-quality-test-suite-source-specific-evidence/run.json",
+        "summary": {
+          "paragraphs": 9,
+          "expected_concepts": 20,
+          "queries_all_expected_at_10": 9,
+          "strict_success_at_10_count": 9,
+          "top_on_target_count": 9,
+          "top_wrong_count": 0,
+          "found_at_10": 20,
+          "found_at_20": 20,
+          "found_at_60": 20,
+          "queries_with_missing_at_10": 0,
+          "queries_with_missing_at_20": 0,
+          "queries_with_disallowed_at_10": 0,
+          "queries_with_disallowed_at_20": 0,
+          "overall_score": 100.0
+        }
+      }
+    },
+    {
+      "id": "rotating_regression_watch",
+      "label": "Rotating regression watch",
+      "weight": 6,
+      "query_file": "search_quality_paragraph_queries.tsv",
+      "query_limit": 50,
+      "run_family": "smoke",
+      "score_metric": "overall_score",
+      "measurement_status": "regression watch",
+      "promotion_status": "routine smoke gate",
+      "metric_focus": [
+        "stability and churn after ranking changes",
+        "fresh wrong-first discovery",
+        "strict recall at top 10/top 20",
+        "first-answer trust across rotating samples"
+      ],
+      "risk_note": "This lane is a watch signal, not a replacement for full benchmark lanes.",
+      "reference_run": {
+        "run_id": "SQI-2026-06-17-001_rotating_50",
+        "created_at": "2026-06-17T15:01:27Z",
+        "artifact": "build/search_quality_experiments/runs/SQI-2026-06-17-001_rotating_50_sqi-2026-06-17-001-automated-50-query-smoke/run.json",
+        "summary": {
+          "paragraphs": 50,
+          "expected_concepts": 268,
+          "queries_all_expected_at_10": 41,
+          "queries_all_expected_at_20": 48,
+          "strict_success_at_10_count": 41,
+          "strict_success_at_20_count": 48,
+          "top_on_target_count": 50,
+          "top_wrong_count": 0,
+          "found_at_10": 257,
+          "found_at_20": 266,
+          "found_at_60": 267,
+          "queries_with_missing_at_10": 9,
+          "queries_with_missing_at_20": 2,
+          "queries_with_disallowed_at_10": 0,
+          "queries_with_disallowed_at_20": 0,
+          "overall_score": 87.2
+        }
+      }
+    }
+  ],
+  "caps": [
+    {
+      "id": "major_known_weakness_cap",
+      "label": "Major known weakness cap",
+      "lane_ids": [
+        "realistic_note_formats",
+        "pubmed_long_abstracts"
+      ],
+      "below_score": 60,
+      "minimum_count": 2,
+      "max_score": 76,
+      "reason": "Do not report stronger than 76% while both realistic note formats and approved PubMed long abstracts are below 60."
+    }
+  ]
+}

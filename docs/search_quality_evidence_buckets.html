@@ -145,7 +145,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 980px;
+      min-width: 1080px;
       background: #fff;
     }
     th, td {
@@ -170,15 +170,64 @@
     td.warn { background: #fffbeb; border-left-color: #f59e0b; color: var(--amber); }
     td.bad { background: #fef2f2; border-left-color: #ef4444; color: var(--red); }
     td.neutral { background: #f8fafc; color: var(--muted); }
-    .open-list {
+    .decision-grid {
       display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 10px;
     }
-    .open-item {
+    .decision-card {
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 12px;
+      background: #f8fafc;
+      padding: 13px;
+    }
+    .decision-card strong {
+      display: block;
+      font-size: 17px;
+      line-height: 1.2;
+      margin-bottom: 6px;
+    }
+    .decision-card span {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 850;
+      margin-bottom: 8px;
+      padding: 3px 8px;
+      text-transform: uppercase;
+    }
+    .decision-card.good { background: #ecfdf3; border-color: #bbf7d0; }
+    .decision-card.good strong, .decision-card.good span { color: var(--green); }
+    .decision-card.good span { border-color: #86efac; background: #f0fdf4; }
+    .decision-card.warn { background: #fffbeb; border-color: #fde68a; }
+    .decision-card.warn strong, .decision-card.warn span { color: var(--amber); }
+    .decision-card.warn span { border-color: #fcd34d; background: #fff7ed; }
+    .decision-card.bad { background: #fef2f2; border-color: #fecaca; }
+    .decision-card.bad strong, .decision-card.bad span { color: var(--red); }
+    .decision-card.bad span { border-color: #fca5a5; background: #fff1f2; }
+    .decision-card.neutral { background: #f8fafc; border-color: #dfe7f1; }
+    .decision-card.neutral strong, .decision-card.neutral span { color: var(--muted); }
+    .decision-card.neutral span { border-color: #cbd5e1; background: #fff; }
+    .rule-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .rule {
+      border: 1px solid var(--line);
+      border-left: 4px solid #dfe7f1;
+      border-radius: 8px;
       background: #fff;
+      padding: 12px;
+    }
+    .rule.good { border-left-color: #16a34a; }
+    .rule.warn { border-left-color: #f59e0b; }
+    .rule.bad { border-left-color: #ef4444; }
+    .rule.neutral { border-left-color: #94a3b8; }
+    .rule strong {
+      display: block;
+      margin-bottom: 5px;
     }
     @media (max-width: 960px) {
       .topbar { display: block; }
@@ -186,6 +235,8 @@
       .report-nav-label { text-align: left; }
       .nav-links { justify-content: flex-start; }
       .summary-grid { grid-template-columns: 1fr; }
+      .decision-grid,
+      .rule-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -194,7 +245,7 @@
     <div class="wrap topbar">
       <div>
         <h1>Search Quality Evidence Buckets</h1>
-        <p class="muted">Approval and testing status for evidence sources, acquired shards, benchmark lanes, and diagnostic artifacts. Built artifacts are not automatically approved evidence.</p>
+        <p class="muted">Decision record for source evidence: what is approved for measured use, what is candidate-only, what failed, and what is only inventory or diagnostic material. A built artifact is not approval.</p>
       </div>
       <div class="report-nav">
         <div class="report-nav-label">Open</div>
@@ -209,6 +260,32 @@
   </header>
   <main>
     <section class="panel">
+      <h2>Decision Snapshot</h2>
+      <div class="decision-grid">
+        <div class="decision-card good">
+          <span>Use now</span>
+          <strong>Core source lanes are passing</strong>
+          <p class="muted">DailyMed, MedlinePlus, and PubMed/PMC source-specific rows passed on 2026-06-15. Treat those lanes as the currently approved source-evidence path.</p>
+        </div>
+        <div class="decision-card good">
+          <span>Retained</span>
+          <strong>Fixed-linker acquisition stage</strong>
+          <p class="muted">The six-row acquisition gate passed with recall@20 of 1.000 and no disallowed@10 increase. Keep this stage as the accepted acquisition bundle.</p>
+        </div>
+        <div class="decision-card warn">
+          <span>Candidate only</span>
+          <strong>OpenAlex and association signals</strong>
+          <p class="muted">These can be useful, but broad default promotion either has not shown enough benefit or has already increased risk. Route, filter, and retest before default use.</p>
+        </div>
+        <div class="decision-card bad">
+          <span>Do not use</span>
+          <strong>Rejected linking and broad OpenAlex promotion</strong>
+          <p class="muted">These paths failed measured gates. Keep them as audit history or negative controls unless a new hypothesis changes the test.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
       <h2>Current Bucket Counts</h2>
       <div class="summary-grid">
         <div class="metric good">
@@ -218,17 +295,17 @@
         </div>
         <div class="metric warn">
           <strong>3</strong>
-          <span>tested neutral candidates</span>
-          <small>Measured without enough benefit for broad promotion.</small>
+          <span>candidate acquisition paths</span>
+          <small>Measured, but not strong enough for broad default promotion.</small>
         </div>
         <div class="metric bad">
           <strong>2</strong>
-          <span>tested rejected paths</span>
+          <span>rejected acquisition paths</span>
           <small>Kept as negative controls, not default evidence.</small>
         </div>
         <div class="metric good">
           <strong>9</strong>
-          <span>live-tested core source rows</span>
+          <span>passing core source rows</span>
           <small>DailyMed, MedlinePlus, and PubMed/PMC core rows passed on 2026-06-15.</small>
         </div>
         <div class="metric neutral">
@@ -240,27 +317,27 @@
     </section>
 
     <section class="panel">
-      <h2>How To Read The Buckets</h2>
-      <div class="open-list">
-        <div class="open-item">
-          <h3>Approved / Promoted</h3>
-          <p class="muted">Evidence that passed a measured gate and improved or preserved the target without unacceptable regression. This evidence can be used for the approved path named in the row.</p>
+      <h2>Bucket Rules</h2>
+      <div class="rule-grid">
+        <div class="rule good">
+          <strong>Approved / promoted</strong>
+          <p class="muted">Passed a measured gate and either improved the target or preserved it without unacceptable regression. Use it only for the path named in the row.</p>
         </div>
-        <div class="open-item">
-          <h3>Tested Neutral / Candidate</h3>
-          <p class="muted">Evidence that was evaluated and did not break the focused gate, but either did not improve enough or needs routing/filtering before broad promotion.</p>
+        <div class="rule warn">
+          <strong>Tested neutral / candidate</strong>
+          <p class="muted">Evaluated without breaking the focused gate, but not yet valuable or controlled enough for broad default use. Keep behind routing, filtering, or explicit experiments.</p>
         </div>
-        <div class="open-item">
-          <h3>Tested Rejected</h3>
-          <p class="muted">Evidence or a build/linking path that failed a gate. The artifact may stay on disk for audit, but it should not be reused as default evidence without a new hypothesis.</p>
+        <div class="rule bad">
+          <strong>Tested rejected</strong>
+          <p class="muted">Failed a gate. The artifact may stay on disk for audit, but it should not become default evidence without a new hypothesis and a new passing run.</p>
         </div>
-        <div class="open-item">
-          <h3>Configured / Not Yet Live-Tested</h3>
-          <p class="muted">Benchmark rows or source-specific lanes that exist but still need a live API run and pass/fail record before they can become routine gates.</p>
+        <div class="rule neutral">
+          <strong>Configured / not yet live-tested</strong>
+          <p class="muted">Rows or lanes exist, but still need a live API run and pass/fail record before they can become routine gates.</p>
         </div>
-        <div class="open-item">
-          <h3>Inventory / Diagnostic Only</h3>
-          <p class="muted">Built bundles, external benchmarks, logs, or enrichment artifacts that are useful for review but not product-approved evidence by themselves.</p>
+        <div class="rule neutral">
+          <strong>Inventory / diagnostic only</strong>
+          <p class="muted">Built bundles, external benchmarks, logs, and enrichment artifacts are review material. They do not create a product approval claim by themselves.</p>
         </div>
       </div>
     </section>
@@ -273,16 +350,18 @@
           <thead>
             <tr>
               <th>Bucket</th>
+              <th>Decision</th>
               <th>Evidence / Stage</th>
               <th>What It Includes</th>
               <th>Tested On</th>
               <th>Result</th>
-              <th>Product Rule</th>
+              <th>Operational Rule</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td class="bucket good">Approved / promoted</td>
+              <td>Use for the measured acquisition path.</td>
               <td>Broader biomedical linking</td>
               <td>DailyMed top drugs, NCI reference pages, MedlinePlus Genetics genes, and PubMed association topics rebuilt or relinked with the biomedical label index.</td>
               <td>Five-row focused source-acquisition gate.</td>
@@ -291,6 +370,7 @@
             </tr>
             <tr>
               <td class="bucket good">Approved / promoted</td>
+              <td>Keep as the accepted acquisition bundle.</td>
               <td>Fixed-linker acquired bundle</td>
               <td>Accepted broader biomedical artifacts, expanded PubMed topics, targeted severe-hypoglycemia PubMed slice, and default-ambiguity fixed DailyMed clopidogrel/osimertinib build.</td>
               <td>Six-row source-acquisition gate.</td>
@@ -299,6 +379,7 @@
             </tr>
             <tr>
               <td class="bucket warn">Tested neutral / candidate</td>
+              <td>Keep as candidate evidence.</td>
               <td>Expanded association topics</td>
               <td>Full live-bundle PubMed association topics and remaining DailyMed drugs.</td>
               <td>Five-row focused gate after the accepted biomedical stage.</td>
@@ -307,6 +388,7 @@
             </tr>
             <tr>
               <td class="bucket warn">Tested neutral / candidate</td>
+              <td>Do not promote until ranking is fixed.</td>
               <td>Targeted severe-hypoglycemia and corrected DailyMed</td>
               <td>Severe-hypoglycemia PubMed slice plus corrected DailyMed clopidogrel/osimertinib source subset.</td>
               <td>Five-row focused gate after round-two acquisition.</td>
@@ -315,6 +397,7 @@
             </tr>
             <tr>
               <td class="bucket warn">Tested neutral / candidate</td>
+              <td>Route or filter before default use.</td>
               <td>OpenAlex missing high-citation candidate</td>
               <td>Five-year highly cited OpenAlex article sweep excluding already present OpenAlex and recent PubMed corpora.</td>
               <td>Six-row acquisition gate.</td>
@@ -323,6 +406,7 @@
             </tr>
             <tr>
               <td class="bucket bad">Tested rejected</td>
+              <td>Do not reuse this linker by default.</td>
               <td>Narrow clinical linking</td>
               <td>DailyMed top drugs, NCI pages, MedlinePlus Genetics genes, and six PubMed topics linked with the narrower clinical label index.</td>
               <td>Five-row focused acquisition gate.</td>
@@ -331,6 +415,7 @@
             </tr>
             <tr>
               <td class="bucket bad">Tested rejected</td>
+              <td>Do not promote as default evidence.</td>
               <td>OpenAlex broad default-path promotion</td>
               <td>Default local server vector/doc set plus the missing high-citation OpenAlex candidate shard.</td>
               <td>Current 161-row default benchmark.</td>
@@ -343,8 +428,8 @@
     </section>
 
     <section class="panel">
-      <h2>Configured Source-Specific Lanes</h2>
-      <p class="muted small">Source: <code>config/source_specific_benchmarks.tsv</code> and <code>config/search_quality_source_specific_queries.tsv</code>. The default source-specific release lane is intentionally narrowed to three core source families. Opt-in association signals are tracked separately.</p>
+      <h2>Core Source Release Lanes</h2>
+      <p class="muted small">Source: <code>config/source_specific_benchmarks.tsv</code> and <code>config/search_quality_source_specific_queries.tsv</code>. The default release lane is narrowed to three source families: DailyMed, MedlinePlus, and PubMed/PMC. Association signals are opt-in and are not part of this release lane.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -354,7 +439,7 @@
               <th>Configured Focus</th>
               <th>Rows</th>
               <th>Release Gate</th>
-              <th>Current Status</th>
+              <th>Current Decision</th>
             </tr>
           </thead>
           <tbody>
@@ -388,7 +473,7 @@
               <td>Bounded external CUI-neighbor association candidates.</td>
               <td>5</td>
               <td>Must show positive neighbor value without promoting configured drift cases into default answers.</td>
-              <td>Tracked in <code>config/search_quality_external_embedding_neighbor_probe.tsv</code>; not default source evidence.</td>
+              <td>Tracked in <code>config/search_quality_external_embedding_neighbor_probe.tsv</code>. Keep outside default source evidence unless a future gate proves value without drift.</td>
             </tr>
           </tbody>
         </table>
@@ -397,6 +482,7 @@
 
     <section class="panel">
       <h2>Benchmarked But Not Product-Ready</h2>
+      <p class="muted small">These lanes are useful stress tests. They are not approval evidence because the current results are weak, stale, or document-identifier coverage is not good enough.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -437,7 +523,7 @@
 
     <section class="panel">
       <h2>Source Inventory Buckets</h2>
-      <p class="muted small">Source: <a href="source_evidence_dashboard.html">source evidence dashboard</a>. These buckets describe current artifact/source role, not approval by themselves.</p>
+      <p class="muted small">Source: <a href="source_evidence_dashboard.html">source evidence dashboard</a>. This section answers "what kind of material is this?" It does not answer "is this approved?" Approval still comes from the gates above.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -492,7 +578,7 @@
 
     <section class="panel">
       <h2>Maintenance Rule</h2>
-      <p class="muted">When a future iteration acquires, tests, promotes, rejects, or changes routing for evidence, update this page in the same iteration. A file existing under <code>build/</code> is not enough to move it out of candidate, diagnostic, or untested status.</p>
+      <p class="muted">When a future iteration acquires, tests, promotes, rejects, or changes routing for evidence, update this page in the same iteration. To move an item into an approved bucket, record the gate, the result, and the operational rule. A file existing under <code>build/</code> is not enough to move it out of candidate, diagnostic, or untested status.</p>
     </section>
   </main>
 </body>

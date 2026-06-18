@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Explain It Like I Am 5</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>Explain It Like I Am 5</h1>
+<p>Last updated: 2026-06-10</p>
+<p>We are building a smarter way to search medical ideas.</p>
+<h2>The Big Idea</h2>
+<p>UMLS is like a giant medical dictionary. It gives each medical idea a special ID, called a CUI. That part is very useful, so we keep it.</p>
+<p>Sometimes we may find a real medical idea that the dictionary does not have a good card for yet. In that case, we can make a temporary local card with its own <code>NEW#######</code> ID. That card is not an official UMLS ID. It says: this idea may deserve its own place, here is the evidence, and here are the closest UMLS ideas we know about.</p>
+<p>But a dictionary is not always enough. People do not always search using the exact dictionary name. Doctors, researchers, and patients use different words. They use abbreviations. They describe things in context.</p>
+<p>So this project adds a smart search layer on top of UMLS.</p>
+<h2>What We Are Making</h2>
+<p>For each UMLS idea, we collect real examples of how people talk about it in biomedical text. Then we turn those examples into a number pattern using a biomedical AI model called SapBERT.</p>
+<p>When someone searches, we turn their search into a number pattern too. Then we look for UMLS ideas with similar patterns.</p>
+<p>That means search can find ideas by meaning, not just by exact words.</p>
+<h2>Where The Examples Come From</h2>
+<p>Right now we use:</p>
+<ul><li>PubMed articles</li><li>Europe PMC articles</li><li>PubMed bulk-download test files</li></ul>
+<p>Credentialed clinical corpora are not part of the public release artifacts.</p>
+<h2>Why We Are Not Just Adding Synonyms</h2>
+<p>Adding synonyms sounds simple, but it does not solve the main problem.</p>
+<p>A good search engine can already handle many easy differences:</p>
+<ul><li>capital letters</li><li>plural words</li><li>punctuation</li><li>word order</li></ul>
+<p>The harder problem is meaning. For example, a search might describe a disease, a lab test, a procedure, and a drug together. A synonym list is not very good at understanding that. A biomedical vector search is better for that kind of language.</p>
+<h2>What Happens Step By Step</h2>
+<p>with evidence.</p>
+<p>answers.</p>
+<p>change, and rebuild only the rest.</p>
+<ol><li>Start with UMLS concepts.</li><li>Collect biomedical text from real sources.</li><li>Find UMLS concepts mentioned in that text.</li><li>Build a short evidence page for each concept.</li><li>If UMLS is missing a useful idea, create a reviewed temporary local concept</li><li>Turn each evidence page into a SapBERT vector.</li><li>Put those vectors into Elasticsearch.</li><li>Search with vectors.</li><li>Show evidence for each result.</li><li>Let a person mark results as relevant, partial, or wrong.</li><li>Save those judgments in one label file so future checks use the same</li><li>Try new ranking ideas in shadow mode before changing the real search.</li><li>Use those judgments to decide whether the search is improving.</li><li>When a new UMLS release arrives, compare which concept cards changed.</li><li>Reuse old SapBERT vectors for concept cards whose searchable text did not</li></ol>
+<h2>What The Label Fallback Does</h2>
+<p>Sometimes a UMLS concept has a good official label but not enough evidence yet. For example, <code>Appendectomy</code> should still be easy to find.</p>
+<p>The label fallback checks UMLS names at search time. It helps exact missing labels appear in results, but it is tuned so tiny pieces of a big query do not take over the ranking.</p>
+<h2>Where We Are Now</h2>
+<p>The current local system has:</p>
+<p>and lists only the changed CUIs between two releases</p>
+<p>smaller set that needs SapBERT embedding</p>
+<p>useful idea</p>
+<p>benchmark, source-acquisition, and reporting workflows</p>
+<p>paths working</p>
+<ul><li>five topic-based evidence chunks</li><li>one small PubMed bulk-download pilot</li><li>eight larger two-file PubMed bulk pilots loaded and reviewed</li><li>a first incremental UMLS update tool that fingerprints MRCONSO atoms by CUI</li><li>a vector reuse planner that separates unchanged concept documents from the</li><li>a new way to create local <code>NEW#######</code> concepts when UMLS is missing a</li><li>SapBERT vectors loaded into Elasticsearch</li><li>a smaller source lookup database for the testing page</li><li>a small related-concepts database so a result can show nearby UMLS ideas</li><li>a relationship-edge database path for mined public aggregate relationships</li><li>compact vector files for the current SapBERT vectors</li><li>a local search testing web page</li><li>a canonical search-quality judgment file</li><li>a feature extractor that turns saved search payloads into training rows</li><li>a shadow reranker report that compares current rank with machine-learned rank</li><li>a progress page</li><li>one repeatable-process report that lists the main build, serve, test, audit,</li><li>one script map that groups the helper commands while keeping their old command</li></ul>
+<p>Current scale:</p>
+<ul><li>535,683 vector search documents in the cumulative Elasticsearch alias</li><li>533,540 vector records loaded in the latest assessment-server review run</li><li>516,028 concept document rows represented by tracked artifacts</li><li>1,531,116 source references that the testing page can show</li><li>483,677 related-concept links for the testing page</li><li>10,093,683 raw linked evidence rows behind the current server/provenance set</li></ul>
+<p>Last reviewed quality check:</p>
+<ul><li>live Elasticsearch-backed 50-query rotating smoke run on 2026-06-10</li><li>gates passed</li><li>45 of 50 searches found every expected idea in the first 10 results</li><li>49 of 50 searches found every expected idea in the first 20 results</li><li>261 of 270 expected ideas appeared in the first 10 results</li><li>no known false positives appeared in the first 10 or first 20 results</li><li>45 good rows, 5 mixed rows, and 0 poor rows</li></ul>
+<p>The quick standing clinical API smoke also ran against the live server. It found the configured expected CUI for all 10 short clinical queries in the first 5 results, but two rows had the expected answer at rank 2 instead of rank 1. That is acceptable as a quick check, but the 50-query rotating smoke is the stronger regression signal.</p>
+<p>Going forward, every search-quality iteration should record the smoke-test decision. Runtime search changes should run the standing clinical API smoke, and broad ranking or release-quality changes should also run the 50-query rotating smoke with gates.</p>
+<p>There is now one command that helps do this after an iteration. It looks at the iteration type, runs the right checks, and writes a short verification report.</p>
+<p>The repeatable-process report is <code>docs/repeatable_processes.html</code>. It is the table of contents for the repo&#x27;s recurring work: what command starts each job, what files it needs, what it writes, and what check proves it finished.</p>
+<p>The script map is <code>scripts/README.md</code>. It groups the helper commands by job, but the old paths like <code>scripts/run_search_quality_experiment.py</code> still work.</p>
+<p>The testing page used to take about 134 seconds to start because it loaded evidence references directly from many files. Now it uses a smaller lookup database; restart it after new ingests so the page sees the latest files.</p>
+<p>No temporary local concepts are in the search index yet. The tool for creating them is ready, so the next time we find a real missing idea, we can add it with evidence and test whether search gets better.</p>
+<p>The testing page also shows related concepts now. If a result is a heart failure idea, the page can show nearby ideas from the UMLS relationship file, such as broader heart failure concepts or more specific subtypes.</p>
+<p>It also has a researcher-focused relationship view. For a disease, it can show linked drugs, genes or proteins, procedures or tests, and HPO phenotype features, so reviewers can quickly inspect useful cross-type connections.</p>
+<p>It can also load mined relationship edges from public aggregate artifacts. That means a source like an OHDSI cohort definition can say, with evidence and a numeric confidence score, that a drug is likely used for a condition. Those relationships are kept separate from patient-level data and can show up in the same related-result area when the relationship-edge database has been built. The local build now also has a small curated seed edge set for common drug indications, lab/observation context, and procedure-bundle attributes while the larger public mining pipeline is expanded.</p>
+<p>For procedure concepts, the builder can use SNOMED CT anchors by default while still blocking CPT codes and CPT descriptors from public outputs.</p>
+<p>The search-quality work now has one canonical label file: <code>config/search_quality_judgments.tsv</code>. It gathers the ideas that should be found, useful extra ideas that should not be treated as mistakes, true false positives, patient-portal active-versus-old-history labels, and the focused PubMed long-document slice.</p>
+<p>There is also a shadow reranker. It is like trying a new sorting rule on a copy of the results before changing the real search. The report asks: if we used the learned sorter, would the right ideas move up and the wrong ideas move down? The latest shadow run used 1,345 judgment rows and 3,894 feature rows. It found 355 wins, 425 regressions, and 288 rows that did not improve. Because this is shadow mode, it is evidence for review, not a production ranking change.</p>
+<p>The next step is targeted PubMed work, not more arbitrary PubMed chunks. Start with the known long-document misses, fix reranking or section/chunk linking where the right concept is already nearby, and add PubMed evidence only when a judged query still lacks local evidence. The review results also say we should reduce lower-rank noisy procedure, anatomy, follow-up, and broad disease matches without hiding useful secondary concepts.</p>
+<h2>What Good Looks Like</h2>
+<p>The system is good when:</p>
+<p>wrong</p>
+<p>official UMLS CUI</p>
+<ul><li>it finds the right UMLS concept for real biomedical searches</li><li>it can explain results with evidence</li><li>it tracks where the evidence came from</li><li>it improves when we add more real-world text</li><li>it does not blindly add noisy data</li><li>it keeps human labels in one place so we know what counts as right, useful, or</li><li>it tests learned ranking changes in shadow mode before they affect users</li><li>it can represent a truly missing medical idea without pretending it is an</li><li>every release has search-quality checks</li></ul>
+<h2>What We Need To Keep Updating</h2>
+<p>Whenever the pipeline changes, update this file and the technical document. If we add a new search-quality lane, label source, report, or ranking experiment, update this file in the same change.</p>
+<p>Update:</p>
+<ul><li>what data sources we are using</li><li>what step we are on</li><li>the current quality numbers</li><li>the current judgment and shadow-reranker numbers</li><li>what the next step is</li><li>any important problems or limitations</li></ul>
+</main>
+<!-- Converted from docs/explain_like_im_5.html. -->
+</body>
+</html>

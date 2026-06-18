@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scaling Chunks for the UMLS Semantic Evidence Index</title>
+  <style>
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6978;
+  --line: #d7dde5;
+  --accent: #176b87;
+  --code: #eef2f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main {
+  width: min(1080px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+h1 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; letter-spacing: 0; }
+h2 { margin: 32px 0 12px; font-size: 20px; letter-spacing: 0; }
+h3 { margin: 24px 0 10px; font-size: 16px; letter-spacing: 0; }
+h4 { margin: 20px 0 8px; font-size: 14px; letter-spacing: 0; }
+p { margin: 0 0 12px; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0 16px 24px; padding: 0; }
+li { margin: 6px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; border-left: 4px solid #b7dce5; background: #eef8fb; color: #31424f; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; background: var(--code); border-radius: 4px; padding: 1px 4px; }
+pre { margin: 12px 0 18px; padding: 14px; overflow-x: auto; background: #111827; color: #e5e7eb; border-radius: 8px; }
+pre code { background: transparent; color: inherit; padding: 0; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin: 10px 0 20px; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #eef2f6; color: #233142; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+tr:last-child td { border-bottom: 0; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+img { max-width: 100%; height: auto; }
+@media (max-width: 720px) {
+  main { width: min(100vw - 20px, 1080px); padding-top: 18px; }
+  h1 { font-size: 25px; }
+  table { display: block; overflow-x: auto; }
+}
+  </style>
+</head>
+<body>
+<main>
+<h1>Scaling Chunks for the UMLS Semantic Evidence Index</h1>
+<p>These chunks build the successor search layer for UMLS: evidence-backed SapBERT/CLS vectors, Elasticsearch indexes, provenance, and quality-review artifacts. The chunks are additive because release-grade UMLS 2.0 artifacts should be built, reviewed, and merged incrementally rather than regenerated as one opaque batch.</p>
+<p>The scaling loop should run in bounded chunks. Each chunk should finish in less than 10 minutes on the local machine or stop at a clean intermediate artifact.</p>
+<h2>Rules</h2>
+<p>chunks.</p>
+<p>baseline.</p>
+<p>review.</p>
+<p>merging into the main artifact.</p>
+<p>Hashing vectors are only a pipeline smoke test.</p>
+<p>product until search quality has been reviewed.</p>
+<ul><li>Fetch, link, aggregate, SapBERT/CLS embed, export, and load can be separate</li><li>Prefer additive artifacts with a chunk name instead of overwriting the current</li><li>Use small topic files first, then increase retmax or topic count after quality</li><li>Keep DRG excluded.</li><li>Keep the default chunk loop public-source only.</li><li>After every chunk, check row counts and run a few search-quality queries before</li><li>Use <code>sapbert</code> or another CLS-pooled BERT provider for quality assessment.</li><li>Treat each chunk as a candidate release delta. It is not part of the successor</li></ul>
+<h2>Chunk 001: Gap Topics</h2>
+<p>Purpose: add a small amount of literature evidence for under-covered areas: organisms, anatomy, genes/proteins, device safety, pathology, and molecular testing.</p>
+<p>Scope: PubMed and Europe PMC only.</p>
+<p>Topic file:</p>
+<pre><code class="language-sh">config/scaling_chunk_001_gap_topics.tsv</code></pre>
+<p>Fetch outputs:</p>
+<pre><code class="language-sh">build/pubmed_scaling_chunk_001_gap_topics_corpus.jsonl
+build/europepmc_scaling_chunk_001_gap_topics_corpus.jsonl</code></pre>
+<p>Link output directory:</p>
+<pre><code class="language-sh">build/profile_evidence_scaling_chunk_001_gap_topics/</code></pre>
+<p>Suggested chunk boundaries:</p>
+<ol><li>Fetch PubMed + Europe PMC topic corpora.</li><li>Link the chunk corpus through profile shards.</li><li>Build a chunk-only document/SapBERT vector/search export.</li><li>If quality is acceptable, merge the chunk evidence with the current baseline.</li></ol>
+<p>Success criteria:</p>
+<ul><li>Fetch finishes under 10 minutes.</li><li>Link finishes under 10 minutes.</li><li>SapBERT/CLS embedding finishes under 10 minutes.</li><li>No DRG sources.</li><li>Search view shows source refs for evidence bullets.</li><li>At least some new evidence lands in organisms, anatomy, and genes/proteins.</li></ul>
+<h2>Chunk 002: Common Clinical Language</h2>
+<p>Purpose: add breadth for common clinical search language across high-volume conditions, symptoms, labs, imaging, pediatrics, oncology, psychiatry, renal, liver, autoimmune, cardiopulmonary, and neurologic topics.</p>
+<p>Scope: PubMed, Europe PMC, and PMC Open Access only.</p>
+<p>Topic file:</p>
+<pre><code class="language-sh">config/scaling_chunk_002_common_clinical.tsv</code></pre>
+<p>Primary outputs:</p>
+<pre><code class="language-sh">build/scaling_chunk_002_common_clinical_concept_documents.jsonl
+build/scaling_chunk_002_common_clinical_concept_vectors.sapbert_cls.jsonl
+build/qe-scaling-chunk-002-common-clinical-sapbert-cls.elastic.bulk.part-*.ndjson</code></pre>
+<p>Elasticsearch:</p>
+<pre><code class="language-sh">qe-scaling-chunk-002-common-clinical-sapbert-cls
+qe-scaling-sapbert-cls</code></pre>
+<p>The <code>qe-scaling-sapbert-cls</code> alias spans loaded SapBERT chunks and is the preferred search target for cumulative assessment.</p>
+<h2>Chunk 003: Abbreviation-Heavy Language</h2>
+<p>Purpose: add evidence around abbreviation-heavy clinical and biomedical queries such as HFrEF, HFpEF, NSTEMI, COPD, DKA, CKD, TIA, SLE, NSCLC, UTI, MRI, GDM, DOAC, PCI, CABG, TAVR, LVAD, and ECMO.</p>
+<p>Scope: PubMed and Europe PMC only. Short abbreviations can be ambiguous, so this chunk should get explicit quality review before merge.</p>
+<p>Topic file:</p>
+<pre><code class="language-sh">config/scaling_chunk_003_abbreviation_language.tsv</code></pre>
+<p>Primary outputs:</p>
+<pre><code class="language-sh">build/scaling_chunk_003_abbreviation_language_concept_documents.jsonl
+build/scaling_chunk_003_abbreviation_language_concept_vectors.sapbert_cls.jsonl
+build/qe-scaling-chunk-003-abbreviation-language-sapbert-cls.elastic.bulk.part-*.ndjson</code></pre>
+<p>Elasticsearch:</p>
+<pre><code class="language-sh">qe-scaling-chunk-003-abbreviation-language-sapbert-cls
+qe-scaling-sapbert-cls</code></pre>
+<h2>Chunk 004: Drug Safety and Therapeutics</h2>
+<p>Purpose: add evidence for medication safety, adverse reactions, drug classes, therapeutic use, renal dosing, pregnancy/lactation medication questions, and high-value drug domains such as anticoagulation, diabetes therapy, oncology therapy, antimicrobials, immunosuppression, psychiatry, neurology, and pain.</p>
+<p>Scope: PubMed and Europe PMC only.</p>
+<p>Topic file:</p>
+<pre><code class="language-sh">config/scaling_chunk_004_drug_safety_therapeutics.tsv</code></pre>
+<p>Primary outputs:</p>
+<pre><code class="language-sh">build/scaling_chunk_004_drug_safety_therapeutics_concept_documents.jsonl
+build/scaling_chunk_004_drug_safety_therapeutics_concept_vectors.sapbert_cls.jsonl
+build/qe-scaling-chunk-004-drug-safety-therapeutics-sapbert-cls.elastic.bulk.part-*.ndjson</code></pre>
+<p>Elasticsearch:</p>
+<pre><code class="language-sh">qe-scaling-chunk-004-drug-safety-therapeutics-sapbert-cls
+qe-scaling-sapbert-cls</code></pre>
+<h2>Chunk 005: Diagnostics, Procedures, and Devices</h2>
+<p>Purpose: add evidence for imaging, invasive procedures, biopsies, laboratory diagnostics, critical care devices, orthopedic devices, neurologic devices, women&#x27;s health procedures, urologic procedures, and device complications.</p>
+<p>Scope: PubMed and Europe PMC only.</p>
+<p>Topic file:</p>
+<pre><code class="language-sh">config/scaling_chunk_005_diagnostics_procedures_devices.tsv</code></pre>
+<p>Primary outputs:</p>
+<pre><code class="language-sh">build/scaling_chunk_005_diagnostics_procedures_devices_concept_documents.jsonl
+build/scaling_chunk_005_diagnostics_procedures_devices_concept_vectors.sapbert_cls.jsonl
+build/qe-scaling-chunk-005-diagnostics-procedures-devices-sapbert-cls.elastic.bulk.part-*.ndjson</code></pre>
+<p>Elasticsearch:</p>
+<pre><code class="language-sh">qe-scaling-chunk-005-diagnostics-procedures-devices-sapbert-cls
+qe-scaling-sapbert-cls</code></pre>
+<h2>PubMed Bulk Recent Baseline Pilot</h2>
+<p>Purpose: validate the bulk-download path before attempting all of PubMed. Topic search is useful for fast iteration, but full biomedical coverage should come from PubMed baseline and update files.</p>
+<p>Current pilot input:</p>
+<pre><code class="language-sh">data/pubmed/baseline/pubmed26n1334.xml.gz</code></pre>
+<p>Primary outputs:</p>
+<pre><code class="language-sh">build/pubmed_bulk_recent_baseline_corpus.jsonl
+build/profile_evidence_pubmed_bulk_recent_baseline/*.jsonl
+build/pubmed_bulk_recent_baseline_concept_documents.jsonl
+build/pubmed_bulk_recent_baseline_concept_vectors.sapbert_cls.jsonl
+build/scaling_runs/pubmed_bulk_recent_baseline/search_quality_judgments.csv
+build/scaling_runs/pubmed_bulk_recent_baseline/search_quality_summary.json</code></pre>
+<p>Current quality sample:</p>
+<pre><code class="language-text">queries: 8
+judgments: 40
+mean weighted P@5: 0.575
+mean MRR: 1.0
+relevant top-1 queries: 6 / 8</code></pre>
+<p>After quality review, the eventual scale option remains full PubMed baseline/update bulk ingest with manifests, resume support, and incremental changed-document re-embedding. The current next step is narrower: add or relink PubMed evidence only for benchmarked search weaknesses that cannot be fixed by section/chunk linking, merge behavior, or reranking.</p>
+<h2>PubMed Bulk Recent Next-Two-Shards Pilot</h2>
+<p>Purpose: increase the bulk-ingest scale from one unusually small high-numbered baseline file to two larger recent baseline files while keeping the work small enough to inspect.</p>
+<p>Current pilot inputs:</p>
+<pre><code class="language-sh">data/pubmed/baseline/pubmed26n1333.xml.gz
+data/pubmed/baseline/pubmed26n1332.xml.gz</code></pre>
+<p>Primary outputs:</p>
+<pre><code class="language-sh">build/pubmed_bulk_recent_next2_corpus.jsonl
+build/profile_evidence_pubmed_bulk_recent_next2/*.jsonl
+build/pubmed_bulk_recent_next2_concept_documents.jsonl
+build/pubmed_bulk_recent_next2_concept_vectors.sapbert_cls.jsonl
+build/scaling_runs/pubmed_bulk_recent_next2/progress.md</code></pre>
+<p>Current scale:</p>
+<pre><code class="language-text">corpus documents: 59,859
+linked evidence records: 804,542
+CUI/view documents: 54,906
+SapBERT vectors: 54,906
+Elasticsearch alias count after load: 108,703</code></pre>
+<p>Operational note: bulk parts around 195 MB failed locally with a broken pipe. Re-exporting into 11 parts of about 38-39 MB loaded successfully. Keep local bulk exports near 5,000 documents per part unless Elasticsearch HTTP limits are tuned.</p>
+<p>Next step: review search quality for this new chunk before adding more PubMed baseline files.</p>
+<p>Reviewed quality sample:</p>
+<pre><code class="language-text">queries: 8
+judgments: 40
+mean weighted P@5: 0.588
+mean MRR: 1.0
+relevant top-1 queries: 7 / 8</code></pre>
+<p>This was acceptable for continuing with another small PubMed bulk chunk.</p>
+<h2>PubMed Bulk Recent Shards 1331 and 1330</h2>
+<p>Purpose: continue bounded PubMed bulk scaling with the next two high-numbered 2026 baseline files after <code>pubmed_bulk_recent_next2</code>.</p>
+<p>Current pilot inputs:</p>
+<pre><code class="language-sh">data/pubmed/baseline/pubmed26n1331.xml.gz
+data/pubmed/baseline/pubmed26n1330.xml.gz</code></pre>
+<p>Primary outputs:</p>
+<pre><code class="language-sh">build/pubmed_bulk_recent_1331_1330_corpus.jsonl
+build/profile_evidence_pubmed_bulk_recent_1331_1330/*.jsonl
+build/pubmed_bulk_recent_1331_1330_concept_documents.jsonl
+build/pubmed_bulk_recent_1331_1330_concept_vectors.sapbert_cls.jsonl
+build/scaling_runs/pubmed_bulk_recent_1331_1330/progress.md</code></pre>
+<p>Current scale:</p>
+<pre><code class="language-text">corpus documents: 59,892
+linked evidence records: 797,823
+CUI/view documents: 55,216
+SapBERT vectors: 55,216
+Elasticsearch alias count after load: 163,919
+assessment-server evidence refs after load, before efficiency gate: 1,891,603
+assessment-server startup time after load, before efficiency gate: 134s</code></pre>
+<p>Reviewed quality sample:</p>
+<pre><code class="language-text">queries: 8
+judgments: 40
+mean weighted P@5: 0.575
+mean MRR: 1.0
+relevant top-1 queries: 7 / 8</code></pre>
+<p>This passed the small top-1 quality gate, but lower-rank noise increased for appendectomy, sepsis, and organism-adjacent queries. Before adding many more PubMed files, move provenance lookup out of eager JSONL loading and into an indexed/on-demand store.</p>
+<h2>Efficiency Gate: Indexed Provenance and Compact Vectors</h2>
+<p>Purpose: remove the assessment-server startup bottleneck and define smaller release-shaped artifacts before targeted PubMed weakness acquisition or any future broad PubMed expansion.</p>
+<p>Primary outputs:</p>
+<pre><code class="language-sh">build/search_quality_provenance.sqlite
+build/compact_vectors/*.manifest.json
+build/compact_vectors/*.vectors.f32
+build/compact_vectors/*.metadata.jsonl
+build/scaling_runs/indexed_provenance_compact_storage.marker</code></pre>
+<p>Current efficiency result after the latest provenance refresh:</p>
+<pre><code class="language-text">raw linked evidence rows considered: 2,718,077
+indexed display source refs: 667,003
+concept docs with indexed provenance: 117,056
+provenance index size: 304 MB
+compact vector artifact size: 787 MB
+assessment-server startup before: 134.309s
+assessment-server startup after: 33.616s</code></pre>
+<p>The provenance index intentionally stores only what the search-quality UI can display: the first six evidence bullets per concept document and up to five source citations per bullet. The lookup key is a 128-bit hash of normalized evidence text, so the index does not store the full evidence text as a key.</p>
+<p>This gate is complete. The next scaling step should not add arbitrary recent PubMed shards. Use targeted weakness acquisition first: start from judged PubMed query misses, prove local ranking/linking cannot recover the expected CUI, then add or relink only the evidence needed for that query shape. Any future broader ingest should keep this shape: chunked downloads, streamed linking, display-scoped provenance, compact vectors, Elasticsearch bulk parts around 5,000 documents, and quality review before alias promotion.</p>
+<h2>PubMed Bulk Recent Shards 1329 and 1328</h2>
+<p>Purpose: continue bounded PubMed bulk scaling with the next two high-numbered 2026 baseline files after <code>pubmed_bulk_recent_1331_1330</code>, while using the indexed provenance and compact-vector efficiency path.</p>
+<p>Current pilot inputs:</p>
+<pre><code class="language-sh">data/pubmed/baseline/pubmed26n1329.xml.gz
+data/pubmed/baseline/pubmed26n1328.xml.gz</code></pre>
+<p>Primary outputs:</p>
+<pre><code class="language-sh">build/pubmed_bulk_recent_1329_1328_corpus.jsonl
+build/profile_evidence_pubmed_bulk_recent_1329_1328/*.jsonl
+build/pubmed_bulk_recent_1329_1328_concept_documents.jsonl
+build/pubmed_bulk_recent_1329_1328_concept_vectors.sapbert_cls.jsonl
+build/compact_vectors/pubmed_bulk_recent_1329_1328_sapbert_cls.manifest.json
+build/scaling_runs/pubmed_bulk_recent_1329_1328/progress.md</code></pre>
+<p>Current scale:</p>
+<pre><code class="language-text">corpus documents: 59,980
+linked evidence records: 822,419
+CUI/view documents: 55,448
+SapBERT vectors: 55,448
+Elasticsearch alias count after load: 219,367
+assessment-server display provenance refs: 667,003
+assessment-server startup time after load: 33.616s</code></pre>
+<p>Reviewed quality sample:</p>
+<pre><code class="language-text">queries: 8
+judgments: 40
+mean weighted P@5: 0.613
+mean MRR: 1.0
+relevant top-1 queries: 6 / 8</code></pre>
+<p>This passed the small review gate, with the same persistent caveat as earlier chunks: exact-label fallback is strong, but lower-rank noise remains for sepsis, appendectomy, and broad asthma-related queries.</p>
+<h2>PubMed Bulk Recent Shards 1327 Through 1322</h2>
+<p>Purpose: continue bounded PubMed bulk scaling with three more two-file 2026 baseline pilots after <code>pubmed_bulk_recent_1329_1328</code>.</p>
+<p>Reviewed quality samples:</p>
+<pre><code class="language-text">1327/1326: queries 8, judgments 40, mean weighted P@5 0.600, mean MRR 1.0, relevant top-1 6 / 8
+1325/1324: queries 8, judgments 40, mean weighted P@5 0.600, mean MRR 1.0, relevant top-1 6 / 8
+1323/1322: queries 8, judgments 40, mean weighted P@5 0.750, mean MRR 1.0, relevant top-1 8 / 8</code></pre>
+<p>All three passed the small continuation gate. The <code>1323/1322</code> sample was clearly above the earlier <code>1329/1328</code> score of <code>0.613</code> after ranker changes that retrieve exact query-anchor labels, preserve vector evidence when labels enrich an existing hit, demote anatomy-only fragments in multi-anchor clinical queries, add related procedure-neighbor candidates for exact procedure anchors, prefer composite clinical evidence over duplicate component labels, and promote sepsis-shock concepts for sepsis queries with hemodynamic-treatment anchors. A follow-up component-noise pass now keeps lactate/vasopressor-only hits below the top 5 for the sepsis composite query. A mixed-query smoke pass also found and mitigated denial-scope noise: the ranker now searches negated labels and penalizes positive findings when the query says symptoms are denied. The stable remaining failure modes are below-rank-1 related-concept specificity and component-heavy mixed queries, where top results may still be correct components rather than the combined diagnosis, adverse event, or treatment concept.</p>
+<h2>PubMed Bulk Recent Shards 1321 And 1320</h2>
+<p>Purpose: continue bounded PubMed bulk scaling with the next two high-numbered 2026 baseline files after <code>pubmed_bulk_recent_1323_1322</code>.</p>
+<p>Current pilot inputs:</p>
+<pre><code class="language-sh">data/pubmed/baseline/pubmed26n1321.xml.gz
+data/pubmed/baseline/pubmed26n1320.xml.gz</code></pre>
+<p>Primary outputs:</p>
+<pre><code class="language-sh">build/pubmed_bulk_recent_1321_1320_corpus.jsonl
+build/profile_evidence_pubmed_bulk_recent_1321_1320/*.jsonl
+build/pubmed_bulk_recent_1321_1320_concept_documents.jsonl
+build/pubmed_bulk_recent_1321_1320_concept_vectors.sapbert_cls.jsonl
+build/compact_vectors/pubmed_bulk_recent_1321_1320_sapbert_cls.manifest.json
+build/qe-scaling-pubmed-bulk-recent-1321-1320-sapbert-cls.elastic.mapping.json
+build/qe-scaling-pubmed-bulk-recent-1321-1320-sapbert-cls.elastic.bulk.part-*.ndjson
+build/scaling_runs/pubmed_bulk_recent_1321_1320/progress.md</code></pre>
+<p>Current scale:</p>
+<pre><code class="language-text">corpus documents: 59,881
+linked evidence records: 821,042
+CUI/view documents: 55,371
+SapBERT vectors: 55,371
+compact float32 vectors: 55,371
+Elasticsearch bulk parts: 12
+Elasticsearch index records: 55,371</code></pre>
+<p>Reviewed quality sample:</p>
+<pre><code class="language-text">queries: 8
+judgments: 40
+mean weighted P@5: 0.750
+mean MRR: 1.0
+relevant top-1 queries: 8 / 8</code></pre>
+<p>This batch passed the comparable continuation gate and was added to the <code>qe-scaling-sapbert-cls</code> cumulative alias. A separate 10-query mixed clinical smoke pass also returned relevant top-1 for all 10 queries, with lower mean weighted P@5 (<code>0.570</code>) from generic follow-up, anatomy, and denied-positive lower-rank hits.</p>
+<p>For the full current technical state, use:</p>
+<pre><code class="language-sh">docs/technical_pipeline.html
+docs/explain_like_im_5.html</code></pre>
+</main>
+<!-- Converted from docs/scaling_chunks.html. -->
+</body>
+</html>

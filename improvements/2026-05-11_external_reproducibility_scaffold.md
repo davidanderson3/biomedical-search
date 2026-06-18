@@ -8,7 +8,7 @@
   - SNOMED CT release archives when present locally or supplied with `--snomed-zip`
 - Added environment metadata, source-input counts, and optional SHA-256 hashing to the manifest.
 - Added explicit `--vectors`, `--docs`, and index path overrides to `scripts/evaluate_paragraph_quality.py`.
-- Tightened `docs/reproducibility.md` with a public-first build, provenance-index step, source/license boundaries, and an external release checklist.
+- Tightened `docs/reproducibility.html` with a public-first build, provenance-index step, source/license boundaries, and an external release checklist.
 
 ## Why This Improves Things
 

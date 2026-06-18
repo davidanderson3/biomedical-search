@@ -7,6 +7,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -125,7 +126,7 @@ DEFAULT_PERMITTED_SOURCE_VECTORS = (
     ROOT / "build" / "public" / "permitted_sources_concept_vectors.hashing.jsonl"
 )
 DEFAULT_HTML = ROOT / "docs" / "search_quality_server.html"
-DEFAULT_PRODUCT_HTML = ROOT / "docs" / "search_quality_product.html"
+DEFAULT_PRODUCT_HTML = ROOT / "web" / "search_quality_product.html"
 DEFAULT_PROGRESS_HTML = ROOT / "docs" / "scaling_progress.html"
 DEFAULT_SOURCE_DASHBOARD_HTML = ROOT / "docs" / "source_evidence_dashboard.html"
 DEFAULT_PROGRESS_PLAN = ROOT / "config" / "scaling_chunk_001_gap_topics.plan.json"
@@ -135,7 +136,7 @@ DEFAULT_RELATIONSHIP_EDGE_INDEX = ROOT / "build" / "relationship_edges.sqlite"
 DEFAULT_RESEARCH_RELATION_INDEX = ROOT / "build" / "umls_research_relations.sqlite"
 DEFAULT_EXTERNAL_CUI_VECTOR_INDEX = ROOT / "build" / "external_cui_vector_neighbors.sqlite"
 DEFAULT_DEFINITION_INDEX = ROOT / "build" / "umls_definitions.sqlite"
-DEFAULT_CODE_INDEX = ROOT / "build" / "cui_code_index.sqlite"
+DEFAULT_CODE_INDEX = ROOT / "build" / "cui_code_index.runtime.sqlite"
 DEFAULT_SEMANTIC_TYPE_INDEX = ROOT / "build" / "umls_semantic_types.sqlite"
 DEFAULT_LABEL_INDEX = ROOT / "build" / "umls_biomedicine_search_label_index.sqlite"
 DEFAULT_ACTIVE_LABEL_SUPPLEMENT = ROOT / "config" / "active_label_supplement.tsv"
@@ -176,6 +177,7 @@ DEFAULT_DOC_PATHS = [
 DEFAULT_LABEL_INDEXES = [
     path for path in (DEFAULT_LABEL_INDEX,) if path.exists()
 ]
+DEFAULT_UMLS_SEARCH_LABEL_INDEXES: list[Path] = []
 
 
 def default_evidence_paths() -> list[Path]:
@@ -225,7 +227,7 @@ def parse_args() -> argparse.Namespace:
         "--provenance-index",
         type=Path,
         help=(
-            "SQLite provenance index built with evidence_vectors.py build-provenance-index. "
+            "Packaged SQLite provenance index. "
             "When supplied, evidence sources are looked up on demand instead of loaded from JSONL."
         ),
     )
@@ -310,6 +312,16 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_LABEL_INDEXES,
         help="Optional SQLite UMLS label index used as an exact-label fallback.",
     )
+    parser.add_argument(
+        "--umls-search-label-index",
+        type=Path,
+        action="append",
+        default=DEFAULT_UMLS_SEARCH_LABEL_INDEXES,
+        help=(
+            "Optional full MRCONSO-derived label index used only by the UMLS /search "
+            "compatibility endpoint."
+        ),
+    )
     parser.add_argument("--label-max-tokens", type=int, default=8)
     parser.add_argument(
         "--label-fallback-limit",
@@ -346,8 +358,8 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_CODE_INDEX if DEFAULT_CODE_INDEX.exists() else None,
         help=(
-            "Optional SQLite CUI/code index built with evidence_vectors.py build-code-index. "
-            "Defaults to build/cui_code_index.sqlite when that file exists."
+            "Optional compact runtime SQLite CUI/code index. Defaults to "
+            "build/cui_code_index.runtime.sqlite when that file exists."
         ),
     )
     parser.add_argument(
@@ -355,8 +367,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_SEMANTIC_TYPE_INDEX if DEFAULT_SEMANTIC_TYPE_INDEX.exists() else None,
         help=(
-            "Optional SQLite MRSTY semantic type index built with "
-            "evidence_vectors.py build-semantic-type-index. Defaults to "
+            "Optional SQLite MRSTY semantic type index. Defaults to "
             "build/umls_semantic_types.sqlite when that file exists."
         ),
     )
@@ -365,8 +376,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_RELATION_INDEX if DEFAULT_RELATION_INDEX.exists() else None,
         help=(
-            "Optional SQLite related-concepts index built with "
-            "evidence_vectors.py build-relation-index. Defaults to "
+            "Optional SQLite related-concepts index. Defaults to "
             "build/umls_related_concepts.sqlite when that file exists."
         ),
     )
@@ -375,8 +385,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_RESEARCH_RELATION_INDEX if DEFAULT_RESEARCH_RELATION_INDEX.exists() else None,
         help=(
-            "Optional SQLite cross-semantic research relation index built with "
-            "evidence_vectors.py build-research-relation-index. Defaults to "
+            "Optional SQLite cross-semantic research relation index. Defaults to "
             "build/umls_research_relations.sqlite when that file exists."
         ),
     )
@@ -385,8 +394,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_RELATIONSHIP_EDGE_INDEX if DEFAULT_RELATIONSHIP_EDGE_INDEX.exists() else None,
         help=(
-            "Optional SQLite universal relationship-edge index built with "
-            "evidence_vectors.py build-relationship-edge-index. Defaults to "
+            "Optional SQLite universal relationship-edge index. Defaults to "
             "build/relationship_edges.sqlite when that file exists."
         ),
     )
@@ -394,8 +402,7 @@ def parse_args() -> argparse.Namespace:
         "--external-cui-vector-index",
         type=Path,
         help=(
-            "Opt-in SQLite BioConceptVec/cui2vec neighbor index built with "
-            "evidence_vectors.py build-external-cui-vector-index. These external "
+            "Opt-in SQLite BioConceptVec/cui2vec neighbor index. These external "
             "embedding neighbors are association signals, not source evidence, and "
             "are not loaded by default."
         ),
@@ -405,8 +412,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_DEFINITION_INDEX if DEFAULT_DEFINITION_INDEX.exists() else None,
         help=(
-            "Optional SQLite MRDEF definition index built with "
-            "evidence_vectors.py build-definition-index. Defaults to "
+            "Optional SQLite MRDEF definition index. Defaults to "
             "build/umls_definitions.sqlite when that file exists."
         ),
     )
@@ -487,6 +493,13 @@ def parse_args() -> argparse.Namespace:
             "these sources may be returned."
         ),
     )
+    parser.add_argument(
+        "--public-ui-only",
+        action="store_true",
+        help=(
+            "Expose only the public search website and public API."
+        ),
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8766)
     return parser.parse_args()
@@ -505,6 +518,11 @@ def require_elasticsearch_available(base_url: str, index: str) -> None:
         raise SystemExit(f"Elasticsearch check failed: HTTP {exc.code} from {url}") from exc
     except (OSError, urllib.error.URLError) as exc:
         raise SystemExit(f"Elasticsearch check failed for {url}: {exc}") from exc
+
+
+def install_progress(message: str) -> None:
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"[install {timestamp}] {message}", flush=True)
 
 
 def main() -> None:
@@ -547,23 +565,37 @@ def main() -> None:
             raise SystemExit("--provider hashing-idf requires --idf-path")
         if not args.idf_path.exists():
             raise SystemExit(f"missing hashing IDF file: {args.idf_path}")
-    if not args.html.exists():
-        raise SystemExit(f"missing HTML file: {args.html}")
     if not args.product_html.exists():
         raise SystemExit(f"missing product HTML file: {args.product_html}")
-    if not args.progress_html.exists():
-        raise SystemExit(f"missing progress HTML file: {args.progress_html}")
-    if not args.progress_plan.exists():
-        raise SystemExit(f"missing progress plan file: {args.progress_plan}")
-    if not args.full_progress_plan.exists():
-        raise SystemExit(f"missing full progress plan file: {args.full_progress_plan}")
+    if not args.public_ui_only:
+        if not args.html.exists():
+            raise SystemExit(f"missing HTML file: {args.html}")
+        if not args.progress_html.exists():
+            raise SystemExit(f"missing progress HTML file: {args.progress_html}")
+        if not args.progress_plan.exists():
+            raise SystemExit(f"missing progress plan file: {args.progress_plan}")
+        if not args.full_progress_plan.exists():
+            raise SystemExit(f"missing full progress plan file: {args.full_progress_plan}")
     if args.require_elasticsearch:
         require_elasticsearch_available(args.elastic_url, args.elastic_index)
-    judgments_path = args.judgments_out or quality_judgment_path(args.progress_plan)
+    if args.public_ui_only:
+        judgments_path = args.judgments_out or (ROOT / "build" / "public_search_judgments_disabled.csv")
+    else:
+        judgments_path = args.judgments_out or quality_judgment_path(args.progress_plan)
     evidence_paths = resolve_evidence_paths(args.evidence)
     elastic_exclude_source_prefixes = []
     elastic_exclude_source_prefixes.extend(args.elastic_exclude_source_prefix or [])
-    print("Loading search index...")
+    if args.elastic_url and args.elastic_index:
+        install_progress(
+            "Loading result details for the website. "
+            "Elasticsearch will do the fast searching; this app is loading the names, "
+            "definitions, codes, and source links that appear in results."
+        )
+    else:
+        install_progress(
+            "Loading search files directly. "
+            "This can take longer because the app searches the files directly instead of using Elasticsearch."
+        )
     index = SearchIndex(
         vector_paths=list(args.vectors),
         doc_paths=list(args.docs),
@@ -582,6 +614,7 @@ def main() -> None:
         require_elasticsearch=args.require_elasticsearch,
         elastic_exclude_source_prefixes=elastic_exclude_source_prefixes,
         label_index_paths=list(args.label_index),
+        umls_search_label_index_paths=list(args.umls_search_label_index),
         label_max_tokens=args.label_max_tokens,
         label_fallback_limit=args.label_fallback_limit,
         definition_fallback_limit=args.definition_fallback_limit,
@@ -604,15 +637,19 @@ def main() -> None:
         public_output_only=args.public_output_only,
         public_output_sources=args.public_output_source,
         public_output_source_allowlist_path=args.public_output_source_allowlist,
+        progress=install_progress,
     )
+    install_progress("Final check: counting loaded names, definitions, codes, and source details.")
+    index_status = index.status()
     print(
-        f"Loaded {len(index.records):,} vectors from {len(index.vector_paths):,} files "
-        f"and {index.docs_count:,} docs from {len(index.doc_paths):,} files "
-        f"with {index.provenance_count:,} evidence source refs "
-        f"and {index.status()['related_concept_links']:,} related-concept links "
-        f"plus {index.status()['relationship_edge_links']:,} mined relationship edges "
-        f"plus {index.status()['external_embedding_links']:,} external embedding links "
-        f"and {index.status()['definition_rows']:,} MRDEF definitions "
+        f"Finished loading search data: {len(index.records):,} searchable medical records "
+        f"from {len(index.vector_paths):,} files, "
+        f"{index.docs_count:,} result documents from {len(index.doc_paths):,} files, "
+        f"{index.provenance_count:,} source links, "
+        f"{index_status['related_concept_links']:,} related term links, "
+        f"{index_status['relationship_edge_links']:,} relationship links, "
+        f"{index_status['external_embedding_links']:,} external similarity links, "
+        f"and {index_status['definition_rows']:,} definitions "
         f"in {index.load_seconds:.1f}s"
     )
     server = ThreadingHTTPServer(
@@ -628,13 +665,15 @@ def main() -> None:
             product_html_path=args.product_html,
             plan_status_func=plan_status,
             resolve_path_func=resolve_path,
+            expose_builder_tools=not args.public_ui_only,
         ),
     )
-    print(f"Open http://{args.host}:{args.port}/")
-    print(f"Review workbench http://{args.host}:{args.port}/review")
-    print(f"Progress dashboard http://{args.host}:{args.port}/progress")
-    if args.source_dashboard_html.exists():
-        print(f"Evidence dashboard http://{args.host}:{args.port}/source-dashboard")
+    print(f"Website ready: http://{args.host}:{args.port}/")
+    if not args.public_ui_only:
+        print(f"Review page: http://{args.host}:{args.port}/review")
+        print(f"Progress page: http://{args.host}:{args.port}/progress")
+        if args.source_dashboard_html.exists():
+            print(f"Source details page: http://{args.host}:{args.port}/source-dashboard")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

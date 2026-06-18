@@ -264,6 +264,53 @@ def test_public_output_drops_disallowed_strict_source_code_rows(tmp_path: Path) 
     assert output.public_output_payload(payload)["hits"] == []
 
 
+def test_public_output_keeps_direct_code_resolver_hit_without_restricted_code_rows(
+    tmp_path: Path,
+) -> None:
+    output = DummyPublicOutput(write_code_index(tmp_path / "codes.sqlite"))
+    payload = {
+        "hits": [
+            {
+                "cui": "C0000001",
+                "name": "Restricted synonym",
+                "view": "pmc_oa_clinical_context",
+                "sources": ["code", "pmc_oa"],
+                "match_type": "code",
+                "matched_input": "111",
+                "matched_code_input": "111",
+                "score": 1.2,
+                "rank_score": 1.2,
+                "codes": [
+                    {
+                        "system": "SNOMEDCT_US",
+                        "code": "111",
+                        "label": "Restricted synonym",
+                        "tty": "PT",
+                    }
+                ],
+                "source_asserted_codes": [
+                    {
+                        "system": "SNOMEDCT_US",
+                        "code": "111",
+                        "label": "Restricted synonym",
+                        "tty": "PT",
+                    }
+                ],
+            }
+        ]
+    }
+
+    cleaned = output.public_output_payload(payload)
+
+    assert cleaned["hits"][0]["name"] == "Safe display name"
+    assert cleaned["hits"][0]["sources"] == ["pmc_oa"]
+    assert cleaned["hits"][0]["match_type"] == "code"
+    assert cleaned["hits"][0]["matched_code_input"] == "111"
+    assert "codes" not in cleaned["hits"][0]
+    assert "source_asserted_codes" not in cleaned["hits"][0]
+    assert "SNOMEDCT_US" not in str(cleaned)
+
+
 def test_public_output_keeps_active_label_supplement_new_hit(tmp_path: Path) -> None:
     output = DummyPublicOutput(write_code_index(tmp_path / "codes.sqlite"))
     payload = {
@@ -316,6 +363,35 @@ def test_public_output_keeps_active_label_supplement_existing_cui_without_public
     assert cleaned["hits"][0]["name"] == "supratherapeutic INR"
     assert cleaned["hits"][0]["labels"] == ["supratherapeutic INR"]
     assert cleaned["hits"][0]["sources"] == ["active_label_supplement"]
+
+
+def test_public_output_strips_internal_definition_source_from_active_label_hit(
+    tmp_path: Path,
+) -> None:
+    output = DummyPublicOutput(write_code_index(tmp_path / "codes.sqlite"))
+    payload = {
+        "hits": [
+            {
+                "cui": "C0000001",
+                "name": "Restricted preferred name",
+                "labels": ["Restricted preferred name", "blood thinner"],
+                "sources": ["active_label_supplement", "pmc_oa", "umls_definition"],
+                "score": 1.44,
+                "matched_definition": {
+                    "cui": "C0000001",
+                    "source": "MEDLINEPLUS",
+                    "definition": "<h3>Internal ranking snippet</h3>",
+                },
+            }
+        ]
+    }
+
+    cleaned = output.public_output_payload(payload)
+
+    assert len(cleaned["hits"]) == 1
+    assert cleaned["hits"][0]["sources"] == ["active_label_supplement", "pmc_oa"]
+    assert cleaned["hits"][0]["name"] == "Safe display name"
+    assert "matched_definition" not in cleaned["hits"][0]
 
 
 def test_public_output_drops_hits_from_unapproved_evidence_sources(tmp_path: Path) -> None:

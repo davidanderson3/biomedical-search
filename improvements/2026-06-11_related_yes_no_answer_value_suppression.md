@@ -26,7 +26,7 @@ searches for `yes` or `no`.
   and fallback related result buckets cannot reintroduce those values.
 - Added focused tests proving ranked `yes`/`no` direct searches are preserved,
   standalone relation values are hidden, and `No vomiting` remains visible.
-- Regenerated `docs/search_rule_inventory.md`.
+- Regenerated `docs/search_rule_inventory.html`.
 
 ## Result
 
