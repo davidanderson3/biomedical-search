@@ -1,0 +1,131 @@
+services:
+  elasticsearch:
+    image: ${ELASTIC_IMAGE:-docker.elastic.co/elasticsearch/elasticsearch:8.15.3}
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      path.repo: /workspace/build/elasticsearch_snapshots
+      ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms4g -Xmx4g}
+    ports:
+      - "${ELASTIC_PORT:-9200}:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+      - ../../build/elasticsearch_snapshots:/workspace/build/elasticsearch_snapshots:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 60s
+
+  elastic-loader:
+    build:
+      context: ../..
+      dockerfile: docker/umls/Dockerfile
+    working_dir: /workspace
+    environment:
+      ELASTIC_URL: http://elasticsearch:9200
+      ELASTIC_INDEX: ${ELASTIC_INDEX:-qe-scaling-sapbert-cls}
+      BULK_DOCS_PER_FILE: ${BULK_DOCS_PER_FILE:-25000}
+      ELASTIC_SHARDS: ${ELASTIC_SHARDS:-1}
+      ELASTIC_REPLICAS: ${ELASTIC_REPLICAS:-0}
+      FORCE_RELOAD: ${FORCE_RELOAD:-0}
+      ELASTIC_READY_TIMEOUT: ${ELASTIC_READY_TIMEOUT:-600}
+      ELASTIC_BUILD_FROM_SHARDS: ${ELASTIC_BUILD_FROM_SHARDS:-0}
+      ELASTIC_EXPECTED_DOCS: ${ELASTIC_EXPECTED_DOCS:-190051}
+      ELASTIC_SNAPSHOT_REPO: ${ELASTIC_SNAPSHOT_REPO:-qe-public-search-sapbert}
+      ELASTIC_SNAPSHOT_NAME: ${ELASTIC_SNAPSHOT_NAME:-latest}
+      ELASTIC_SNAPSHOT_DIR: ${ELASTIC_SNAPSHOT_DIR:-/workspace/build/elasticsearch_snapshots/qe-public-search-sapbert}
+    volumes:
+      - ../../build:/workspace/build
+      - ../../src:/workspace/src:ro
+      - ../../scripts/search_quality_server.py:/workspace/scripts/search_quality_server.py:ro
+      - ../../scripts/start_search_quality_server.sh:/workspace/scripts/start_search_quality_server.sh:ro
+      - ../../scripts/public_search_preflight.py:/workspace/scripts/public_search_preflight.py:ro
+      - ../../scripts/ensure_public_search_payload.py:/workspace/scripts/ensure_public_search_payload.py:ro
+      - ../../scripts/ensure_sapbert_cache.py:/workspace/scripts/ensure_sapbert_cache.py:ro
+      - ../../scripts/scaling_status.py:/workspace/scripts/scaling_status.py:ro
+      - ../../scripts/runtime_elastic.py:/workspace/scripts/runtime_elastic.py:ro
+      - ../../web/search_quality_product.html:/workspace/web/search_quality_product.html:ro
+      - ../../web/search_quality/app.js:/workspace/web/search_quality/app.js:ro
+      - ../../web/search_quality/server.css:/workspace/web/search_quality/server.css:ro
+      - ../../web/search_quality/uts-banner.jpg:/workspace/web/search_quality/uts-banner.jpg:ro
+      - ../../web/search_quality/nih-nlm-logo.png:/workspace/web/search_quality/nih-nlm-logo.png:ro
+      - ../../web/search_quality/suggestions.json:/workspace/web/search_quality/suggestions.json:ro
+      - ../../web/search_quality/paragraphs.json:/workspace/web/search_quality/paragraphs.json:ro
+      - ../../web/search_quality/real_short_queries.json:/workspace/web/search_quality/real_short_queries.json:ro
+      - ../../web/search_quality/expansion_profiles.json:/workspace/web/search_quality/expansion_profiles.json:ro
+      - ../../config/search_quality_semantic_buckets.json:/workspace/config/search_quality_semantic_buckets.json:ro
+      - ../../config/active_label_supplement.tsv:/workspace/config/active_label_supplement.tsv:ro
+      - ../../config/display_name_overrides.tsv:/workspace/config/display_name_overrides.tsv:ro
+      - ./start_app_with_bootstrap.sh:/workspace/docker/umls/start_app_with_bootstrap.sh:ro
+      - ./load_sapbert_elastic.sh:/workspace/docker/umls/load_sapbert_elastic.sh:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    profiles:
+      - load
+    command: ["sh", "docker/umls/load_sapbert_elastic.sh"]
+
+  app:
+    build:
+      context: ../..
+      dockerfile: docker/umls/Dockerfile
+    working_dir: /workspace
+    environment:
+      ELASTIC_URL: http://elasticsearch:9200
+      ELASTIC_INDEX: ${ELASTIC_INDEX:-qe-scaling-sapbert-cls}
+      SAPBERT_MODEL: ${SAPBERT_MODEL:-/workspace/build/models/sapbert}
+      SAPBERT_PRELOAD: ${SAPBERT_PRELOAD:-1}
+      SAPBERT_OFFLINE: ${SAPBERT_OFFLINE:-0}
+      SAPBERT_ALLOW_DOWNLOAD: ${SAPBERT_ALLOW_DOWNLOAD:-0}
+      ELASTIC_AUTO_LOAD: ${ELASTIC_AUTO_LOAD:-1}
+      FORCE_RELOAD: ${FORCE_RELOAD:-0}
+      PUBLIC_SEARCH_PAYLOAD_REPO: ${PUBLIC_SEARCH_PAYLOAD_REPO:-}
+      PUBLIC_SEARCH_PAYLOAD_REPO_TYPE: ${PUBLIC_SEARCH_PAYLOAD_REPO_TYPE:-dataset}
+      PUBLIC_SEARCH_PAYLOAD_PROFILE: ${PUBLIC_SEARCH_PAYLOAD_PROFILE:-full}
+      PUBLIC_SEARCH_PAYLOAD_OFFLINE: ${PUBLIC_SEARCH_PAYLOAD_OFFLINE:-0}
+      INCLUDE_CODE_INDEX: ${INCLUDE_CODE_INDEX:-1}
+      PUBLIC_OUTPUT_ONLY: ${PUBLIC_OUTPUT_ONLY:-1}
+      PUBLIC_UI_ONLY: ${PUBLIC_UI_ONLY:-1}
+      PUBLIC_OUTPUT_SOURCE_ALLOWLIST: ${PUBLIC_OUTPUT_SOURCE_ALLOWLIST:-}
+      ELASTIC_STARTUP_TIMEOUT: ${ELASTIC_STARTUP_TIMEOUT:-900}
+      ELASTIC_READY_TIMEOUT: ${ELASTIC_READY_TIMEOUT:-600}
+      ELASTIC_BUILD_FROM_SHARDS: ${ELASTIC_BUILD_FROM_SHARDS:-0}
+      ELASTIC_EXPECTED_DOCS: ${ELASTIC_EXPECTED_DOCS:-190051}
+      ELASTIC_SNAPSHOT_REPO: ${ELASTIC_SNAPSHOT_REPO:-qe-public-search-sapbert}
+      ELASTIC_SNAPSHOT_NAME: ${ELASTIC_SNAPSHOT_NAME:-latest}
+      ELASTIC_SNAPSHOT_DIR: ${ELASTIC_SNAPSHOT_DIR:-/workspace/build/elasticsearch_snapshots/qe-public-search-sapbert}
+    ports:
+      - "${APP_PORT:-8766}:8766"
+    volumes:
+      - ../../build:/workspace/build
+      - ../../src:/workspace/src:ro
+      - ../../scripts/search_quality_server.py:/workspace/scripts/search_quality_server.py:ro
+      - ../../scripts/start_search_quality_server.sh:/workspace/scripts/start_search_quality_server.sh:ro
+      - ../../scripts/public_search_preflight.py:/workspace/scripts/public_search_preflight.py:ro
+      - ../../scripts/ensure_public_search_payload.py:/workspace/scripts/ensure_public_search_payload.py:ro
+      - ../../scripts/ensure_sapbert_cache.py:/workspace/scripts/ensure_sapbert_cache.py:ro
+      - ../../scripts/scaling_status.py:/workspace/scripts/scaling_status.py:ro
+      - ../../scripts/runtime_elastic.py:/workspace/scripts/runtime_elastic.py:ro
+      - ../../web/search_quality_product.html:/workspace/web/search_quality_product.html:ro
+      - ../../web/search_quality/app.js:/workspace/web/search_quality/app.js:ro
+      - ../../web/search_quality/server.css:/workspace/web/search_quality/server.css:ro
+      - ../../web/search_quality/uts-banner.jpg:/workspace/web/search_quality/uts-banner.jpg:ro
+      - ../../web/search_quality/nih-nlm-logo.png:/workspace/web/search_quality/nih-nlm-logo.png:ro
+      - ../../web/search_quality/suggestions.json:/workspace/web/search_quality/suggestions.json:ro
+      - ../../web/search_quality/paragraphs.json:/workspace/web/search_quality/paragraphs.json:ro
+      - ../../web/search_quality/real_short_queries.json:/workspace/web/search_quality/real_short_queries.json:ro
+      - ../../web/search_quality/expansion_profiles.json:/workspace/web/search_quality/expansion_profiles.json:ro
+      - ../../config/search_quality_semantic_buckets.json:/workspace/config/search_quality_semantic_buckets.json:ro
+      - ../../config/active_label_supplement.tsv:/workspace/config/active_label_supplement.tsv:ro
+      - ../../config/display_name_overrides.tsv:/workspace/config/display_name_overrides.tsv:ro
+      - ./start_app_with_bootstrap.sh:/workspace/docker/umls/start_app_with_bootstrap.sh:ro
+      - ./load_sapbert_elastic.sh:/workspace/docker/umls/load_sapbert_elastic.sh:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    command: ["sh", "docker/umls/start_app_with_bootstrap.sh"]
+
+volumes:
+  elasticsearch-data:

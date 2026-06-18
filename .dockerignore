@@ -1,0 +1,23 @@
+.git
+.pytest_cache
+.mypy_cache
+.ruff_cache
+__pycache__
+*.pyc
+
+# Runtime/search artifacts are bind-mounted or downloaded by the UMLS Search
+# startup scripts; they should not be sent as part of the image build context.
+build
+data
+logs
+tmp
+
+# Local environment and editor state.
+.env
+.venv
+venv
+node_modules
+.DS_Store
+**/.DS_Store
+._*
+**/._*

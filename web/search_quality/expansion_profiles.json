@@ -1,0 +1,44 @@
+[
+  {
+    "id": "cardiac_anatomy_left_ventricular_context",
+    "label": "Left ventricular anatomy",
+    "target_bucket": "ANAT",
+    "target_group": "ANAT",
+    "source": "left ventricular context",
+    "source_rank": 0,
+    "trigger_patterns": [
+      "\\bleft ventricular\\b",
+      "\\bleft ventricle\\b"
+    ],
+    "items": [
+      {
+        "cui": "C0225897",
+        "label": "Left Ventricle",
+        "semantic_type": "Body Part, Organ, or Organ Component"
+      },
+      {
+        "cui": "C0225899",
+        "label": "Myocardium of left ventricle",
+        "semantic_type": "Body Part, Organ, or Organ Component"
+      }
+    ]
+  },
+  {
+    "id": "cardiac_anatomy_ejection_fraction_context",
+    "label": "Ejection fraction anatomy",
+    "target_bucket": "ANAT",
+    "target_group": "ANAT",
+    "source": "ejection fraction context",
+    "source_rank": 0,
+    "trigger_patterns": [
+      "\\bejection fraction\\b"
+    ],
+    "items": [
+      {
+        "cui": "C0018827",
+        "label": "Cardiac Ventricle",
+        "semantic_type": "Body Part, Organ, or Organ Component"
+      }
+    ]
+  }
+]
