@@ -68,6 +68,9 @@ C0024671	C0203028	Screening mammography	Screening mammography is clinically acce
 C1654909	C0021344	Human papillomavirus	The HPV organism concept is clinically acceptable when the paragraph says human papillomavirus test and screening-test context is explicit.
 C0042029	C0577708	Urinary tract infection caused by Escherichia coli	Specific E. coli urinary tract infection is clinically acceptable for UTI in an ESBL E. coli UTI search.
 C0019046	C1561562	Hemoglobin finding	Hemoglobin finding is clinically acceptable when a postpartum hemorrhage paragraph says hemoglobin dropped.
+C0019046	C0518015	Hemoglobin measurement	Hemoglobin measurement is clinically acceptable when a value-heavy lab-review note says hemoglobin with a numeric result.
+C0015879	C0373607	Ferritin measurement	Ferritin measurement is clinically acceptable when a value-heavy lab-review note says ferritin with a numeric result.
+C0005841	C0199962	Transfusion of packed red blood cells	Packed red blood cell transfusion is clinically acceptable for a blood transfusion target when the note explicitly says packed red blood cell transfusion.
 C0740304	C3508933	Chronic obstructive pulmonary disease exacerbation	Specific COPD exacerbation CUI is clinically acceptable when chart-review wording says COPD exacerbation.
 C4523945	C4728082	Severe hypoglycaemia	Spelling and source-specific CUI variant is clinically acceptable when the paragraph explicitly says severe hypoglycemia.
 C0232856	C0489132	Urine output	Urine output is clinically acceptable for the urine volume target when the paragraph says urine output declined.
@@ -107,3 +110,6 @@ C0041755	C0413696	Aspirin adverse reaction	A specific aspirin adverse-reaction c
 C0041755	C0559546	Adverse reactions	The plural adverse-reactions concept is acceptable for DailyMed label wording that asks for adverse reaction context.
 C0042313	C0360373	vancomycin Oral Product	Oral vancomycin product wording is acceptable for the vancomycin ingredient target when a PubMed abstract explicitly says oral vancomycin, but it does not satisfy the separate C. difficile infection target.
 C3273807	C3542461	Sodium-Glucose Cotransporter 2 Inhibitor [EPC]	The MED-RT EPC class is clinically equivalent to the SGLT2 inhibitor target when PubMed wording explicitly says sodium-glucose cotransporter 2 or SGLT2 inhibitors.
+C0013604	C0235886	Leg edema	Leg edema is clinically acceptable for the edema target when home-health heart-failure wording explicitly says bilateral leg edema.
+C0013516	C0430462	Transthoracic echocardiography	Transthoracic echocardiography is clinically acceptable for the echocardiography target when endocarditis consult wording explicitly requests a transthoracic echocardiogram.
+C2919015	C0003281	Anticoagulation Therapy	Anticoagulation therapy is clinically acceptable for the anticoagulation target when stroke discharge wording explicitly says anticoagulation follow-up after apixaban.

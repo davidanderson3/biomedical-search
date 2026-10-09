@@ -69,6 +69,9 @@ See `quality/README.md`.
 | `run_trec_benchmark.py` | TREC Precision Medicine / Clinical Decision Support document-source benchmark runner. |
 | `compare_to_gold_standard.py` | Locked translation/gold-standard comparison. |
 | `compare_umls_api.py` | UMLS API comparison helper. |
+| `audit_real_queries_umls_api.py` | Reproducibly sample private real-query exports and audit them against the official UMLS API; prompts invisibly for the API key. |
+| `compare_umls_vector_search.py` | Run a blinded pooled top-k comparison between saved official UMLS results and the existing `/api/search` SapBERT semantic/hybrid interface. |
+| `run_umls_query_expansion_audit.py` | Compare original UMLS result sets with unions from frozen, strategy-tagged language expansions as a secondary semantic-opportunity diagnostic. |
 | `run_private_real_query_diagnostic.py` | Private real-query diagnostic runner. |
 
 See `benchmarks/README.md`.

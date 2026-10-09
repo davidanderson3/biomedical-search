@@ -1,0 +1,138 @@
+### Create versioned indices. Switch aliases only after all loads and checks pass.
+PUT http://127.0.0.1:9200/umls-search-documents-v1
+Content-Type: application/json
+
+< ./search-documents-index.json
+
+###
+PUT http://127.0.0.1:9200/umls-concepts-v1
+Content-Type: application/json
+
+< ./concepts-index.json
+
+###
+PUT http://127.0.0.1:9200/umls-relations-v1
+Content-Type: application/json
+
+< ./relations-index.json
+
+###
+PUT http://127.0.0.1:9200/umls-search-details-v1
+Content-Type: application/json
+
+< ./search-details-index.json
+
+### Exact CUI lookup
+GET http://127.0.0.1:9200/umls-concepts/_doc/C0018801
+
+### Exact normalized label lookup
+POST http://127.0.0.1:9200/umls-concepts/_search
+Content-Type: application/json
+
+{
+  "size": 20,
+  "query": {
+    "term": {
+      "label_norms": "heart failure"
+    }
+  },
+  "_source": [
+    "cui",
+    "preferred_label",
+    "semantic_types",
+    "semantic_groups"
+  ]
+}
+
+### Exact source-qualified code lookup
+POST http://127.0.0.1:9200/umls-concepts/_search
+Content-Type: application/json
+
+{
+  "size": 20,
+  "query": {
+    "nested": {
+      "path": "codes",
+      "query": {
+        "bool": {
+          "filter": [
+            { "term": { "codes.sab": "RXNORM" } },
+            { "term": { "codes.code_norm": "12345" } },
+            { "term": { "codes.suppressed": false } }
+          ]
+        }
+      },
+      "inner_hits": {
+        "size": 10
+      }
+    }
+  }
+}
+
+### SapBERT kNN lookup. Replace the query_vector with exactly 768 normalized floats.
+POST http://127.0.0.1:9200/umls-search-documents/_search
+Content-Type: application/json
+
+{
+  "size": 60,
+  "knn": {
+    "field": "vector",
+    "query_vector": [0.0],
+    "k": 60,
+    "num_candidates": 100
+  },
+  "_source": {
+    "excludes": [
+      "vector",
+      "text"
+    ]
+  }
+}
+
+### Batch-hydrate winning search documents after collapsing candidates by CUI.
+POST http://127.0.0.1:9200/umls-search-details/_mget
+Content-Type: application/json
+
+{
+  "ids": [
+    "C0018801:pubmed_clinical_context",
+    "C0018802:pmc_oa_clinical_context"
+  ]
+}
+
+### Fetch outbound and inbound relationships in one request.
+POST http://127.0.0.1:9200/umls-relations/_search
+Content-Type: application/json
+
+{
+  "size": 100,
+  "query": {
+    "bool": {
+      "should": [
+        { "terms": { "source_cui": ["C0018801", "C0018802"] } },
+        { "terms": { "target_cui": ["C0018801", "C0018802"] } }
+      ],
+      "minimum_should_match": 1
+    }
+  },
+  "sort": [
+    { "rank": "asc" }
+  ]
+}
+
+### Atomically publish a completed version.
+POST http://127.0.0.1:9200/_aliases
+Content-Type: application/json
+
+{
+  "actions": [
+    { "remove": { "index": "*", "alias": "umls-search-documents", "must_exist": false } },
+    { "add": { "index": "umls-search-documents-v1", "alias": "umls-search-documents" } },
+    { "remove": { "index": "*", "alias": "umls-concepts", "must_exist": false } },
+    { "add": { "index": "umls-concepts-v1", "alias": "umls-concepts" } },
+    { "remove": { "index": "*", "alias": "umls-relations", "must_exist": false } },
+    { "add": { "index": "umls-relations-v1", "alias": "umls-relations" } },
+    { "remove": { "index": "*", "alias": "umls-search-details", "must_exist": false } },
+    { "add": { "index": "umls-search-details-v1", "alias": "umls-search-details" } }
+  ]
+}

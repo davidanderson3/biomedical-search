@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Search Quality Test & Weakness Ledger</title>
+  <title>Search Quality Iteration Loop &amp; Weakness Ledger</title>
   <style>
     :root {
       --bg: #f6f8fb;
@@ -340,12 +340,12 @@
   <header>
     <div class="wrap topbar">
       <div>
-        <h1>Search Quality Test & Weakness Ledger</h1>
-        <p class="muted">A running record of what tests or audits exposed, what fix was recommended, and whether that fix shipped.</p>
+        <h1>Search Quality Iteration Loop &amp; Weakness Ledger</h1>
+        <p class="muted">The canonical operating loop, test contract, and running record of search-quality iterations.</p>
       </div>
       <div class="small muted">
         Start: <a href="search_quality_progress_log.html">progress log</a><br>
-        Source: <a href="search_quality_iterations.html">search_quality_iterations.md</a>
+        Source: <a href="search_quality_iterations.html">canonical iteration doc</a>
       </div>
     </div>
   </header>
@@ -353,6 +353,177 @@
   <main>
     <div class="wrap">
       <section class="summary-grid" id="summaryGrid"></section>
+
+      <section class="panel">
+        <h2>Canonical Iteration Loop</h2>
+        <p>
+          This page is the single source of truth for the biomedical search iteration process.
+          It merges the older <code>docs/new_umls_iteration_loop.html</code> rules with the current
+          search-quality contract and ledger. The product goal is a broadly useful, updatable,
+          extensible, and documented biomedical search interface over open UMLS/LOINC identity
+          data, durable public evidence, reviewed local <code>NEW#######</code> extensions, and bounded
+          opt-in association signals.
+        </p>
+        <div class="contract-grid">
+          <div class="contract-step">
+            <strong>Operate As A Gated Loop</strong>
+            <span class="muted small">Freeze inputs and manifests, load known coverage, normalize candidate language, evaluate search output, mine unresolved gaps, then route the result to release, review, or the next backlog gap.</span>
+          </div>
+          <div class="contract-step">
+            <strong>Keep Scope Narrow</strong>
+            <span class="muted small">Each iteration has one primary purpose: a weak slice, a governed data batch, a ranking/provenance failure, a source rebuild, a vector/index promotion, or a refactor after repeated changes.</span>
+          </div>
+          <div class="contract-step">
+            <strong>Use Current Evidence</strong>
+            <span class="muted small">Start from the latest progress-log status, run or replay the stable judged set needed for the change, save payloads, and grade results as good, mixed, or poor with strict top-10/20/60 metrics.</span>
+          </div>
+          <div class="contract-step">
+            <strong>Protect Source Boundaries</strong>
+            <span class="muted small">Default evidence stays with reviewed public sources such as DailyMed, MedlinePlus, and PubMed/PMC; ClinicalTrials.gov, PubTator3, CUI2Vec, and BioConceptVec remain opt-in until measured gaps justify promotion.</span>
+          </div>
+          <div class="contract-step">
+            <strong>Create Local CUIs Sparingly</strong>
+            <span class="muted small">Create <code>NEW#######</code> concepts only for useful biomedical boundaries not already covered by level-0 UMLS, direct LOINC, prior extensions, or accepted semantic equivalents.</span>
+          </div>
+          <div class="contract-step">
+            <strong>Preserve Provenance</strong>
+            <span class="muted small">Changed concepts, labels, aliases, evidence, relations, vectors, source versions, hashes, thresholds, and release decisions need enough provenance for audit and rollback.</span>
+          </div>
+          <div class="contract-step">
+            <strong>Release Only With Gates</strong>
+            <span class="muted small">Runtime changes need focused tests and standing clinical smoke; broad ranking/runtime or release-quality changes also need the rotating 50-query smoke. Source rebuilds need source-delta and matching source-specific benchmarks.</span>
+          </div>
+          <div class="contract-step">
+            <strong>Document The Outcome</strong>
+            <span class="muted small">Every shipped iteration records weakness, evidence, solution, implementation status, artifacts, verification, result, release decision, next step, backlog status, and scorecard/evidence-bucket impact when applicable.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Merged UMLS Loop Rules</h2>
+        <p class="muted">
+          These rules carry forward the actionable parts of the older UMLS extension loop so
+          iteration work no longer has to choose between two documents.
+        </p>
+        <div class="reference-list">
+          <div>
+            <strong>Fast Regression Smoke</strong>
+            <div class="muted small">
+              Normal candidate rebuilds use <code>scripts/run_search_quality_experiment.py</code>
+              with <code>config/search_quality_paragraph_queries.tsv</code>, <code>--query-limit 50</code>,
+              <code>--query-selection rotate</code>, <code>--search-system api</code>,
+              <code>--scope umls_evidence</code>, and <code>--fail-gates</code>.
+            </div>
+          </div>
+          <div>
+            <strong>Full Release Checks</strong>
+            <div class="muted small">
+              Use <code>--query-limit 0</code> only for deliberate full-pool or release checks.
+              Live API runs should persist payloads, <code>rows.tsv</code>, metrics, source quality,
+              and <code>query_timings.tsv</code>.
+            </div>
+          </div>
+          <div>
+            <strong>Source Delta Discipline</strong>
+            <div class="muted small">
+              Source rebuilds must record URL, version/date, fetch date, content hash, records
+              fetched, records changed/added/removed, CUIs gained/lost, relationship edges
+              gained/lost, and benchmark top-10 source changes.
+            </div>
+          </div>
+          <div>
+            <strong>Source Benchmarks</strong>
+            <div class="muted small">
+              Rebuilt evidence sources run the matching core source-specific benchmark from
+              <code>config/source_specific_benchmarks.tsv</code>, with DailyMed, MedlinePlus, and
+              PubMed/PMC as the routine core source families.
+            </div>
+          </div>
+          <div>
+            <strong>PubMed Abstract Rule</strong>
+            <div class="muted small">
+              Do not score PubMed abstracts with inherited topic-level expectations. Scored
+              abstracts need approved per-PMID rows in
+              <code>config/pubmed_literature_abstract_curation.tsv</code>.
+            </div>
+          </div>
+          <div>
+            <strong>Minimum Outputs</strong>
+            <div class="muted small">
+              A complete iteration leaves a manifest, coverage record, evidence manifest,
+              term evaluation, candidate review when applicable, concept/evidence documents,
+              relation output when applicable, payload archive, release decision, and test summary.
+            </div>
+          </div>
+          <div>
+            <strong>Promotion Threshold</strong>
+            <div class="muted small">
+              Promote a local CUI only when it is clinically useful, evidence-backed across
+              repeated contexts, has a clear boundary and label, is not a duplicate, and improves
+              a named weak area.
+            </div>
+          </div>
+          <div>
+            <strong>Explicit Non-Goals</strong>
+            <div class="muted small">
+              Do not create local CUIs for spelling, punctuation, capitalization, pluralization,
+              word order, acronym expansion, direct LOINC display-name cleanup, or concepts already
+              covered by a semantic equivalent.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Historical UMLS Extension Runs</h2>
+        <p class="muted">
+          The older loop documented ten pre-SQI local extension/search-quality iterations. Keep
+          these as historical provenance; new work should be recorded in the filterable ledger below.
+        </p>
+        <div class="reference-list">
+          <div>
+            <code>iteration_001_existing_data</code>
+            <div class="muted small">Existing-data pass created 10 high-support local concepts and MTH broader/narrower assertions. Report: <code>build/new_umls_iterations/iteration_001_existing_data/iteration_report.md</code>.</div>
+          </div>
+          <div>
+            <code>iteration_002_existing_data</code>
+            <div class="muted small">Carried forward prior local coverage, added semantic-equivalent guards, lowered thresholds for a weak slice, and created 3 additional concepts. Report: <code>build/new_umls_iterations/iteration_002_existing_data/iteration_report.md</code>.</div>
+          </div>
+          <div>
+            <code>iteration_003_search_quality</code>
+            <div class="muted small">Loaded 13 cumulative local extension concepts into search, added deterministic label fallback, and fixed paragraph ranking failures. Report: <code>build/new_umls_iterations/iteration_003_search_quality/iteration_report.md</code>.</div>
+          </div>
+          <div>
+            <code>iteration_004_search_quality_intent</code>
+            <div class="muted small">Added paragraph-intent ranking signals, comparator-arm demotion, and structured-statement linking fixes. Report: <code>build/new_umls_iterations/iteration_004_search_quality_intent/iteration_report.md</code>.</div>
+          </div>
+          <div>
+            <code>iteration_005_semantic_types_and_quality</code>
+            <div class="muted small">Hydrated semantic types for local CUIs, enabled default UMLS label fallback, expanded the benchmark, and added good/mixed/poor judging. Report: <code>build/new_umls_iterations/iteration_005_semantic_types_and_quality/iteration_report.md</code>.</div>
+          </div>
+          <div>
+            <code>iteration_006_exact_mentions</code>
+            <div class="muted small">Improved first-page exact mentions, suppressed low-value single-token artifacts, and preserved semantic grouping for label-only fallback hits. Report: <code>build/new_umls_iterations/iteration_006_exact_mentions/iteration_report.md</code>.</div>
+          </div>
+          <div>
+            <code>iteration_007_more_paragraphs</code>
+            <div class="muted small">Expanded the paragraph benchmark to 32 examples, added short acronym handling, and narrowed exact medication ranking. Report: <code>build/new_umls_iterations/iteration_007_more_paragraphs/iteration_report.md</code>.</div>
+          </div>
+          <div>
+            <code>iteration_008_label_supplement_alternatives</code>
+            <div class="muted small">Added active-label supplements and acceptable-CUI alternative scoring, recovering hidden existing CUIs without duplicate local concepts. Report: <code>build/new_umls_iterations/iteration_008_label_supplement_alternatives/iteration_report.md</code>.</div>
+          </div>
+          <div>
+            <code>iteration_009_sepsis_components</code>
+            <div class="muted small">Kept septic-shock treatment/monitoring anchors visible, demoted brand labels in non-drug contexts, and treated laterality-only labels as fragments. Report: <code>build/new_umls_iterations/iteration_009_sepsis_components/iteration_report.md</code>.</div>
+          </div>
+          <div>
+            <code>iteration_010_more_paragraphs</code>
+            <div class="muted small">Expanded to 80 paragraphs, added fragile active-label rows, tuned vaccine/infection ranking, and improved benchmark usefulness. Report: <code>build/new_umls_iterations/iteration_010_more_paragraphs/iteration_report.md</code>.</div>
+          </div>
+        </div>
+      </section>
 
       <section class="panel">
         <h2>Filters</h2>
@@ -472,6 +643,81 @@
 
     <script>
     const iterations = [
+      {
+        id: "SQI-2026-06-25-004",
+        title: "PubMed approved seed determinism",
+        date: "2026-06-25",
+        status: "shipped",
+        types: ["benchmark", "data", "process"],
+        trigger: "SQB-002 became the active P0 lane after the note-format target was met. Before tuning long-document ranking, the documented strict PubMed seed rebuild produced only 22 approved rows even though the current approved benchmark is supposed to contain 23 rows.",
+        expected: "Make the approved PubMed seed rebuild deterministic, preserve the reviewed 23-row benchmark including PMID 8659509, add a regression guard so approved curation rows cannot silently disappear, rerun the approved PubMed lane, and refresh the scorecard/progress docs from the measured artifact.",
+        happened: "Pinned the approved PubMed PMIDs in config/pubmed_paragraph_topics.tsv for topics that previously depended on live NCBI topic search. Added a static test requiring every approved PMID in config/pubmed_literature_abstract_curation.tsv to appear in an explicit topic pmids column. Rebuilt the strict seed, materialized the focused slice, reran the restored 23-row approved PubMed lane against the local API, and reconciled the whole-product scorecard.",
+        artifacts: ["config/pubmed_paragraph_topics.tsv", "config/whole_product_quality_scorecard.json", "tests/test_pubmed_paragraph_queries.py", "build/pubmed_literature_benchmark_seed/pubmed_literature_approved_queries.tsv", "build/pubmed_literature_benchmark_seed/pubmed_long_document_focused_queries.tsv", "build/search_quality_experiments/runs/SQI-2026-06-25-004_pubmed_seed_deterministic_approved_sqi-2026-06-25-004-deterministic-approved-pubmed-seed", "build/whole_product_quality_scorecard.json", "docs/search_quality_progress_log.html", "docs/search_quality_iterations.html", "docs/search_quality_experiments.html", "improvements/2026-06-25_pubmed_approved_seed_determinism.md"],
+        verification: "The strict PubMed seed rebuild now writes 23 approved abstracts with 12 dev, 11 held-out, and 0 topic-fallback rows. The focused slice materialized to 7 dev rows. py_compile passed for scripts/fetch_pubmed_paragraph_queries.py, scripts/build_pubmed_long_document_slice.py, and tests/test_pubmed_paragraph_queries.py using PYTHONPYCACHEPREFIX=.pycache_local. tests/test_pubmed_paragraph_queries.py passed with 7 tests. The live approved PubMed rerun wrote SQI-2026-06-25-004_pubmed_seed_deterministic_approved_sqi-2026-06-25-004-deterministic-approved-pubmed-seed with 7/23 strict top 10, 78/106 expected concepts at top 10, 82/106 at top 20, 90/106 at top 60, 20/23 top-on-target, 3 wrong-first rows, 0 configured disallowed concepts at top 10, and overall score 48.9. The whole-product scorecard rebuilt to raw 84.3 and published 84.",
+        result: "The PubMed approved benchmark is now reproducible at the intended 23 rows. The restored run did not improve ranking; it made the active SQB-002 weakness more accurate by exposing three current approved PubMed wrong-first rows on the running API.",
+        decision: "Keep. This is a benchmark/data guard required before further long-document tuning. SQB-002 remains the active P0 item because the lane is still 7/23 strict top 10 and now has 3 wrong-first rows in the restored current run.",
+        next: "Triage the restored approved PubMed wrong-first rows first: lupus-like nephropathy ranking Antibodies, Antinuclear first, sepsis/ARDS molecular-phenotype ranking Acute Lung Injury first, and cystic-fibrosis modulator ranking CFTR first. Then continue secondary-concept recall for EGFR/PFS/regimen, hypocomplementemia/Complement 3, treatment carry-forward, and newer expanded abstract rows."
+      },
+      {
+        id: "SQI-2026-06-25-003",
+        title: "Note-format explicit active-label aliases",
+        date: "2026-06-25",
+        status: "shipped",
+        types: ["data"],
+        trigger: "SQB-015 remained P0 after the secondary-equivalence replay. The latest 24-row note-format report still missed explicit note wording and shorthand in pathology, nursing, lab, therapy, prior-authorization, MRI stroke, operative, sepsis, and anticoagulation rows, even though these phrases were directly present in the query text.",
+        expected: "Use governed active-label supplement rows for explicit note phrases rather than broad ranking changes. Recover the remaining high-confidence secondary concepts, add a focused no-vector regression, rerun the full 24-row note-format lane against a fresh local API, refresh the scorecard, and move SQB-015 out of P0 only if the lane reaches at least 20/24 strict top 10 while preserving first-answer trust.",
+        happened: "Added nine context-gated active-label rows for left breast lumpectomy, O2 sat, glucose, front wheeled walker, A1c, acute ischemic stroke, cardiopulmonary bypass, lactate decreased, and aPTT. Added a focused SearchIndex regression for those note phrases, validated the supplement file, started a fresh local API, reran the 24-row clinical text variety lane, ran the formal iteration smoke helper, rebuilt the whole-product scorecard, and refreshed the public progress docs.",
+        artifacts: ["config/active_label_supplement.tsv", "tests/test_evidence_vectors.py", "build/search_quality_experiments/runs/SQI-2026-06-25-003-note-format-explicit-aliases-local_note-format-explicit-alias-active-labels-local", "build/search_quality_experiments/iteration_smoke_gates/SQI-2026-06-25-003/verification.md", "build/whole_product_quality_scorecard.json", "docs/search_quality_progress_log.html", "docs/search_quality_iterations.html", "docs/search_quality_experiments.html", "docs/search_quality_evidence_buckets.html", "improvements/2026-06-25_note_format_explicit_aliases.md"],
+        verification: "active-label supplement validation passed after replacing a duplicate bare lactate label with the phrase-specific lactate decreased label. py_compile passed for tests/test_evidence_vectors.py, scripts/run_search_quality_experiment.py, and scripts/build_whole_product_quality_scorecard.py using PYTHONPYCACHEPREFIX=.pycache_local. Focused pytest passed for the note-format explicit-alias, radiology, and therapy supplement regressions. The live local 24-row note-format run wrote SQI-2026-06-25-003-note-format-explicit-aliases-local_note-format-explicit-alias-active-labels-local with 21/24 strict top 10, 112/115 expected concepts at top 10, 113/115 at top 20, 22 good rows, 2 mixed rows, 0 poor rows, 24/24 top-on-target, 0 wrong-first rows, and 0 configured disallowed concepts at top 10. The formal smoke helper passed static checks, focused pytest, and standing clinical API smoke; rotating and patient-portal smoke were explicitly skipped for the data-scoped development loop. The whole-product scorecard rebuilt to raw 84.6 and published 85.",
+        result: "The note-format lane improves from 14/24 to 21/24 strict top 10 and from 104/115 to 112/115 expected concepts at top 10, while preserving 0 wrong-first rows and 0 disallowed concepts at top 10. The lane now meets the prior SQB-015 P0 target.",
+        decision: "Keep. This is a bounded active-label recall improvement for explicit note wording. SQB-015 moves from P0 to P1 follow-up because the target threshold is met, but three top-10 misses still need decisions: pathology C0678222 breast carcinoma, operative C0694551 right-lower-quadrant target, and MRI C0948008 recovered by top 20.",
+        next: "Continue active P0 work with SQB-002 approved PubMed long-document recall. Handle SQB-015 follow-up separately by deciding whether the remaining pathology and operative targets are benchmark-policy issues and whether MRI stroke needs top-10 tuning instead of top-20 recovery."
+      },
+      {
+        id: "SQI-2026-06-25-002",
+        title: "Note-format secondary equivalence replay",
+        date: "2026-06-25",
+        status: "shipped",
+        types: ["benchmark-equivalence", "process"],
+        trigger: "SQB-015 remained P0 after the radiology and therapy active-label iteration. The latest saved row-level report still scored home-health heart failure, endocarditis consult, and discharge atrial-fibrillation/stroke rows as incomplete even though the first page already contained clinically specific equivalents supported by the note wording: leg edema for edema, transthoracic echocardiography for echocardiography, and anticoagulation therapy for anticoagulation.",
+        expected: "Treat this as a scoring-equivalence iteration, not a runtime ranking change. Add reviewed acceptable-CUI alternatives only for saved first-page concepts whose wording is explicitly present in the note, add a focused evaluator regression, replay the saved SQI-2026-06-25-001 payloads, refresh the scorecard, and keep SQB-015 open unless the lane reaches promotion quality.",
+        happened: "Added three acceptable alternatives for note-format secondary concepts, added a focused paragraph-evaluator regression covering home-health edema, endocarditis echocardiography, and discharge anticoagulation, replayed the saved 24-row clinical_text_type_variety payloads from SQI-2026-06-25-001, registered a static/focused process verification, and rebuilt the whole-product scorecard.",
+        artifacts: ["config/search_quality_acceptable_cui_alternatives.tsv", "tests/test_evidence_vectors.py", "build/search_quality_experiments/runs/SQI-2026-06-25-002_note-format-secondary-equivalence-replay", "build/search_quality_experiments/iteration_smoke_gates/SQI-2026-06-25-002/verification.md", "build/whole_product_quality_scorecard.json", "docs/search_quality_progress_log.html", "docs/search_quality_iterations.html", "docs/search_quality_experiments.html", "docs/search_quality_evidence_buckets.html", "improvements/2026-06-25_note_format_secondary_equivalence_replay.md"],
+        verification: "py_compile passed for tests/test_evidence_vectors.py, scripts/evaluate_paragraph_quality.py, scripts/run_search_quality_experiment.py, and scripts/build_whole_product_quality_scorecard.py using PYTHONPYCACHEPREFIX=.pycache_local. Focused pytest passed for the note-format secondary-equivalence and lab-review alternative regressions. The saved-payload replay wrote SQI-2026-06-25-002_note-format-secondary-equivalence-replay with 14/24 strict top 10, 104/115 expected concepts at top 10, 107/115 at top 20, 15 good rows, 9 mixed rows, 0 poor rows, 24/24 top-on-target, 0 wrong-first rows, and 0 configured disallowed concepts at top 10. The formal process verification passed static and focused checks. The whole-product scorecard rebuilt to raw 80.0 and published 80.",
+        result: "The home-health heart-failure, endocarditis consult, and discharge atrial-fibrillation/stroke rows are now strict top-10 successes without regenerating search results. The note-format lane improves from 11/24 to 14/24 strict top 10 and from 101/115 to 104/115 expected concepts at top 10 while preserving 0 wrong-first rows.",
+        decision: "Keep. This is a valid benchmark-equivalence correction for saved first-page concepts already supported by explicit note wording. SQB-015 remains P0 because 10/24 rows still miss expected concepts at top 10, especially pathology, operative, nursing/lab, MRI stroke, prior-authorization, therapy device, and heparin aPTT targets.",
+        next: "Continue SQB-015 with actual secondary-concept recall fixes for the remaining note-format misses. Avoid adding more equivalence exceptions unless the saved payload already contains a clinically equivalent, wording-supported concept."
+      },
+      {
+        id: "SQI-2026-06-25-001",
+        title: "Note-format radiology and therapy aliases",
+        date: "2026-06-25",
+        status: "shipped",
+        types: ["data"],
+        trigger: "SQB-015 remained the active P0 lane after the lab-review equivalence replay. The latest row-level report still missed CT angiogram and acute segmental pulmonary embolism in a radiology report, and a fresh local-backend run showed the therapy hip-fracture row could put an off-target pelvis-fracture concept first while missing occupational and physical therapy targets.",
+        expected: "Use governed active-label supplement rows for explicit note wording rather than broad ranking changes: protect CT angiogram, acute segmental pulmonary embolism, displaced hip fracture, occupational therapy evaluation, and physical therapy only in supporting radiology, pulmonary embolism, orthopedic, and rehab contexts. Rerun the full note-format lane and keep SQB-015 open unless the lane reaches promotion quality.",
+        happened: "Added five context-gated active-label rows, added focused in-process regressions for the radiology and therapy note wording, started a fresh API server so the supplement was reloaded, reran the 24-row clinical_text_type_variety lane, ran the formal iteration smoke helper, and rebuilt the whole-product scorecard.",
+        artifacts: ["config/active_label_supplement.tsv", "tests/test_evidence_vectors.py", "build/search_quality_experiments/runs/SQI-2026-06-25-001-note-format-radiology-therapy-aliases_sqb-015-note-format-radiology-and-therapy-aliases", "build/search_quality_experiments/iteration_smoke_gates/SQI-2026-06-25-001/verification.md", "build/whole_product_quality_scorecard.json", "docs/search_quality_progress_log.html", "docs/search_quality_iterations.html", "docs/search_quality_daily_accomplishments.html", "docs/search_quality_experiments.html", "improvements/2026-06-25_note_format_radiology_therapy_aliases.md"],
+        verification: "active-label supplement validation passed. py_compile passed for scripts/validate_active_label_supplement.py, tests/test_evidence_vectors.py, and scripts/run_search_quality_experiment.py using PYTHONPYCACHEPREFIX=.pycache_local. Focused pytest passed for the radiology, therapy, and lab-review regressions. The live 24-row note-format lane against http://127.0.0.1:8793 with local_fallback backend wrote SQI-2026-06-25-001-note-format-radiology-therapy-aliases with 11/24 strict top 10, 101/115 expected concepts at top 10, 106/115 at top 20, 24/24 top-on-target, 0 wrong-first rows, and 0 configured disallowed concepts at top 10. The formal smoke helper passed static checks, focused pytest, and standing clinical API smoke; rotating and patient-portal smoke were explicitly skipped for the data-scoped development loop. The whole-product scorecard rebuilt to raw 78.0 and published 78.",
+        result: "The radiology CTA/acute PE row and therapy hip-fracture row are now strict top-10 successes. The note-format lane improves from 9/24 to 11/24 strict top 10 and from 97/115 to 101/115 expected concepts at top 10, while preserving 0 wrong-first rows.",
+        decision: "Keep. This is a bounded active-label recall improvement for explicit note wording. SQB-015 remains P0 because 13/24 rows still miss expected concepts at top 10, especially pathology, operative, nursing/lab, MRI stroke, prior-authorization, home-health, anticoagulation, and endocarditis targets.",
+        next: "Continue SQB-015 with the remaining secondary-concept misses by failure class. Avoid broad ranking changes until a focused miss shows that active-label or equivalence policy is insufficient."
+      },
+      {
+        id: "SQI-2026-06-24-001",
+        title: "Note-format lab-review equivalence replay",
+        date: "2026-06-24",
+        status: "shipped",
+        types: ["benchmark-equivalence", "process"],
+        trigger: "SQB-015 remained the top active P0 lane after the June 17 note-format routing fix. The latest row-level report showed one poor row, clinical_text_variety_17_lab_anemia, even though the saved API payload already returned iron deficiency anemia, packed red blood cell transfusion, hemoglobin measurement, and ferritin measurement in the first page.",
+        expected: "Treat this as a scoring-equivalence iteration, not a runtime search change. Accept clinically specific lab-review measurement/procedure CUIs only where the value-heavy note wording supports them, add a focused evaluator regression, replay the saved payloads, and keep SQB-015 open unless actual note-format recall is strong enough to promote.",
+        happened: "Added acceptable alternatives for packed red blood cell transfusion, hemoglobin measurement, and ferritin measurement; added a focused paragraph-evaluator regression for the lab-anemia note; replayed the saved June 17 clinical_text_type_variety API payloads with the updated alternatives; refreshed the whole-product scorecard and readable progress log.",
+        artifacts: ["config/search_quality_acceptable_cui_alternatives.tsv", "tests/test_evidence_vectors.py", "build/search_quality_experiments/runs/SQI-2026-06-24-001_note-format-lab-equivalence-replay", "build/search_quality_experiments/iteration_smoke_gates/SQI-2026-06-24-001/verification.md", "build/whole_product_quality_scorecard.json", "docs/search_quality_progress_log.html", "docs/search_quality_iterations.html", "docs/search_quality_daily_accomplishments.html", "improvements/2026-06-24_note_format_lab_equivalence_replay.md"],
+        verification: "py_compile passed for tests/test_evidence_vectors.py, scripts/evaluate_paragraph_quality.py, and scripts/run_search_quality_experiment.py using PYTHONPYCACHEPREFIX=.pycache_local. The focused tests/test_evidence_vectors.py::test_paragraph_evaluator_counts_configured_lab_review_measurement_alternatives selector passed. The saved-payload replay wrote SQI-2026-06-24-001_note-format-lab-equivalence-replay with 9/24 strict top 10, 97/115 expected concepts at top 10, 105/115 at top 20, 10 good rows, 14 mixed rows, and 0 poor rows. The whole-product scorecard rebuilt to raw 76.7 and capped 76.",
+        result: "The lab-review row is no longer falsely scored poor: accepted alternatives now record C0005841=C0199962, C0015879=C0373607, and C0019046=C0518015. The note-format lane improves from 8/24 to 9/24 strict top 10 and from 94/115 to 97/115 expected concepts at top 10 without changing runtime search results.",
+        decision: "Keep. This is a valid benchmark-equivalence correction for value-heavy lab-review wording, but it is only a partial SQB-015 improvement. The lane remains diagnostic and P0 because 15/24 rows still miss expected concepts at top 10.",
+        next: "Continue SQB-015 with actual secondary-concept recall fixes for radiology, pathology, operative, nursing, therapy, home-health, and prior-authorization rows. Avoid adding more equivalence exceptions unless the saved payload already contains a clinically equivalent, wording-supported concept."
+      },
       {
         id: "SQI-2026-06-17-001",
         title: "Rotating wrong-first presentation/diagnosis cleanup",

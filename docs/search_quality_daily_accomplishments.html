@@ -192,6 +192,66 @@
       <p class="muted">At the first search-quality iteration of a new calendar day, add a short plain-language summary of the previous day's shipped improvements here. Keep technical CUIs, test internals, and long artifact lists in the iteration ledger; this page should answer what changed in human terms.</p>
     </section>
 
+    <section class="panel" id="2026-06-24">
+      <h2>June 24, 2026 Accomplishments</h2>
+      <p class="muted small">Added 2026-06-25. This translates the June 24 search-quality iteration: a lab-review note was judged more fairly, the product scorecard was refreshed, and the remaining note-format gap stayed visible.</p>
+      <div class="story-grid">
+        <div class="story-item good">
+          <strong>Made Lab-Review Scoring Fairer</strong>
+          <p>A realistic anemia lab-review note already returned clinically useful first-page answers for iron deficiency anemia, packed red blood cell transfusion, hemoglobin measurement, and ferritin measurement. The scoring rules now count those specific measurement and transfusion answers when the note wording supports them.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Removed The Only Poor Note Row</strong>
+          <p>The realistic note-format lane no longer has a row judged poor. The lab-review example moved into the useful-but-still-incomplete group instead of being treated as a severe recall miss.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>Kept The Headline Honest</strong>
+          <p>The product score stayed capped because realistic note formats and long PubMed abstracts were still the two biggest weak lanes. The update improved measurement quality without overstating overall product readiness.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>Also Left Clear Gaps</strong>
+          <p>June 24 did not finish note-format recall. Many radiology, pathology, operative, nursing, therapy, home-health, and prior-authorization examples still needed actual first-page recall improvements.</p>
+        </div>
+      </div>
+      <div class="result-row">
+        <div class="result warn"><strong>9/24</strong><span>note rows complete at top 10</span></div>
+        <div class="result good"><strong>0</strong><span>poor note rows</span></div>
+        <div class="result warn"><strong>76%</strong><span>capped product score</span></div>
+      </div>
+    </section>
+
+    <section class="panel" id="2026-06-17">
+      <h2>June 17, 2026 Accomplishments</h2>
+      <p class="muted small">Added 2026-06-24. This fills the missing plain-language summary for the last shipped search-quality workday: first-answer trust stayed clean, realistic note formats became better measured, and the product scorecard became more honest about the remaining weak lanes.</p>
+      <div class="story-grid">
+        <div class="story-item good">
+          <strong>Closed Fresh Wrong-First Rows</strong>
+          <p>The latest rotating safety check had found two new cases where background or generic concepts could appear before the clinical problem being described. Those rows were fixed and protected, leaving the latest rotating sample with no wrong-first answers.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Stopped Note Headers From Breaking Search</strong>
+          <p>Realistic notes such as operative notes, medication administration records, and prior-authorization drafts can contain a header followed by prose and numbers. Those note headers no longer send the query down the source-code lookup path, so normal search results are returned again.</p>
+        </div>
+        <div class="story-item good">
+          <strong>Kept Fuller Conditions Ahead Of Contained Findings</strong>
+          <p>When a note clearly describes heart failure with reduced ejection fraction, the fuller heart-failure condition now stays ahead of the smaller ejection-fraction finding. This protects the main clinical idea while still allowing the measurement concept to appear.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>Made The Product Score More Honest</strong>
+          <p>The product scorecard now caps the headline estimate while both realistic note formats and long PubMed abstracts remain weak. This prevents strong short-query and first-answer results from hiding the two largest coverage gaps.</p>
+        </div>
+        <div class="story-item warn">
+          <strong>Also Left Clear Gaps</strong>
+          <p>June 17 did not finish realistic-note or PubMed recall. Realistic note formats and expanded PubMed abstracts stayed below promotion quality, so the next work should improve secondary-concept recall rather than first-answer trust.</p>
+        </div>
+      </div>
+      <div class="result-row">
+        <div class="result good"><strong>50/50</strong><span>rotating rows top-on-target</span></div>
+        <div class="result good"><strong>0</strong><span>rotating wrong-first rows</span></div>
+        <div class="result warn"><strong>76%</strong><span>capped product score</span></div>
+      </div>
+    </section>
+
     <section class="panel" id="2026-06-16">
       <h2>June 16, 2026 Accomplishments</h2>
       <p class="muted small">Added 2026-06-17. This translates the June 16 iteration run into the practical story: patient wording became clean enough to trust in the measured lane, and the next wrong-first risks were made visible.</p>

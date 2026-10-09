@@ -2997,9 +2997,25 @@
       return `${fmtNum(count)} ${count === 1 ? "result" : "results"}`;
     }
 
+    function conceptCountLabel(count) {
+      return `${fmtNum(count)} ${count === 1 ? "concept" : "concepts"}`;
+    }
+
+    function resultGroupShownCount(group) {
+      return (group.items || []).filter((item) => item?.hit).length;
+    }
+
+    function resultGroupsShownCount(groups) {
+      return (groups || []).reduce((total, group) => total + resultGroupShownCount(group), 0);
+    }
+
     function resultShownLabel(group) {
-      if (!group.total) return "0 returned";
-      return `${fmtNum(group.items.length)} of ${fmtNum(group.total)} returned`;
+      const shown = resultGroupShownCount(group);
+      const total = Number(group.total);
+      if (Number.isFinite(total) && total > shown) {
+        return `${conceptCountLabel(shown)} shown of ${fmtNum(total)}`;
+      }
+      return `${conceptCountLabel(shown)} shown`;
     }
 
     function renderResultBucket(group) {
@@ -3789,6 +3805,7 @@
         )
       );
       const resultGroups = semanticResultBuckets([...state.lastResults, ...relatedHits]);
+      const semanticShownCount = resultGroupsShownCount(resultGroups);
       const hitHtml = resultGroups
         .map((group) => renderResultBucket(group))
         .join("");
@@ -3822,7 +3839,7 @@
         <section class="result-layer ranking-layer" aria-label="Semantic groups and full ranking">
           <div class="result-layer-head">
             <h3>Semantic Groups and Full Ranking</h3>
-            <div class="result-layer-count">${resultCountLabel(totalRawCount)} · ${fmtNum(resultGroups.length)} ${resultGroups.length === 1 ? "group" : "groups"}</div>
+            <div class="result-layer-count">${resultCountLabel(totalRawCount)} · ${conceptCountLabel(semanticShownCount)} grouped · ${fmtNum(resultGroups.length)} ${resultGroups.length === 1 ? "group" : "groups"}</div>
           </div>
           <div class="results-split">
             <section class="results-column raw-results-column" aria-label="All ranked results">
@@ -3835,7 +3852,7 @@
             <section class="results-column semantic-results-column" aria-label="Semantic grouped results">
               <div class="results-column-head">
                 <h3>Semantic Groups</h3>
-                <div class="results-column-count">${fmtNum(resultGroups.length)} ${resultGroups.length === 1 ? "group" : "groups"}</div>
+                <div class="results-column-count">${conceptCountLabel(semanticShownCount)} · ${fmtNum(resultGroups.length)} ${resultGroups.length === 1 ? "group" : "groups"}</div>
               </div>
               <div class="semantic-results-list">${semanticHtml}</div>
             </section>

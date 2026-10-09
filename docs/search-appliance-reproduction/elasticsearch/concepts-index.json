@@ -1,0 +1,161 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "refresh_interval": "30s"
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "cui": {
+        "type": "keyword"
+      },
+      "preferred_label": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 512
+          }
+        }
+      },
+      "preferred_label_norm": {
+        "type": "keyword"
+      },
+      "label_norms": {
+        "type": "keyword"
+      },
+      "identifier_keys": {
+        "type": "keyword"
+      },
+      "labels": {
+        "type": "nested",
+        "properties": {
+          "norm": {
+            "type": "keyword"
+          },
+          "label": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 512
+              }
+            }
+          },
+          "sab": {
+            "type": "keyword"
+          },
+          "tty": {
+            "type": "keyword"
+          },
+          "is_preferred": {
+            "type": "boolean"
+          },
+          "suppressed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "codes": {
+        "type": "nested",
+        "properties": {
+          "sab": {
+            "type": "keyword"
+          },
+          "code": {
+            "type": "keyword"
+          },
+          "code_norm": {
+            "type": "keyword"
+          },
+          "aui": {
+            "type": "keyword"
+          },
+          "scui": {
+            "type": "keyword"
+          },
+          "sdui": {
+            "type": "keyword"
+          },
+          "tty": {
+            "type": "keyword"
+          },
+          "label": {
+            "type": "text",
+            "index": false
+          },
+          "is_preferred": {
+            "type": "boolean"
+          },
+          "suppressed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "legacy_identifiers": {
+        "type": "nested",
+        "properties": {
+          "identifier_type": {
+            "type": "keyword"
+          },
+          "identifier": {
+            "type": "keyword"
+          },
+          "sab": {
+            "type": "keyword"
+          },
+          "last_release": {
+            "type": "keyword"
+          }
+        }
+      },
+      "semantic_types": {
+        "type": "nested",
+        "properties": {
+          "tui": {
+            "type": "keyword"
+          },
+          "stn": {
+            "type": "keyword"
+          },
+          "name": {
+            "type": "keyword"
+          },
+          "atui": {
+            "type": "keyword"
+          },
+          "group": {
+            "type": "keyword"
+          }
+        }
+      },
+      "semantic_groups": {
+        "type": "keyword"
+      },
+      "definitions": {
+        "type": "nested",
+        "properties": {
+          "source": {
+            "type": "keyword"
+          },
+          "definition": {
+            "type": "text"
+          },
+          "rank": {
+            "type": "short"
+          },
+          "aui": {
+            "type": "keyword"
+          },
+          "atui": {
+            "type": "keyword"
+          }
+        }
+      },
+      "updated_release": {
+        "type": "keyword"
+      }
+    }
+  }
+}

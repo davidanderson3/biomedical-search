@@ -6,6 +6,11 @@ from copy import deepcopy
 from urllib.error import URLError
 
 from qe_evidence_vectors.generic_filters import is_blocked_generic_query
+from qe_evidence_vectors.descendant_expansion import (
+    bounded_descendant_depth,
+    bounded_descendant_limit,
+    traverse_descendants,
+)
 from qe_evidence_vectors.search_hit_features import semantic_type_names
 from qe_evidence_vectors.search_hydration import (
     normalize_return_code_sabs,
@@ -13,7 +18,7 @@ from qe_evidence_vectors.search_hydration import (
     source_code_search_sabs,
 )
 from qe_evidence_vectors.search_long_documents import LongDocumentChunk, plan_long_document_chunks
-from qe_evidence_vectors.search_ranking import promote_long_document_first_page_recall
+from qe_evidence_vectors.search_ranking import promote_long_document_first_page_recall, rank_hits
 from qe_evidence_vectors.search_semantics import semantic_group_metadata
 from qe_evidence_vectors.search_semantic_buckets import (
     hit_relevance_score,
@@ -53,6 +58,7 @@ MIN_RESULT_RELEVANCE_PROTECTED_MATCH_TYPES = {
     "tui",
     "atui",
     "umls_identifier",
+    "umls_descendant",
 }
 MIN_RESULT_RELEVANCE_PROTECTED_SINGLE_TOKEN_LABEL_SPANS = {
     "homelessness",
@@ -193,6 +199,122 @@ class SearchExecutionMixin:
         "vector_row",
     }
 
+    def descendant_seed_cuis(self, resolution: dict) -> list[str]:
+        candidates = list(resolution.get("candidates") or [])
+        seeds: list[str] = []
+        for candidate in candidates:
+            cui = str(candidate.get("cui") or "").strip().upper()
+            if not cui or cui in seeds:
+                continue
+            seeds.append(cui)
+            if len(seeds) >= 3:
+                break
+        return seeds
+
+    def descendant_expansion_hits(
+        self,
+        query: str,
+        resolution: dict,
+        *,
+        enabled: bool,
+        max_depth: int,
+        limit: int,
+    ) -> tuple[list[dict], dict]:
+        depth = bounded_descendant_depth(max_depth)
+        candidate_limit = bounded_descendant_limit(limit)
+        seeds = self.descendant_seed_cuis(resolution) if enabled else []
+        traversal = traverse_descendants(
+            self.relation_index if enabled else None,
+            seeds,
+            max_depth=depth,
+            limit=candidate_limit,
+        )
+        rows = list(traversal.pop("candidates", []))
+        hits: list[dict] = []
+        public_output_filtered_count = 0
+        for row in rows:
+            cui = str(row.get("child_cui") or row.get("cui") or "").strip().upper()
+            if not cui:
+                continue
+            candidate = self.candidate_from_cui(
+                cui,
+                score=0.72,
+                source="umls_descendant",
+                matched=query,
+                label=str(row.get("label") or ""),
+            )
+            if not candidate:
+                continue
+            hit = self.hit_from_candidate(candidate)
+            if not hit:
+                continue
+            depth_value = max(1, int(row.get("depth") or 1))
+            component = 0.28 * (0.72 ** (depth_value - 1))
+            path = [str(value) for value in row.get("path") or [] if value]
+            expansion = {
+                "seed_cui": str(row.get("seed_cui") or ""),
+                "parent_cui": str(row.get("parent_cui") or ""),
+                "depth": depth_value,
+                "path": path,
+                "relation": str(row.get("relation") or ""),
+                "rela": str(row.get("rela") or ""),
+                "source": str(row.get("source") or row.get("sab") or ""),
+                "direction": str(row.get("direction") or ""),
+            }
+            hit["match_type"] = "umls_descendant"
+            hit["retrieval"] = {"kind": "umls_descendant", **expansion}
+            hit["descendant_expansion"] = expansion
+            hit["descendant_expansion_component"] = round(component, 6)
+            public_output_enabled = getattr(self, "public_output_enabled", None)
+            public_output_hit = getattr(self, "_public_output_hit", None)
+            if (
+                callable(public_output_enabled)
+                and public_output_enabled()
+                and callable(public_output_hit)
+                and public_output_hit(hit) is None
+            ):
+                public_output_filtered_count += 1
+                continue
+            hits.append(hit)
+        traversal["enabled"] = bool(enabled)
+        traversal["available"] = bool(self.relation_index)
+        traversal["returned_candidate_count"] = len(hits)
+        traversal["candidate_cuis"] = [str(hit.get("cui") or "") for hit in hits]
+        if public_output_filtered_count:
+            traversal["public_output_filtered_count"] = public_output_filtered_count
+        if enabled and not self.relation_index:
+            traversal["reason"] = "relation index unavailable"
+        return hits, traversal
+
+    def merge_descendant_expansion_hits(
+        self,
+        query: str,
+        hits: list[dict],
+        descendant_hits: list[dict],
+        *,
+        top_k: int,
+        include_molecular_associations: bool = False,
+    ) -> list[dict]:
+        if not descendant_hits:
+            return hits
+        best_by_cui = {str(hit.get("cui") or ""): hit for hit in hits if hit.get("cui")}
+        for descendant in descendant_hits:
+            cui = str(descendant.get("cui") or "")
+            current = best_by_cui.get(cui)
+            if current is not None:
+                current.setdefault("descendant_expansion", descendant.get("descendant_expansion") or {})
+                continue
+            best_by_cui[cui] = descendant
+        return rank_hits(
+            query,
+            list(best_by_cui.values()),
+            # Keep the complete baseline pool until the normal post-merge filters
+            # run. Descendants may add candidates, but must not evict ordinary
+            # results that would otherwise survive those filters.
+            top_k=max(top_k, len(best_by_cui)),
+            include_molecular_associations=include_molecular_associations,
+        )
+
     def new_search_timing(self) -> dict:
         return {"stages": [], "by_stage": {}, "counts": {}}
 
@@ -268,6 +390,9 @@ class SearchExecutionMixin:
         include_linked_concepts: bool,
         include_evidence_items: bool,
         include_molecular_associations: bool = False,
+        include_descendants: bool = False,
+        descendant_depth: int = 1,
+        descendant_limit: int = 40,
         semantic_bucket_keys: object = None,
         search_mode: object = None,
         search_scope: object = None,
@@ -285,6 +410,9 @@ class SearchExecutionMixin:
             bool(include_linked_concepts),
             bool(include_evidence_items),
             bool(include_molecular_associations),
+            bool(include_descendants),
+            int(descendant_depth),
+            int(descendant_limit),
             bool(debug),
             mode,
             scope,
@@ -678,6 +806,8 @@ class SearchExecutionMixin:
         semantic_bucket_keys: object = None,
         search_mode: object = None,
         return_code_sabs: object = None,
+        descendant_hits: list[dict] | None = None,
+        descendant_metadata: dict | None = None,
         debug: bool = False,
     ) -> dict:
         search_mode = normalize_search_mode(search_mode)
@@ -701,6 +831,12 @@ class SearchExecutionMixin:
             include_active_label_supplement=False,
             include_related_anchor_candidates=False,
             strip_evidence_before_rank=True,
+        )
+        hits = self.merge_descendant_expansion_hits(
+            query,
+            hits,
+            list(descendant_hits or []),
+            top_k=rank_top_k,
         )
         hits = self.filter_hits_by_search_mode(hits, search_mode=search_mode)
         hits = self.filter_hits_by_semantic_buckets(
@@ -742,6 +878,7 @@ class SearchExecutionMixin:
                 "semantic_bucket_filter": list(semantic_bucket_keys),
                 "input_type": resolution.get("input_type") or "",
                 "resolution": self.strip_evidence_from_umls_resolution(resolution),
+                "descendant_expansion": dict(descendant_metadata or {"enabled": False}),
                 "hits": hits,
                 "linked_concepts": [],
                 "linked_concepts_enabled": False,
@@ -1048,6 +1185,7 @@ class SearchExecutionMixin:
             "system_code",
             "code_label_broadened",
             "system_code_label_broadened",
+            "umls_descendant",
         }:
             return True
         if str(hit.get("code_match_type") or "") in {"code", "system_code"}:
@@ -1297,6 +1435,9 @@ class SearchExecutionMixin:
         include_linked_concepts: bool = True,
         include_evidence_items: bool = True,
         include_molecular_associations: bool = False,
+        include_descendants: bool = False,
+        descendant_depth: int = 1,
+        descendant_limit: int = 40,
         semantic_bucket_keys: object = None,
         search_mode: object = None,
         search_scope: object = None,
@@ -1309,6 +1450,8 @@ class SearchExecutionMixin:
         search_scope = normalize_search_scope(search_scope)
         semantic_bucket_keys = normalize_semantic_bucket_filter(semantic_bucket_keys)
         return_code_sabs = normalize_return_code_sabs(return_code_sabs)
+        descendant_depth = bounded_descendant_depth(descendant_depth)
+        descendant_limit = bounded_descendant_limit(descendant_limit)
         if search_scope == "umls":
             include_related = False
         cache_key = self.search_cache_key(
@@ -1318,6 +1461,9 @@ class SearchExecutionMixin:
             include_linked_concepts=include_linked_concepts,
             include_evidence_items=include_evidence_items,
             include_molecular_associations=include_molecular_associations,
+            include_descendants=include_descendants,
+            descendant_depth=descendant_depth,
+            descendant_limit=descendant_limit,
             semantic_bucket_keys=semantic_bucket_keys,
             search_mode=search_mode,
             search_scope=search_scope,
@@ -1347,6 +1493,15 @@ class SearchExecutionMixin:
                 ),
                 "semantic_bucket_filter": list(semantic_bucket_keys),
                 "molecular_associations_enabled": bool(include_molecular_associations),
+                "descendant_expansion": {
+                    "enabled": bool(include_descendants),
+                    "available": bool(self.relation_index),
+                    "max_depth": descendant_depth,
+                    "limit": descendant_limit,
+                    "candidate_count": 0,
+                    "returned_candidate_count": 0,
+                    "reason": "generic query suppressed",
+                },
                 "hits": [],
                 **self.source_contribution_metadata([], include_debug=debug),
                 **self.semantic_response_metadata(
@@ -1373,11 +1528,27 @@ class SearchExecutionMixin:
                 debug=debug,
             )
             self.add_search_timing(timing, "source_code_search", source_code_started)
+            source_code_result["descendant_expansion"] = {
+                "enabled": bool(include_descendants),
+                "available": bool(self.relation_index),
+                "max_depth": descendant_depth,
+                "limit": descendant_limit,
+                "candidate_count": 0,
+                "returned_candidate_count": 0,
+                "reason": "source-code row mode does not expand concept descendants",
+            }
             source_code_result["server_timing"] = self.finalized_search_timing(timing, started=started)
             return self.store_search_result_cache(cache_key, source_code_result)
         resolve_started = time.time()
         resolution = self.resolve(query, limit=max(top_k * 2, 10))
         self.add_search_timing(timing, "resolve", resolve_started)
+        descendant_hits, descendant_metadata = self.descendant_expansion_hits(
+            query,
+            resolution,
+            enabled=include_descendants,
+            max_depth=descendant_depth,
+            limit=descendant_limit,
+        )
         if search_scope == "umls":
             result = self.search_umls_scope(
                 query,
@@ -1387,6 +1558,8 @@ class SearchExecutionMixin:
                 semantic_bucket_keys=semantic_bucket_keys,
                 search_mode=search_mode,
                 return_code_sabs=return_code_sabs,
+                descendant_hits=descendant_hits,
+                descendant_metadata=descendant_metadata,
                 debug=debug,
             )
             result["server_timing"] = self.finalized_search_timing(timing, started=started)
@@ -1409,6 +1582,8 @@ class SearchExecutionMixin:
                 search_mode=search_mode,
                 search_scope=search_scope,
                 return_code_sabs=return_code_sabs,
+                descendant_hits=descendant_hits,
+                descendant_metadata=descendant_metadata,
                 debug=debug,
             )
             result["server_timing"] = self.finalized_search_timing(timing, started=started)
@@ -1421,6 +1596,13 @@ class SearchExecutionMixin:
         )
         self.add_search_timing(timing, "embedded_code_resolution", embedded_code_started)
         if embedded_code_resolution and embedded_code_resolution.get("candidates"):
+            embedded_descendant_hits, embedded_descendant_metadata = self.descendant_expansion_hits(
+                query,
+                embedded_code_resolution,
+                enabled=include_descendants,
+                max_depth=descendant_depth,
+                limit=descendant_limit,
+            )
             result = self.direct_search(
                 embedded_code_resolution,
                 top_k=top_k,
@@ -1431,6 +1613,8 @@ class SearchExecutionMixin:
                 search_mode=search_mode,
                 search_scope=search_scope,
                 return_code_sabs=return_code_sabs,
+                descendant_hits=embedded_descendant_hits,
+                descendant_metadata=embedded_descendant_metadata,
                 debug=debug,
             )
             result["server_timing"] = self.finalized_search_timing(timing, started=started)
@@ -1485,6 +1669,8 @@ class SearchExecutionMixin:
                     long_document_chunks=long_document_chunks,
                     long_document_chunk_vectors=long_document_chunk_vectors,
                     timing=timing,
+                    descendant_hits=descendant_hits,
+                    descendant_metadata=descendant_metadata,
                 )
                 return self.store_search_result_cache(cache_key, result)
             try:
@@ -1505,6 +1691,8 @@ class SearchExecutionMixin:
                     long_document_chunks=long_document_chunks,
                     long_document_chunk_vectors=long_document_chunk_vectors,
                     timing=timing,
+                    descendant_hits=descendant_hits,
+                    descendant_metadata=descendant_metadata,
                 )
                 self.elastic_disabled_until = 0.0
                 self.elastic_failure_reason = ""
@@ -1531,6 +1719,8 @@ class SearchExecutionMixin:
                     long_document_chunks=long_document_chunks,
                     long_document_chunk_vectors=long_document_chunk_vectors,
                     timing=timing,
+                    descendant_hits=descendant_hits,
+                    descendant_metadata=descendant_metadata,
                 )
                 return self.store_search_result_cache(cache_key, result)
         self.require_elasticsearch_or_raise("missing --elastic-url or --elastic-index")
@@ -1551,6 +1741,8 @@ class SearchExecutionMixin:
             long_document_chunks=long_document_chunks,
             long_document_chunk_vectors=long_document_chunk_vectors,
             timing=timing,
+            descendant_hits=descendant_hits,
+            descendant_metadata=descendant_metadata,
         )
         return self.store_search_result_cache(cache_key, result)
 
@@ -1711,6 +1903,8 @@ class SearchExecutionMixin:
         long_document_chunks: list[LongDocumentChunk] | None = None,
         long_document_chunk_vectors: list[array] | None = None,
         timing: dict | None = None,
+        descendant_hits: list[dict] | None = None,
+        descendant_metadata: dict | None = None,
     ) -> dict:
         search_mode = normalize_search_mode(search_mode)
         search_scope = normalize_search_scope(search_scope)
@@ -1753,6 +1947,13 @@ class SearchExecutionMixin:
         hits = self.merge_label_fallback(
             query,
             hits,
+            top_k=rank_top_k,
+            include_molecular_associations=include_molecular_associations,
+        )
+        hits = self.merge_descendant_expansion_hits(
+            query,
+            hits,
+            list(descendant_hits or []),
             top_k=rank_top_k,
             include_molecular_associations=include_molecular_associations,
         )
@@ -1882,6 +2083,7 @@ class SearchExecutionMixin:
             ),
             "semantic_bucket_filter": list(normalize_semantic_bucket_filter(semantic_bucket_keys)),
             "molecular_associations_enabled": bool(include_molecular_associations),
+            "descendant_expansion": dict(descendant_metadata or {"enabled": False}),
             "hits": hits,
             "linked_concepts": linked_concepts,
             "linked_concepts_enabled": bool(include_linked_concepts),
@@ -1933,6 +2135,8 @@ class SearchExecutionMixin:
         long_document_chunks: list[LongDocumentChunk] | None = None,
         long_document_chunk_vectors: list[array] | None = None,
         timing: dict | None = None,
+        descendant_hits: list[dict] | None = None,
+        descendant_metadata: dict | None = None,
     ) -> dict:
         search_mode = normalize_search_mode(search_mode)
         search_scope = normalize_search_scope(search_scope)
@@ -2033,6 +2237,13 @@ class SearchExecutionMixin:
         hits = self.merge_label_fallback(
             query,
             hits,
+            top_k=rank_top_k,
+            include_molecular_associations=include_molecular_associations,
+        )
+        hits = self.merge_descendant_expansion_hits(
+            query,
+            hits,
+            list(descendant_hits or []),
             top_k=rank_top_k,
             include_molecular_associations=include_molecular_associations,
         )
@@ -2162,6 +2373,7 @@ class SearchExecutionMixin:
             ),
             "semantic_bucket_filter": list(normalize_semantic_bucket_filter(semantic_bucket_keys)),
             "molecular_associations_enabled": bool(include_molecular_associations),
+            "descendant_expansion": dict(descendant_metadata or {"enabled": False}),
             "hits": hits,
             "linked_concepts": linked_concepts,
             "linked_concepts_enabled": bool(include_linked_concepts),

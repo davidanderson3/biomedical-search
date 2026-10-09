@@ -761,8 +761,33 @@ PYTHONPATH=src:scripts python3 scripts/run_search_quality_experiment.py \
   --base-url http://127.0.0.1:8766 \
   --scope umls \
   --api-key &quot;$UMLS_API_KEY&quot;</code></pre>
+<p>For a reproducible audit of the official UMLS API alone, use the dedicated sampler. It prompts for the API key with hidden terminal input when <code>UMLS_API_KEY</code> and <code>APIKEY</code> are unset:</p>
+<pre><code class="language-sh">python3 scripts/audit_real_queries_umls_api.py \
+  --sampling uniform \
+  --sample-size 400 \
+  --max-tokens 4 \
+  --seed 20260930</code></pre>
+<p>The source exports are not random: each file is sorted by descending per-term <code>unique_users</code>, and the one-through-eight-word buckets are capped at 10,000 rows. The default uniform sampler estimates the rate among distinct terms in this exported population, not all production searches. Use a separate <code>--sampling demand</code> run to find high-use examples or <code>--sampling balanced</code> for diagnostic coverage across query lengths; do not use their unadjusted percentages as the headline prevalence estimate.</p>
+<p>After the API run, review every row in the generated <code>expected_result_review_queue.tsv</code>. Set <code>review_status</code> to <code>include</code> for genuine biomedical intents, fill <code>expected_cuis</code> with pipe-separated CUIs, and mark noise or non-concept queries <code>exclude</code>. Review API-hit rows as well as no-hit rows so wrong-result and partial-result failures are counted. Then calculate the reviewed false-negative rate:</p>
+<pre><code class="language-sh">python3 scripts/audit_real_queries_umls_api.py \
+  --summarize-reviewed build/private_umls_api_audits/&lt;run&gt;/expected_result_review_queue.tsv</code></pre>
+<p>The primary metric is expected query-CUI results absent from the captured UMLS response divided by all human-approved expected query-CUI results. Expected CUIs are scored individually, so partial-result failures count alongside complete misses. The scorer also reports the percentage of reviewed queries with any omission, the percentages with partial and complete misses, a demand-weighted query miss rate, and a TSV containing every reviewed missed example.</p>
+<p>The API run writes <code>management_report.html</code> in the private run directory. Refresh an existing report without another API call using <code>python3 scripts/audit_real_queries_umls_api.py --generate-html build/private_umls_api_audits/&lt;run&gt;</code>. The review scorer also refreshes this report automatically.</p>
+<p>To make the replacement decision against the existing semantic interface, run a paired top-10 comparison using the saved official UMLS responses and the running <code>/api/search</code> endpoint:</p>
+<pre><code class="language-sh">python3 scripts/compare_umls_vector_search.py \
+  --baseline-run build/private_umls_api_audits/&lt;run&gt; \
+  --top-k 10 \
+  --workers 4</code></pre>
+<p>For a directional estimate, start with the reproducible <code>pilot100_query_review.tsv</code> and <code>pilot100_blinded_relevance_judgments.tsv</code>; the full files remain available for the definitive review. Complete the query review with <code>include</code> or <code>exclude</code>. Then judge each pooled result as <code>0</code> (not relevant), <code>1</code> (partially relevant), or <code>2</code> (directly relevant). Do not inspect <code>pool_provenance_private.tsv</code> until judging is complete; it reveals which system returned each CUI. Score the pilot with:</p>
+<pre><code class="language-sh">python3 scripts/compare_umls_vector_search.py \
+  --baseline-run build/private_umls_api_audits/&lt;run&gt; \
+  --top-k 10 \
+  --score-reviewed \
+  --judgments-file build/private_umls_api_audits/&lt;run&gt;/vector_comparison_top10/pilot100_blinded_relevance_judgments.tsv \
+  --query-review-file build/private_umls_api_audits/&lt;run&gt;/vector_comparison_top10/pilot100_query_review.tsv</code></pre>
+<p>The reviewed report compares pooled recall, precision, MRR, nDCG, relevant-result miss rate, per-query wins/ties/losses, and a query-clustered bootstrap interval. The endpoint under test is the existing SapBERT/Elasticsearch semantic-hybrid interface, not a newly constructed toy vector index.</p>
 <p>Verification:</p>
-<ul><li>Raw exports remain under <code>data/local_search_logs/umls_query_exports/</code>.</li><li>Public configs receive only safe, manually reviewed query/CUI rows.</li></ul>
+<ul><li>Raw exports remain under <code>data/local_search_logs/umls_query_exports/</code>.</li><li>The API key is entered through the hidden prompt or environment and is never saved in audit outputs.</li><li>Public configs receive only safe, manually reviewed query/CUI rows.</li></ul>
 <h2>Source Acquisition Planning</h2>
 <p>Use this to turn measured failures into source and relationship-edge review queues.</p>
 <pre><code class="language-sh">python3 scripts/evidence_vectors.py plan-source-acquisition \

@@ -28,6 +28,7 @@ COPY config/search_quality_semantic_buckets.json /workspace/config/search_qualit
 COPY config/active_label_supplement.tsv /workspace/config/active_label_supplement.tsv
 COPY config/display_name_overrides.tsv /workspace/config/display_name_overrides.tsv
 COPY web/search_quality_product.html /workspace/web/search_quality_product.html
+COPY web/umls_evaluation_flow.html /workspace/web/umls_evaluation_flow.html
 COPY web/search_quality/app.js /workspace/web/search_quality/app.js
 COPY web/search_quality/server.css /workspace/web/search_quality/server.css
 COPY web/search_quality/uts-banner.jpg /workspace/web/search_quality/uts-banner.jpg

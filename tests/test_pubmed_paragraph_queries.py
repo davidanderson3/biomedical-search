@@ -14,7 +14,13 @@ from build_pubmed_long_document_slice import (
     read_slice,
     write_query_tsv as write_long_document_query_tsv,
 )
-from fetch_pubmed_paragraph_queries import curated_query_row, read_curation, write_query_tsv
+from fetch_pubmed_paragraph_queries import (
+    curated_query_row,
+    read_curation,
+    read_topics,
+    split_values,
+    write_query_tsv,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -165,3 +171,19 @@ def test_materialize_pubmed_long_document_slice_from_seed_rows(tmp_path: Path) -
 
     assert rows[0]["id"] == "pubmed_example_1"
     assert set(rows[0]) == {"id", "query", "expected_cuis", "why", "disallowed_cuis"}
+
+
+def test_pubmed_topics_pin_every_approved_curation_pmid() -> None:
+    curation = read_curation(ROOT / "config" / "pubmed_literature_abstract_curation.tsv")
+    approved_pmids = {
+        pmid
+        for pmid, row in curation.items()
+        if (row.get("review_status") or "").strip().lower() == "approved"
+    }
+    topic_pmids = {
+        pmid
+        for topic in read_topics(ROOT / "config" / "pubmed_paragraph_topics.tsv")
+        for pmid in split_values(topic.get("pmids") or "")
+    }
+
+    assert approved_pmids <= topic_pmids

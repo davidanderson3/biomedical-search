@@ -47,6 +47,7 @@ services:
       - ../../scripts/scaling_status.py:/workspace/scripts/scaling_status.py:ro
       - ../../scripts/runtime_elastic.py:/workspace/scripts/runtime_elastic.py:ro
       - ../../web/search_quality_product.html:/workspace/web/search_quality_product.html:ro
+      - ../../web/umls_evaluation_flow.html:/workspace/web/umls_evaluation_flow.html:ro
       - ../../web/search_quality/app.js:/workspace/web/search_quality/app.js:ro
       - ../../web/search_quality/server.css:/workspace/web/search_quality/server.css:ro
       - ../../web/search_quality/uts-banner.jpg:/workspace/web/search_quality/uts-banner.jpg:ro
@@ -109,6 +110,7 @@ services:
       - ../../scripts/scaling_status.py:/workspace/scripts/scaling_status.py:ro
       - ../../scripts/runtime_elastic.py:/workspace/scripts/runtime_elastic.py:ro
       - ../../web/search_quality_product.html:/workspace/web/search_quality_product.html:ro
+      - ../../web/umls_evaluation_flow.html:/workspace/web/umls_evaluation_flow.html:ro
       - ../../web/search_quality/app.js:/workspace/web/search_quality/app.js:ro
       - ../../web/search_quality/server.css:/workspace/web/search_quality/server.css:ro
       - ../../web/search_quality/uts-banner.jpg:/workspace/web/search_quality/uts-banner.jpg:ro

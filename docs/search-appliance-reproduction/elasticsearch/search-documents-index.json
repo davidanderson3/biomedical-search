@@ -1,0 +1,68 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "refresh_interval": "30s"
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "doc_id": {
+        "type": "keyword"
+      },
+      "cui": {
+        "type": "keyword"
+      },
+      "view": {
+        "type": "keyword"
+      },
+      "sources": {
+        "type": "keyword"
+      },
+      "labels": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 512
+          }
+        }
+      },
+      "text": {
+        "type": "text",
+        "index": false
+      },
+      "evidence_count": {
+        "type": "integer"
+      },
+      "total_weight": {
+        "type": "float"
+      },
+      "embedding_model": {
+        "type": "keyword"
+      },
+      "embedding_pooling": {
+        "type": "keyword"
+      },
+      "embedding_dimensions": {
+        "type": "short"
+      },
+      "document_text_hash": {
+        "type": "keyword",
+        "index": false,
+        "doc_values": false
+      },
+      "vector": {
+        "type": "dense_vector",
+        "dims": 768,
+        "index": true,
+        "similarity": "cosine",
+        "index_options": {
+          "type": "int8_hnsw",
+          "m": 16,
+          "ef_construction": 100
+        }
+      }
+    }
+  }
+}

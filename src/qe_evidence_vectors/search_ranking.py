@@ -290,6 +290,10 @@ def score_breakdown_for_hit(
         if denied_positive_finding_penalty > 0.0
         else min(max(float(hit.get("mrrel_component") or 0.0), 0.0), MRREL_RANK_COMPONENT_CAP)
     )
+    descendant_expansion_component = min(
+        max(float(hit.get("descendant_expansion_component") or 0.0), 0.0),
+        0.28,
+    )
     mrrel_matched_tokens = sorted(
         {
             canonical_token(str(token))
@@ -494,6 +498,7 @@ def score_breakdown_for_hit(
         + evidence_context_component
         + definition_component
         + mrrel_component
+        + descendant_expansion_component
         + long_document_support_component
         + composite_intent_component
         + lab_result_composite_component
@@ -559,6 +564,7 @@ def score_breakdown_for_hit(
         "definition_component": round(definition_component, 6),
         "definition_matched_tokens": definition_matched_tokens,
         "mrrel_component": round(mrrel_component, 6),
+        "descendant_expansion_component": round(descendant_expansion_component, 6),
         "mrrel_matched_tokens": mrrel_matched_tokens,
         "mrrel_signal_reasons": mrrel_signal_reasons,
         "long_document_support_component": round(long_document_support_component, 6),
@@ -609,7 +615,15 @@ def score_breakdown_for_hit(
                 else (
                     "umls_label"
                     if has_label_match
-                    else ("umls_definition" if hit.get("match_type") == "umls_definition" else "semantic_vector")
+                    else (
+                        "umls_definition"
+                        if hit.get("match_type") == "umls_definition"
+                        else (
+                            "umls_descendant"
+                            if hit.get("match_type") == "umls_descendant"
+                            else "semantic_vector"
+                        )
+                    )
                 )
             )
         ),

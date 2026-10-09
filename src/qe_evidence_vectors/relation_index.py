@@ -351,6 +351,70 @@ class RelationIndex:
         self.cache[key] = results
         return results
 
+    def lookup_children(self, cui: str, *, limit: int = 100) -> list[dict]:
+        return self.lookup_children_many([cui], limit_per_parent=limit).get(cui, [])
+
+    def lookup_children_many(
+        self,
+        cuis: Iterable[str],
+        *,
+        limit_per_parent: int = 100,
+    ) -> dict[str, list[dict]]:
+        """Return direct UMLS children for several parents in one indexed query.
+
+        MRREL stores PAR from the narrower concept toward the parent and CHD in
+        the opposite direction.  ``related_concepts`` also stores whether the
+        row was normalized from the outgoing or incoming side.  These two
+        predicates therefore select children without guessing from labels or
+        from RELA text.  Conflicting UMLS hierarchy assertions are allowed;
+        the caller performs cycle detection across levels.
+        """
+
+        parents = list(dict.fromkeys(str(cui or "").strip().upper() for cui in cuis if cui))
+        if not parents:
+            return {}
+        per_parent = max(1, int(limit_per_parent or 1))
+        placeholders = ",".join("?" for _ in parents)
+        rows = self.connection().execute(
+            f"""
+            SELECT source_cui, target_cui, relation, rela, sab, direction, label, rank
+            FROM related_concepts
+            WHERE source_cui IN ({placeholders})
+              AND (
+                    (relation = 'PAR' AND direction = 'incoming')
+                 OR (relation = 'CHD' AND direction = 'outgoing')
+              )
+            ORDER BY source_cui ASC, rank ASC, target_cui ASC
+            """,
+            parents,
+        )
+        results: dict[str, list[dict]] = {parent: [] for parent in parents}
+        seen: dict[str, set[str]] = {parent: set() for parent in parents}
+        for row in rows:
+            parent = str(row["source_cui"] or "").strip().upper()
+            child = str(row["target_cui"] or "").strip().upper()
+            if not parent or not child or child in seen.setdefault(parent, set()):
+                continue
+            bucket = results.setdefault(parent, [])
+            if len(bucket) >= per_parent:
+                continue
+            seen[parent].add(child)
+            bucket.append(
+                {
+                    "parent_cui": parent,
+                    "child_cui": child,
+                    "cui": child,
+                    "relation": str(row["relation"] or ""),
+                    "rela": str(row["rela"] or ""),
+                    "rui": "",
+                    "source": str(row["sab"] or ""),
+                    "direction": str(row["direction"] or ""),
+                    "label": display_label(str(row["label"] or "")),
+                    "rank": int(row["rank"] or 0),
+                }
+            )
+        return results
+
     def lookup_identifier(self, identifier: str, *, identifier_type: str = "RUI", limit: int = 16) -> list[dict]:
         identifier = str(identifier or "").strip().upper()
         if not identifier or str(identifier_type or "").strip().upper() != "RUI":

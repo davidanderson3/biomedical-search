@@ -110,7 +110,7 @@
         "primary top-on-target protection",
         "runtime/stage timing for long-document extraction when uncached"
       ],
-      "risk_note": "First answers are currently clean, but long abstracts still lose too many secondary concepts before the first page.",
+      "risk_note": "The restored approved PubMed run has three wrong-first rows and still loses too many secondary concepts before the first page.",
       "reference_run": {
         "run_id": "SQI-2026-06-17-004-expanded-post-fix-pubmed_approved_long_documents",
         "created_at": "2026-06-17T20:40:45Z",

@@ -345,7 +345,7 @@
     <div class="wrap topbar">
       <div>
         <h1>Search Quality Progress Log</h1>
-        <p class="muted">One readable chronology that combines benchmark experiments, SQI iteration decisions, regression checks, audit work, and source-data decisions. Timestamps are UTC; latest items come first.</p>
+        <p class="muted">The working iteration log: one readable chronology that combines benchmark experiments, SQI iteration decisions, regression checks, audit work, and source-data decisions. Timestamps are UTC; latest items come first.</p>
       </div>
       <div class="report-nav">
         <div class="report-nav-label">Open</div>
@@ -365,7 +365,7 @@
     </div>
   </header>
   <main>
-    <section class="panel">
+    <section class="panel" id="current-quality-snapshot">
       <h2>Current Quality Snapshot</h2>
       <p class="muted small">This is not a percent-complete progress report. These eight cards are separate workflow diagnostics, and the category count intentionally stays at eight. Each percentage answers a narrower question: in this lane, how often does search return the expected concept cleanly or put the right answer first? The evidence under each card now also calls out near-miss severity, page cleanliness, role/context accuracy, gate status, stability, or runtime risk when those signals matter.</p>
       <div class="summary-grid">
@@ -376,12 +376,12 @@
           <small>Evidence: 148/168 rows strict top 10; 844/874 expected concepts found in the first 10; 20 rows still miss at least one concept; 0 wrong-first rows. Near-miss severity: 28/30 top-10 misses are recovered by top 20, 1 more by top 60, and 1 is absent by top 60.</small>
           <small class="stamp">Ran 2026-06-11 17:52 UTC</small>
         </div>
-        <div class="metric bad">
-          <strong>33%</strong>
+        <div class="metric warn">
+          <strong>88%</strong>
           <span>realistic note formats</span>
-          <small>Radiology, pathology, lab, nursing, and other real-world note styles remain the weakest clinical-text lane. The latest uncached routing iteration keeps the first answer clean and removes configured first-page drift, but required secondary concepts are often missing.</small>
-          <small>Evidence: 8/24 rows strict top 10; 94/115 expected concepts found at top 10, 102/115 at top 20, and 105/115 at top 60; 16 rows still miss at top 10 and 10 still miss at top 20; 0 wrong-first rows; 0 disallowed-at-10 rows and 1 disallowed-at-20 row. Status: diagnostic, not promotion-ready.</small>
-          <small class="stamp">Uncached lane reran 2026-06-17 21:26 UTC</small>
+          <small>Radiology, pathology, lab, nursing, therapy, operative, authorization, and anticoagulation note styles improved after adding governed aliases for explicit note wording. The lane is much stronger but still diagnostic because two rows remain mixed and one top-10 miss is recovered by top 20.</small>
+          <small>Evidence: 21/24 rows strict top 10; 112/115 expected concepts found at top 10, 113/115 at top 20, and 113/115 at top 60; 3 rows still miss at top 10 and 2 still miss at top 20; 0 wrong-first rows; 0 disallowed-at-10 rows and 1 disallowed-at-20 row.</small>
+          <small class="stamp">Live local run 2026-06-25 14:44 UTC</small>
         </div>
         <div class="metric good">
           <strong>100%</strong>
@@ -407,9 +407,9 @@
         <div class="metric bad">
           <strong>30%</strong>
           <span>PubMed long abstracts</span>
-          <small>The approved PubMed suite has expanded from 13 to 23 reviewed title-plus-abstract rows. First answers are clean after the post-fix rerun, but long-document recall is still weak.</small>
-          <small>Evidence: 7/23 rows strict top 10; 77/106 expected concepts found at top 10, 81/106 at top 20, and 89/106 at top 60; 23/23 top-on-target; 0 wrong-first rows; 16 rows still miss at top 10 and 12 still miss at top 20. Runtime is tracked separately because long-document extraction dominates uncached probes.</small>
-          <small class="stamp">Expanded suite reran 2026-06-17 20:40 UTC</small>
+          <small>The approved PubMed suite is now reproducibly 23 reviewed title-plus-abstract rows. The restored current run shows long-document recall is still weak and three first answers need triage.</small>
+          <small>Evidence: 7/23 rows strict top 10; 78/106 expected concepts found at top 10, 82/106 at top 20, and 90/106 at top 60; 20/23 top-on-target; 3 wrong-first rows; 15 rows still miss at top 10 and top 20; 0 configured disallowed concepts at top 10. Runtime is tracked separately because long-document extraction dominates uncached probes.</small>
+          <small class="stamp">Restored 23-row run 2026-06-25 15:45 UTC</small>
         </div>
         <div class="metric good">
           <strong>100%</strong>
@@ -418,12 +418,12 @@
           <small>Evidence: 9/9 rows strict top 10; 20/20 expected concepts found at top 10/top 20; 0 wrong-first rows; 0 configured disallowed rows. Source-status metric: core public-source gate is green, while expanded DailyMed section coverage is still future work.</small>
           <small class="stamp">Ran 2026-06-15 17:47 UTC</small>
         </div>
-        <div class="metric good">
-          <strong>100%</strong>
+        <div class="metric warn">
+          <strong>99%</strong>
           <span>reviewed first answers</span>
-          <small>Across the current reviewed product lanes, the first result is intended or accepted. This is a trust signal, not a guarantee that the rest of the first page is complete or clean.</small>
-          <small>Evidence: 269/269 current reviewed product rows have an intended or accepted first answer. Stability watch: the latest 50-query rotating smoke has 50/50 top-on-target, 0 wrong-first rows, 41/50 strict top 10, 48/50 strict top 20, and 257/268 expected concepts at top 10.</small>
-          <small class="stamp">Computed through 2026-06-17 20:40 UTC</small>
+          <small>Most reviewed product lanes still put an intended or accepted concept first, but the restored approved PubMed run reopened first-answer trust work.</small>
+          <small>Evidence: 266/269 current reviewed product rows have an intended or accepted first answer. The restored approved PubMed lane has 20/23 top-on-target and 3 wrong-first rows; the latest 50-query rotating smoke still has 50/50 top-on-target and 0 wrong-first rows.</small>
+          <small class="stamp">Computed through 2026-06-25 15:45 UTC</small>
         </div>
       </div>
       <div class="story-grid section-note">
@@ -433,7 +433,7 @@
         </div>
         <div class="story-item warn">
           <strong>What Is Still Weak</strong>
-          <p>The main visible weaknesses are expanded realistic note formats at 8/24 strict top 10 and expanded PubMed abstracts at 7/23 strict top 10. Consumer wording is clean in the latest lane run, but its blocking/diagnostic policy still needs a decision. Wrong-first mining stays in watch mode for new rows.</p>
+          <p>The main visible weakness is expanded PubMed abstracts at 7/23 strict top 10, and the restored 23-row run reopens three approved PubMed wrong-first rows. Realistic note formats are much better at 21/24 strict top 10, but still need follow-up for pathology breast-carcinoma, operative right-lower-quadrant, and MRI stroke carryover decisions. Consumer wording is clean in the latest lane run, but its blocking/diagnostic policy still needs a decision.</p>
         </div>
         <div class="story-item warn">
           <strong>Why There Are Eight Cards</strong>
@@ -456,7 +456,7 @@
         </div>
         <div class="story-item warn">
           <strong>Focused Versus Approved PubMed</strong>
-          <p>The focused PubMed set is a seven-abstract practice slice chosen because it stresses long-document behavior. The approved PubMed suite is the broader 13-abstract reviewed set. "Current" means it has been rerun with the latest code and data; the older 3/13 result is kept as history but should not be treated as today's status.</p>
+          <p>The focused PubMed set is a seven-abstract practice slice chosen because it stresses long-document behavior. The approved PubMed suite is the broader 23-abstract reviewed set. "Current" means it has been rerun with the latest code and data; older 13-row and 3/13 results are kept as history but should not be treated as today's status.</p>
         </div>
         <div class="story-item warn">
           <strong>What A Pass Means</strong>
@@ -525,7 +525,7 @@
       <h2>Whole Product Quality Over Time</h2>
       <p class="muted small">This is the "how close are we to a dependable search interface" tracker. It is broader than recall. The score can stay flat after a useful audit if the actual ranked answers did not improve, and it can drop when a fresh run reveals more visible bad answers.</p>
       <div class="result-row">
-        <div class="result warn"><strong>76%</strong><span>current whole-product estimate</span></div>
+        <div class="result warn"><strong>84%</strong><span>current whole-product estimate</span></div>
         <div class="result neutral"><strong>starts here</strong><span>no older percentage was backfilled</span></div>
         <div class="result warn"><strong>computed</strong><span>from latest lane artifacts</span></div>
       </div>
@@ -541,6 +541,41 @@
             </tr>
           </thead>
           <tbody>
+            <tr>
+              <td>2026-06-25 15:46 UTC</td>
+              <td class="score warn">84%</td>
+              <td>Down 1 point; restored approved PubMed seed exposed current long-document first-answer failures.</td>
+              <td>The approved PubMed benchmark now rebuilds deterministically to the intended 23 rows, including the held-out hypocomplementemia/proteinuria title-only row. The restored run keeps strict recall at 7/23 rows but shows 3 wrong-first rows in the current local API, so SQB-002 stays the active P0 lane.</td>
+              <td><code>scripts/build_whole_product_quality_scorecard.py</code> computed raw weighted score 84.3 and published score 84. Inputs: broad clinical 91.5, realistic note formats 91.1, approved PubMed long abstracts 48.9 (7/23 strict top 10; 78/106 expected at top 10; 20/23 top-on-target), short clinical 100, consumer 100, portal current issue 100, core public sources 100, and rotating regression watch 87.2.</td>
+            </tr>
+            <tr>
+              <td>2026-06-25 14:45 UTC</td>
+              <td class="score warn">85%</td>
+              <td>Up 5 points; note-format explicit aliases moved the realistic-note lane past its P0 target.</td>
+              <td>The realistic note-format lane now recovers explicit note phrases such as left breast lumpectomy, O2 sat, glucose, front wheeled walker, A1c, acute ischemic stroke, cardiopulmonary bypass, lactate decreased, and aPTT through governed active-label rows. The lane improves to 21/24 strict top 10, 112/115 expected concepts at top 10, 22 good rows, 2 mixed rows, 0 poor rows, and 0 wrong-first rows.</td>
+              <td><code>scripts/build_whole_product_quality_scorecard.py</code> computed raw weighted score 84.6 and published score 85. Inputs: broad clinical 91.5, realistic note formats 91.1 (21/24 strict top 10; 112/115 expected at top 10), approved PubMed long abstracts 49.9 (7/23 strict top 10; 77/106 expected at top 10), short clinical 100, consumer 100, portal current issue 100 top-on-target, core public sources 100, and rotating regression watch 87.2.</td>
+            </tr>
+            <tr>
+              <td>2026-06-25 14:15 UTC</td>
+              <td class="score warn">80%</td>
+              <td>Up 2 points; note-format equivalence replay corrected three secondary-concept misses already present in saved first pages.</td>
+              <td>The realistic note-format lane now accepts leg edema for edema, transthoracic echocardiography for echocardiography, and anticoagulation therapy for anticoagulation when the note wording explicitly supports those equivalents. The saved-payload replay improves the lane to 14/24 strict top 10 and 104/115 expected concepts at top 10 with 0 wrong-first rows.</td>
+              <td><code>scripts/build_whole_product_quality_scorecard.py</code> computed raw weighted score 80.0 and published score 80. Inputs: broad clinical 91.5, realistic note formats 70.4 (14/24 strict top 10; 104/115 expected at top 10), approved PubMed long abstracts 49.9 (7/23 strict top 10; 77/106 expected at top 10), short clinical 100, consumer 100, portal current issue 100 top-on-target, core public sources 100, and rotating regression watch 87.2.</td>
+            </tr>
+            <tr>
+              <td>2026-06-25 13:36 UTC</td>
+              <td class="score warn">78%</td>
+              <td>Up 2 points; note-format radiology and therapy aliases improved a weak product lane.</td>
+              <td>The realistic note-format lane now resolves CT angiogram, acute segmental pulmonary embolism, displaced hip fracture, occupational therapy evaluation, and physical therapy from note wording. The lane improves to 11/24 strict top 10 and 101/115 expected concepts at top 10 with 0 wrong-first rows. The prior major-weakness cap is no longer active because realistic note formats moved above 60, but approved PubMed long abstracts remain below 60.</td>
+              <td><code>scripts/build_whole_product_quality_scorecard.py</code> computed raw weighted score 78.0 and published score 78. Inputs: broad clinical 91.5, realistic note formats 61.5 (11/24 strict top 10; 101/115 expected at top 10), approved PubMed long abstracts 49.9 (7/23 strict top 10; 77/106 expected at top 10), short clinical 100, consumer 100, portal current issue 100 top-on-target, core public sources 100, and rotating regression watch 87.2.</td>
+            </tr>
+            <tr>
+              <td>2026-06-24 20:36 UTC</td>
+              <td class="score warn">76%</td>
+              <td>Unchanged published score; note-format equivalence replay removed the only poor row.</td>
+              <td>The realistic note-format lane now accepts reviewed lab-review equivalents for hemoglobin measurement, ferritin measurement, and packed red blood cell transfusion. The lane improves to 9/24 strict top 10 and 97/115 expected concepts at top 10, but the score stays capped while realistic note formats and approved PubMed long abstracts are both below 60.</td>
+              <td><code>scripts/build_whole_product_quality_scorecard.py</code> computed raw weighted score 76.7 and capped score 76. Inputs: broad clinical 91.5, realistic note formats 55.5 (9/24 strict top 10; 97/115 expected at top 10), approved PubMed long abstracts 49.9 (7/23 strict top 10; 77/106 expected at top 10), short clinical 100, consumer 100, portal current issue 100 top-on-target, core public sources 100, and rotating regression watch 87.2.</td>
+            </tr>
             <tr>
               <td>2026-06-17 21:26 UTC</td>
               <td class="score warn">76%</td>
@@ -761,7 +796,7 @@
         </div>
         <div class="story-item warn">
           <strong>Cap Rule</strong>
-          <p>Do not report stronger than 76% while both realistic note formats and approved PubMed long abstracts score below 60. This keeps green short-query, source, consumer, and top-answer lanes from hiding major breadth failures.</p>
+          <p>Do not report stronger than 76% while both realistic note formats and approved PubMed long abstracts have scorecard lane scores below 60. That cap is not active in the current score because the note-format lane score is now 91.1 and the strict-row snapshot card is 88% complete. The rule remains if both major weak lanes fall below that threshold again.</p>
         </div>
         <div class="story-item warn">
           <strong>Update Rule</strong>
@@ -775,18 +810,18 @@
       <p class="muted small">Plain-language day-by-day accomplishments now live in a separate file so this progress log can stay focused on current status, risks, and chronology.</p>
       <div class="result-row">
         <div class="result good"><strong><a href="search_quality_daily_accomplishments.html">open file</a></strong><span>daily accomplishment summaries</span></div>
-        <div class="result good"><strong><a href="search_quality_daily_accomplishments.html#2026-06-16">Jun 16</a></strong><span>latest completed daily summary</span></div>
+        <div class="result good"><strong><a href="search_quality_daily_accomplishments.html#2026-06-24">Jun 24</a></strong><span>latest completed daily summary</span></div>
         <div class="result neutral"><strong>linked</strong><span>from top navigation and this section</span></div>
       </div>
     </section>
 
     <section class="panel">
       <h2>Prioritized Backlog</h2>
-      <p class="muted small">Updated 2026-06-17 21:26 UTC after the SQB-015 realistic note-format routing iteration. <code>P0</code> now means a visible user-quality failure or fresh first-answer trust risk. <code>P1</code> means important work that improves breadth, speed, governance, or future gates but is not the clearest current product failure. <code>P2</code> means useful supporting work. "Next diff to ship" means the smallest code, data, or benchmark change that would make measurable progress.</p>
+      <p class="muted small">Updated 2026-06-25 15:46 UTC after the SQB-002 approved PubMed seed-determinism iteration. <code>P0</code> now means a visible user-quality failure or fresh first-answer trust risk. <code>P1</code> means important work that improves breadth, speed, governance, or future gates but is not the clearest current product failure. <code>P2</code> means useful supporting work. "Next diff to ship" means the smallest code, data, or benchmark change that would make measurable progress.</p>
       <div class="story-grid section-note">
         <div class="story-item bad">
           <strong>Top Assessment</strong>
-          <p>The weakest current lanes are expanded realistic note formats at 8/24 strict top 10 and expanded PubMed long abstracts at 7/23 strict top 10. The latest rotating wrong-first rows are closed, so active P0 implementation should move to note-format recall and long-document recall while bad-result mining remains a standing watch.</p>
+          <p>The weakest current lane is expanded PubMed long abstracts at 7/23 strict top 10. The restored 23-row approved run also exposes 3 wrong-first rows, so active P0 implementation should triage those first-answer failures before broader secondary-concept recall. Realistic note formats moved to 21/24 strict top 10 and meet the prior P0 target, but remain diagnostic follow-up for the remaining pathology, operative, and MRI decisions.</p>
         </div>
         <div class="story-item warn">
           <strong>What Moved Down</strong>
@@ -809,18 +844,26 @@
             <tr>
               <td class="score bad">P0</td>
               <td><strong>SQB-001 Bad-result mining</strong></td>
-              <td>The current reviewed product-lane rollup has 269/269 intended or accepted first answers, and the latest required rotating smoke for <code>SQI-2026-06-17-001</code> has 50/50 top-on-target with 0 wrong-first rows. Fresh wrong-first rows still preempt most recall work when they appear because they directly damage trust.</td>
-              <td>Keep the closed WFN rows in regression coverage and continue first-page bad-result mining across consumer wording, long documents, source-specific rows, related panels, medication-role cases, and fresh rotating samples. Reopen an active WFN row only when a reviewed first-answer trust failure appears.</td>
+              <td>The current reviewed product-lane rollup has 266/269 intended or accepted first answers after the restored approved PubMed run exposed 3 wrong-first rows. The latest required rotating smoke for <code>SQI-2026-06-17-001</code> still has 50/50 top-on-target with 0 wrong-first rows.</td>
+              <td>Keep the closed WFN rows in regression coverage and continue first-page bad-result mining across consumer wording, long documents, source-specific rows, related panels, medication-role cases, and fresh rotating samples. Treat the restored approved PubMed wrong-first rows as the active first-answer trust work inside <code>SQB-002</code>.</td>
               <td><code>config/search_quality_wrong_first_noise_ledger.tsv</code><br><code>config/search_quality_judgments.tsv</code></td>
-              <td>No open reviewed wrong-first rows, latest required rotating smoke has 0 wrong-first rows, and each release lane has negative controls or an explicit reason they do not apply.</td>
+              <td>No open reviewed wrong-first rows outside the restored approved PubMed lane, latest required rotating smoke has 0 wrong-first rows, and each release lane has negative controls or an explicit reason they do not apply.</td>
             </tr>
             <tr>
               <td class="score bad">P0</td>
+              <td><strong>SQB-002 Long-document survival</strong></td>
+              <td>The seven-abstract PubMed practice set passes, and the expanded approved set now rebuilds deterministically to 23 rows. The restored current run is 7/23 strict top 10, 78/106 expected concepts found in the first 10, 20/23 top-on-target, and 3 wrong-first rows.</td>
+              <td>Triage the restored approved PubMed wrong-first rows first: lupus-like nephropathy ranks Antibodies, Antinuclear first, sepsis/ARDS molecular phenotype ranks Acute Lung Injury first, and cystic-fibrosis modulator ranks CFTR first. Then continue high-signal secondary-concept losses such as EGFR progression-free-survival/regimen vocabulary, hypocomplementemia/Complement 3, and infection/treatment carry-forward issues.</td>
+              <td><code>build/pubmed_literature_benchmark_seed/pubmed_literature_approved_queries.tsv</code><br><code>config/pubmed_paragraph_topics.tsv</code><br><code>src/qe_evidence_vectors/search_ranking.py</code><br><code>tests/test_evidence_vectors.py</code><br><code>tests/test_pubmed_paragraph_queries.py</code></td>
+              <td>The expanded approved PubMed suite is 23/23 complete in the first 10 answers, or every remaining miss has a reviewed acceptable-equivalence decision and a regression row. The restored wrong-first rows are closed, and the C. difficile heldout row stays protected with 0 configured disallowed concepts.</td>
+            </tr>
+            <tr>
+              <td class="score warn">P1</td>
               <td><strong>SQB-015 Realistic note-format recall</strong></td>
-              <td>This is the weakest clinical-text lane in the current snapshot: expanded realistic note formats are only 8/24 rows complete at strict top 10. The SQI-2026-06-17-005 uncached rerun fixed source-code misrouting and removed the lane's live wrong-first result, but 16/24 examples still miss at least one expected secondary concept.</td>
-              <td>Work the remaining note-format misses as focused batches by failure class. Start with the rows where note headers, abbreviations, objective-data formatting, procedure/result context, or rank displacement suppress expected secondary concepts. Preserve the new source-code routing guard and keep the broad clinical paragraph gate unchanged.</td>
-              <td><code>config/search_quality_clinical_text_variety_queries.tsv</code><br><code>config/search_quality_suite.json</code><br><code>src/qe_evidence_vectors/search_hydration.py</code><br><code>src/qe_evidence_vectors/search_ranking.py</code><br><code>src/qe_evidence_vectors/search_rerank.py</code></td>
-              <td>The clinical text variety lane moves from 8/24 to at least 20/24 strict top 10 with 0 wrong-first rows and 0 configured disallowed concepts, and each remaining miss has a reviewed reason or targeted follow-up.</td>
+              <td>The live local lane is now 21/24 strict top 10, 112/115 expected concepts at top 10, 113/115 at top 20/top 60, 22 good / 2 mixed / 0 poor rows, 24/24 top-on-target, 0 wrong-first rows, and 0 configured disallowed concepts at top 10. Remaining top-10 misses: pathology <code>C0678222</code> breast carcinoma, operative <code>C0694551</code> right-lower-quadrant target, and MRI <code>C0948008</code> recovered by top 20.</td>
+              <td>Review the remaining misses as policy decisions before more ranking work: decide whether specific pathology carcinoma <code>C1412014</code> should satisfy broad breast carcinoma <code>C0678222</code>, decide whether the operative note target should be right-lower-quadrant pain or an anatomy/context concept, and tune MRI stroke only if <code>C0948008</code> must be top 10 rather than top 20. Preserve the source-code routing guard, active-label supplement regressions, and broad clinical paragraph gate.</td>
+              <td><code>config/search_quality_clinical_text_variety_queries.tsv</code><br><code>config/active_label_supplement.tsv</code><br><code>tests/test_evidence_vectors.py</code><br><code>build/search_quality_experiments/runs/SQI-2026-06-25-003-note-format-explicit-aliases-local_note-format-explicit-alias-active-labels-local</code></td>
+              <td>Promote or explicitly keep diagnostic after the remaining three misses get policy decisions and a passing rerun preserves 0 wrong-first rows and 0 configured disallowed concepts at top 10.</td>
             </tr>
             <tr>
               <td class="score warn">P1</td>
@@ -829,14 +872,6 @@
               <td>Decide whether <code>consumer_lay_language</code> becomes a blocking release gate or stays diagnostic with explicit thresholds. If promoted, update <code>config/search_quality_suite.json</code> and rerun the suite in blocking mode.</td>
               <td><code>config/search_quality_consumer_lay_queries.tsv</code><br><code>src/qe_evidence_vectors/search_ranking.py</code><br><code>src/qe_evidence_vectors/search_rerank.py</code><br><code>src/qe_evidence_vectors/search_service.py</code><br><code>build/search_quality_suite/SQI-2026-06-16-002-consumer-lay-literal-drift/suite.md</code></td>
               <td>The consumer lay-language lane has an explicit blocking or diagnostic decision, with thresholds recorded and a passing run under that decision.</td>
-            </tr>
-            <tr>
-              <td class="score bad">P0</td>
-              <td><strong>SQB-002 Long-document survival</strong></td>
-              <td>The seven-abstract PubMed practice set passes, and the expanded 23-row approved set is now 23/23 top-on-target with 0 wrong-first rows. The lane is still only 7/23 strict rows, with 77/106 expected concepts found in the first 10.</td>
-              <td>Work the expanded approved PubMed misses as a batch. Start with high-signal secondary-concept losses such as EGFR progression-free-survival/regimen vocabulary, status-migrainosus aura variants, hypocomplementemia/Complement 3, and remaining infection/treatment carry-forward issues. Preserve the status-migrainosus corticosteroid-class guard and direct corticosteroid lookup behavior.</td>
-              <td><code>build/pubmed_literature_benchmark_seed/pubmed_literature_approved_queries.tsv</code><br><code>src/qe_evidence_vectors/search_ranking.py</code><br><code>tests/test_evidence_vectors.py</code></td>
-              <td>The expanded approved PubMed suite is 23/23 complete in the first 10 answers, or every remaining miss has a reviewed acceptable-equivalence decision and a regression row. The C. difficile heldout row stays protected with 0 configured disallowed concepts.</td>
             </tr>
             <tr>
               <td class="score warn">P1</td>
@@ -873,8 +908,8 @@
             <tr>
               <td class="score warn">P1</td>
               <td><strong>SQB-007 Promote new lanes into gates</strong></td>
-              <td>The short-query set is a blocking release check and passes. The pruned 9-row source-specific set passes after the DailyMed warning-context fix. Consumer lay-language is green in the latest live run but still diagnostic by configuration; realistic note formats are still diagnostic because they expose current weaknesses.</td>
-              <td>Keep short-query and source-specific evidence as blocking gates. Decide whether the now-green consumer lay-language lane should block release or stay as a monitored diagnostic with thresholds. Do not promote realistic note formats until their P0 recall fix lands.</td>
+              <td>The short-query set is a blocking release check and passes. The pruned 9-row source-specific set passes after the DailyMed warning-context fix. Consumer lay-language is green in the latest live run but still diagnostic by configuration; realistic note formats now meet the prior P0 recall target but still need a promotion or diagnostic-follow-up decision.</td>
+              <td>Keep short-query and source-specific evidence as blocking gates. Decide whether the now-green consumer lay-language lane should block release or stay as a monitored diagnostic with thresholds. Decide whether realistic note formats can promote after the remaining policy decisions or should stay diagnostic with explicit thresholds.</td>
               <td><code>config/search_quality_suite.json</code></td>
               <td>Every high-signal test group has a fresh run, a threshold, and a documented decision about whether it blocks release or remains diagnostic. Source-specific evidence stays stable, consumer lay-language has a gate decision after its green run, and note formats are either promoted after passing or explicitly kept diagnostic.</td>
             </tr>
@@ -932,15 +967,177 @@
       <div class="story-grid section-note">
         <div class="story-item warn">
           <strong>Backlog Churn Rule</strong>
-          <p>Work the P0 queue first: <code>SQB-001</code> in watch mode, <code>SQB-015</code>, then <code>SQB-002</code>. <code>SQB-004</code> has moved to a P1 gate-policy decision after the green consumer run. Rotate into P1 only when a P0 row is blocked, needs a long rerun, or depends on P1 infrastructure such as speed, coverage, or gate policy. A shipped iteration must say whether the touched row is closed, downgraded, blocked, or still next, and it must include measured evidence.</p>
+          <p>Work the P0 queue first: <code>SQB-001</code> stays in general watch mode, while <code>SQB-002</code> now owns the restored approved PubMed wrong-first rows and long-document recall misses. <code>SQB-015</code> moved to P1 follow-up after reaching 21/24 strict top 10 and passing standing smoke. <code>SQB-004</code> remains a P1 gate-policy decision after the green consumer run. Rotate into P1 only when a P0 row is blocked, needs a long rerun, or depends on P1 infrastructure such as speed, coverage, or gate policy. A shipped iteration must say whether the touched row is closed, downgraded, blocked, or still next, and it must include measured evidence.</p>
         </div>
       </div>
     </section>
 
     <section class="panel">
       <h2>Progression Timeline, Latest First</h2>
-      <p class="muted small">Timeline entries are written as: what failed, what changed, what was rerun, and what remains. When an entry says "the fix shipped," it means the code/config/test change landed locally and the listed checks passed; it does not always mean the broader product problem is fully closed.</p>
+      <p class="muted small">Timeline entries are written for a reader who has never seen this application before. Say what looked wrong, what was checked, what changed, whether tests passed, how the top metrics moved, and what is still broken. Avoid internal terms in the main summary; put code IDs, command details, long row lists, and artifact paths in the small detail footer or linked improvement note.</p>
       <div class="timeline">
+        <article class="event">
+          <div class="event-date">Jun 25, 2026 15:46 UTC</div>
+          <div class="event-body">
+            <div>
+              <h3>The approved PubMed benchmark now rebuilds to the intended 23 rows.</h3>
+              <span class="status-pill warn">benchmark guard shipped</span>
+              <p>The long PubMed abstract test was supposed to contain 23 reviewed examples, but the documented rebuild command could silently drop one held-out row when PubMed topic-search results changed.</p>
+            </div>
+            <div class="story-grid">
+              <div class="story-item warn">
+                <strong>Issue Found</strong>
+                <p>The strict seed rebuild produced 22 approved abstracts instead of 23. The missing reviewed row was the hypocomplementemia/proteinuria title-only PMID <code>8659509</code>.</p>
+              </div>
+              <div class="story-item neutral">
+                <strong>What Changed</strong>
+                <p>The reviewed PubMed PMIDs are now pinned in the topic file, and a static test requires every approved curation PMID to be explicitly listed before the benchmark can pass.</p>
+              </div>
+              <div class="story-item neutral">
+                <strong>How Tested</strong>
+                <p>I rebuilt the strict PubMed seed, rebuilt the focused long-document slice, compiled the touched scripts and tests, ran the PubMed query tests, reran the restored 23-row approved lane against the local API, and rebuilt the product scorecard.</p>
+              </div>
+              <div class="story-item bad">
+                <strong>What The Restored Run Exposed</strong>
+                <p>The lane is still 7/23 strict top 10. The restored current run also has three wrong-first rows, so <code>SQB-002</code> remains the active P0 item.</p>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result warn"><strong>23</strong><span>approved PubMed rows restored</span></div>
+              <div class="result bad"><strong>7/23</strong><span>strict top 10 rows</span></div>
+              <div class="result bad"><strong>3</strong><span>wrong-first rows to triage</span></div>
+            </div>
+            <p class="muted small">Work item: <code>SQB-002</code>. Retest measured the restored weakness. Details: <code>config/pubmed_paragraph_topics.tsv</code>, <code>tests/test_pubmed_paragraph_queries.py</code>, <code>build/pubmed_literature_benchmark_seed/pubmed_literature_approved_queries.tsv</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-25-004_pubmed_seed_deterministic_approved_sqi-2026-06-25-004-deterministic-approved-pubmed-seed/</code>, <code>build/whole_product_quality_scorecard.json</code>, and <code>improvements/2026-06-25_pubmed_approved_seed_determinism.md</code>.</p>
+          </div>
+        </article>
+        <article class="event">
+          <div class="event-date">Jun 25, 2026 14:45 UTC</div>
+          <div class="event-body">
+            <div>
+              <h3>Most realistic note searches now recover their extra medical details.</h3>
+              <span class="status-pill good">note-search alias fix shipped</span>
+              <p>The search engine was already finding the main idea in these clinical notes, but it was missing several short phrases and shorthand details that clinicians often write in real notes.</p>
+            </div>
+            <div class="story-grid">
+              <div class="story-item warn">
+                <strong>Issue Found</strong>
+                <p>The previous 24-note report still missed explicit wording such as O2 sat, glucose, A1c, front wheeled walker, aPTT, cardiopulmonary bypass, and acute ischemic stroke.</p>
+              </div>
+              <div class="story-item neutral">
+                <strong>What Was Checked</strong>
+                <p>I reran the full realistic-note benchmark against a fresh local search API after adding the new governed note aliases.</p>
+              </div>
+              <div class="story-item neutral">
+                <strong>How Tested</strong>
+                <p>I added a focused regression test, validated the supplement file, compiled the touched Python files, ran focused tests, reran the 24-note lane, rebuilt the scorecard, and ran the iteration smoke helper.</p>
+              </div>
+              <div class="story-item good">
+                <strong>Metric Change</strong>
+                <p>The top metrics improved: realistic note formats went from 58% to <a href="#current-quality-snapshot">88%</a>, and whole-product quality went from 80% to <a href="#whole-product-quality">85%</a>.</p>
+              </div>
+              <div class="story-item warn">
+                <strong>What Improved</strong>
+                <p>Twenty-one of 24 note examples now find every expected medical idea in the first 10 answers, and no row has a bad first answer. The remaining misses are pathology breast-carcinoma, operative right-lower-quadrant, and MRI stroke carryover decisions.</p>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result good"><strong>21/24</strong><span>note examples fully correct</span></div>
+              <div class="result good"><strong>112/115</strong><span>expected medical ideas near the top of search results</span></div>
+              <div class="result good"><strong>0</strong><span>bad first answers</span></div>
+            </div>
+            <p class="muted small">Work item: <code>SQB-015</code>. Retest passed. Details: <code>config/active_label_supplement.tsv</code>, <code>tests/test_evidence_vectors.py</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-25-003-note-format-explicit-aliases-local_note-format-explicit-alias-active-labels-local/</code>, <code>build/search_quality_experiments/iteration_smoke_gates/SQI-2026-06-25-003/verification.md</code>, <code>build/whole_product_quality_scorecard.json</code>, and <code>improvements/2026-06-25_note_format_explicit_aliases.md</code>.</p>
+          </div>
+        </article>
+        <article class="event">
+          <div class="event-date">Jun 25, 2026 14:15 UTC</div>
+          <div class="event-body">
+            <div>
+              <h3>Three note searches now get credit for right answers already shown in the search results.</h3>
+              <span class="status-pill warn">note-search scoring fix shipped</span>
+              <p>The search results were good, but the report was grading three of them too harshly.</p>
+            </div>
+            <div class="story-grid">
+              <div class="story-item warn">
+                <strong>Issue Found</strong>
+                <p>The report said three searches failed. When I looked at the saved search results, the right medical ideas were already listed near the top; the grading rules just were not counting them.</p>
+              </div>
+              <div class="story-item neutral">
+                <strong>What Was Checked</strong>
+                <p>I rechecked the saved results for 24 realistic clinical notes. The changed examples were home-health heart failure, an endocarditis consult, and a stroke discharge note.</p>
+              </div>
+              <div class="story-item neutral">
+                <strong>How Tested</strong>
+                <p>I taught the test that three returned medical terms were acceptable matches, added a guard test, rechecked the saved results, refreshed the scorecard, and reran the post-change checks.</p>
+              </div>
+              <div class="story-item good">
+                <strong>Metric Change</strong>
+                <p>The top metrics improved: realistic note formats went from 46% to <a href="#current-quality-snapshot">58%</a>, and whole-product quality went from 78% to <a href="#whole-product-quality">80%</a>.</p>
+              </div>
+              <div class="story-item warn">
+                <strong>What Improved</strong>
+                <p>Three searches now get credit for right answers they already found. The first answer stayed trustworthy. This note-search work is still open because 10 examples still miss important extra medical ideas.</p>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result warn"><strong>14/24</strong><span>note examples fully correct</span></div>
+              <div class="result warn"><strong>104/115</strong><span>expected medical ideas near the top of search results</span></div>
+              <div class="result good"><strong>0</strong><span>bad first answers</span></div>
+            </div>
+            <p class="muted small">Work item: <code>SQB-015</code>. Retest passed. Details: <code>build/search_quality_experiments/runs/SQI-2026-06-25-002_note-format-secondary-equivalence-replay/</code>, <code>build/search_quality_experiments/iteration_smoke_gates/SQI-2026-06-25-002/verification.md</code>, and <code>improvements/2026-06-25_note_format_secondary_equivalence_replay.md</code>.</p>
+          </div>
+        </article>
+        <article class="event">
+          <div class="event-date">Jun 25, 2026 13:36 UTC</div>
+          <div class="event-body">
+            <div>
+              <h3>Radiology and therapy note wording now recovers more expected concepts.</h3>
+              <span class="status-pill warn">SQB-015 active-label recall fix shipped</span>
+              <p>The prior note-format replay left radiology CTA wording and therapy hip-fracture wording as active misses. A fresh local-backend lane run also showed the therapy row could put a pelvis-fracture concept first unless the explicit displaced hip fracture wording was protected.</p>
+            </div>
+            <div class="story-grid">
+              <div class="story-item good">
+                <strong>Result</strong>
+                <p>The live clinical text variety lane moved to 11/24 strict top 10, 101/115 expected concepts at top 10, 106/115 at top 20, 12 good / 12 mixed / 0 poor rows, 24/24 top-on-target, and 0 wrong-first rows.</p>
+              </div>
+              <div class="story-item warn">
+                <strong>Still Needed</strong>
+                <p><code>SQB-015</code> remains P0. Thirteen note-format rows still miss first-page secondary concepts, especially pathology, operative, nursing/lab, MRI stroke, prior-authorization, home-health, anticoagulation, and endocarditis procedure targets.</p>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result warn"><strong>11/24</strong><span>strict note rows complete</span></div>
+              <div class="result warn"><strong>101/115</strong><span>expected concepts at top 10</span></div>
+              <div class="result good"><strong>0</strong><span>wrong-first note rows</span></div>
+            </div>
+            <p class="muted small">Artifacts: <code>config/active_label_supplement.tsv</code>, <code>tests/test_evidence_vectors.py</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-25-001-note-format-radiology-therapy-aliases_sqb-015-note-format-radiology-and-therapy-aliases/</code>, <code>build/search_quality_experiments/iteration_smoke_gates/SQI-2026-06-25-001/verification.md</code>, <code>build/whole_product_quality_scorecard.json</code>, and <code>improvements/2026-06-25_note_format_radiology_therapy_aliases.md</code>. Validation: active-label supplement validation, py_compile, focused pytest for radiology/therapy/lab-review regressions, live 24-row note-format lane, standing clinical API smoke, and scorecard rebuild passed. Rotating and patient-portal smoke were explicitly skipped for this data-scoped development-loop iteration.</p>
+          </div>
+        </article>
+        <article class="event">
+          <div class="event-date">Jun 24, 2026 20:36 UTC</div>
+          <div class="event-body">
+            <div>
+              <h3>Lab-review note scoring now accepts specific measurement and transfusion equivalents.</h3>
+              <span class="status-pill warn">SQB-015 benchmark-equivalence fix shipped</span>
+              <p>The realistic note-format lane's only poor row was the lab-anemia note. The saved API payload already returned iron deficiency anemia, packed red blood cell transfusion, hemoglobin measurement, and ferritin measurement in the first page, but the benchmark accepted only broader hemoglobin, ferritin, and blood-transfusion CUIs.</p>
+            </div>
+            <div class="story-grid">
+              <div class="story-item good">
+                <strong>Result</strong>
+                <p>The saved-payload replay moved the note-format lane to 9/24 strict top 10, 97/115 expected concepts at top 10, 105/115 at top 20, and 10 good / 14 mixed / 0 poor rows. The whole-product raw score rose to 76.7, while the published score remains capped at 76.</p>
+              </div>
+              <div class="story-item warn">
+                <strong>Still Needed</strong>
+                <p><code>SQB-015</code> remains a P0 recall problem. Fifteen note-format rows still miss at least one expected concept in the first page, so the next batch should improve actual secondary-concept recall rather than add more scoring exceptions.</p>
+              </div>
+            </div>
+            <div class="result-row">
+              <div class="result warn"><strong>9/24</strong><span>strict note rows complete</span></div>
+              <div class="result warn"><strong>97/115</strong><span>expected concepts at top 10</span></div>
+              <div class="result good"><strong>0</strong><span>poor note rows</span></div>
+            </div>
+            <p class="muted small">Artifacts: <code>config/search_quality_acceptable_cui_alternatives.tsv</code>, <code>tests/test_evidence_vectors.py</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-24-001_note-format-lab-equivalence-replay/</code>, <code>build/search_quality_experiments/iteration_smoke_gates/SQI-2026-06-24-001/verification.md</code>, <code>build/whole_product_quality_scorecard.json</code>, and <code>improvements/2026-06-24_note_format_lab_equivalence_replay.md</code>. Validation: py_compile passed, focused pytest for the lab-review alternatives passed, and the saved June 17 API payloads were replayed with the updated acceptable-CUI table.</p>
+          </div>
+        </article>
         <article class="event">
           <div class="event-date">Jun 17, 2026 21:26 UTC</div>
           <div class="event-body">
@@ -956,12 +1153,12 @@
               </div>
               <div class="story-item warn">
                 <strong>Still Needed</strong>
-                <p><code>SQB-015</code> remains a P0 recall problem: the lane is still 8/24 complete at strict top 10 with 94/115 expected concepts found. The next batch should target secondary-concept misses by note type rather than first-answer trust.</p>
+                <p><code>SQB-015</code> remains a P0 recall problem. A later saved-payload replay moved the lane to 9/24 complete at strict top 10 with 97/115 expected concepts found, but the next batch should still target secondary-concept misses by note type rather than first-answer trust.</p>
               </div>
             </div>
             <div class="result-row">
-              <div class="result warn"><strong>8/24</strong><span>strict note rows complete</span></div>
-              <div class="result warn"><strong>94/115</strong><span>expected concepts at top 10</span></div>
+              <div class="result warn"><strong>9/24</strong><span>current strict note rows complete</span></div>
+              <div class="result warn"><strong>97/115</strong><span>current expected concepts at top 10</span></div>
               <div class="result good"><strong>0</strong><span>wrong-first rows</span></div>
             </div>
             <p class="muted small">Artifacts: <code>src/qe_evidence_vectors/search_hydration.py</code>, <code>src/qe_evidence_vectors/search_ranking.py</code>, <code>tests/test_evidence_vectors.py</code>, <code>build/search_quality_experiments/runs/SQI-2026-06-17-005-note-format-routing-and-contained-finding-clinical_text_type_variety_search-quality-test-suite-clinical-text-type-variety/run.json</code>, and <code>improvements/2026-06-17_note_format_source_code_routing_and_contained_finding.md</code>. Validation: focused pytest passed with 8 tests, direct API checks confirmed note headers no longer use source-code mode, and the live uncached note-format lane rerun completed with 0 cache hits.</p>
@@ -2557,6 +2754,41 @@
           </thead>
           <tbody>
             <tr>
+              <td>2026-06-25 15:46</td>
+              <td>Approved PubMed seed determinism</td>
+              <td class="score bad">Strict seed rebuild: 23 approved PubMed rows restored, 12 dev and 11 held-out, with 0 topic-fallback rows. Live approved lane: 7/23 strict top 10, 78/106 expected concepts at top 10, 82/106 at top 20, 90/106 at top 60, 20/23 top-on-target, 3 wrong-first rows, and 0 configured disallowed concepts at top 10.</td>
+              <td>The documented PubMed seed rebuild could silently drop reviewed PMID <code>8659509</code> because some approved topics still depended on live PubMed topic-search results instead of explicit PMIDs.</td>
+              <td class="score warn"><code>SQB-002</code> benchmark guard shipped. The active P0 now starts with the three restored approved PubMed wrong-first rows before broader secondary-concept recall.</td>
+            </tr>
+            <tr>
+              <td>2026-06-25 14:45</td>
+              <td>Realistic note-format explicit aliases</td>
+              <td class="score good">Live clinical note-format lane: 21/24 rows complete at top 10, 112/115 expected concepts at top 10, 113/115 at top 20, 24/24 top-on-target, 0 wrong-first rows, 0 configured disallowed concepts at top 10, and 0 poor rows.</td>
+              <td>Explicit clinical-note shorthand and value-heavy phrases such as O2 sat, glucose, A1c, front wheeled walker, aPTT, cardiopulmonary bypass, lactate trend wording, and acute ischemic stroke were missing secondary concepts.</td>
+              <td class="score good"><code>SQB-015</code> P0 target shipped. The lane moves to P1 follow-up for the remaining pathology, operative, and MRI policy decisions.</td>
+            </tr>
+            <tr>
+              <td>2026-06-25 14:15</td>
+              <td>Realistic note-format secondary equivalence replay</td>
+              <td class="score warn">Saved clinical note-format payload replay: 14/24 rows complete at top 10, 104/115 expected concepts at top 10, 107/115 at top 20, 24/24 top-on-target, 0 wrong-first rows, 0 configured disallowed concepts at top 10, and 0 poor rows.</td>
+              <td>Home-health edema, endocarditis echocardiography, and discharge anticoagulation rows were scored incomplete even though the saved first page already returned clinically specific equivalents supported by the note wording.</td>
+              <td class="score warn"><code>SQB-015</code> secondary-equivalence part shipped. The lane remains P0 because 10 rows still miss secondary concepts at top 10.</td>
+            </tr>
+            <tr>
+              <td>2026-06-25 13:36</td>
+              <td>Realistic note-format radiology and therapy aliases</td>
+              <td class="score warn">Live clinical note-format lane: 11/24 rows complete at top 10, 101/115 expected concepts at top 10, 106/115 at top 20, 24/24 top-on-target, 0 wrong-first rows, 0 configured disallowed concepts at top 10, and 0 poor rows.</td>
+              <td>Radiology wording missed CT angiogram and acute segmental pulmonary embolism. Therapy hip-fracture wording missed occupational therapy and physical therapy, and a local-backend run briefly exposed pelvis-fracture as an off-target first answer.</td>
+              <td class="score warn"><code>SQB-015</code> active-label recall fix shipped. The lane remains P0 because 13 rows still miss secondary concepts at top 10.</td>
+            </tr>
+            <tr>
+              <td>2026-06-24 20:36</td>
+              <td>Realistic note-format lab-review equivalence replay</td>
+              <td class="score warn">Saved clinical note-format payload replay: 9/24 rows complete at top 10, 97/115 expected concepts at top 10, 105/115 at top 20, 24/24 top-on-target, 0 wrong-first rows, 0 configured disallowed concepts at top 10, and 0 poor rows.</td>
+              <td>The lab-anemia row was scored as poor even though the first page already returned clinically specific equivalents for packed red blood cell transfusion, hemoglobin measurement, and ferritin measurement.</td>
+              <td class="score warn"><code>SQB-015</code> lab-review scoring part shipped. The lane remains P0 because secondary-concept recall is still weak.</td>
+            </tr>
+            <tr>
               <td>2026-06-17 21:26</td>
               <td>Realistic note-format source-code routing and contained-finding cleanup</td>
               <td class="score warn">Clinical note-format lane rerun: 8/24 rows complete at top 10, 94/115 expected concepts at top 10, 24/24 top-on-target, 0 wrong-first rows, 0 configured disallowed concepts, and 0 cache hits.</td>
@@ -2860,7 +3092,7 @@
       <div class="open-list">
         <div class="open-item">
           <h3>Cycle through the top backlog window.</h3>
-          <p class="muted">The canonical backlog is the Prioritized Backlog table above. The fresh <code>SQB-001</code> wrong-first batch is closed and now stays in watch mode; work the active P0 queue first: <code>SQB-015</code> realistic note-format recall, then <code>SQB-002</code> long-document PubMed recall. <code>SQB-004</code> now needs a P1 gate-policy decision after the green consumer first-page cleanup. Rotate into P1 only when a P0 row is blocked, waiting on a long rerun, or depends on P1 infrastructure such as speed, representative coverage, or gate policy.</p>
+          <p class="muted">The canonical backlog is the Prioritized Backlog table above. The fresh <code>SQB-001</code> rotating wrong-first batch is closed, but the restored approved PubMed run reopened first-answer trust work inside <code>SQB-002</code>. Work the active P0 queue next with those long-document PubMed wrong-first rows, then continue secondary-concept recall. <code>SQB-015</code> moved to P1 follow-up after reaching 21/24 strict top 10, and <code>SQB-004</code> still needs a P1 gate-policy decision after the green consumer first-page cleanup.</p>
         </div>
         <div class="open-item">
           <h3>Add representative common-clinical coverage.</h3>
@@ -2872,7 +3104,7 @@
         </div>
         <div class="open-item">
           <h3>Fix realistic clinical note formats.</h3>
-          <p class="muted"><code>SQB-015</code> is a P0 because it is the weakest clinical-text snapshot lane. The latest uncached iteration removed source-code misrouting and wrong-first behavior, but the expanded clinical text variety suite is still 8/24 strict top 10 with 94/115 expected concepts found. Work the remaining radiology, pathology, operative, nursing, lab, therapy, and prior-authorization recall misses as focused batches before broadening note-format claims.</p>
+          <p class="muted"><code>SQB-015</code> is now a P1 follow-up. The latest explicit-alias run moved the expanded clinical text variety suite to 21/24 strict top 10 with 112/115 expected concepts found at top 10 and 0 wrong-first rows. Review the remaining pathology breast-carcinoma, operative right-lower-quadrant, and MRI stroke misses before promoting the lane or broadening note-format claims.</p>
         </div>
         <div class="open-item">
           <h3>Decide the consumer lay-language gate policy.</h3>
@@ -2888,7 +3120,7 @@
         </div>
         <div class="open-item">
           <h3>Long-document PubMed recall is still a P0 quality gap.</h3>
-          <p class="muted">The 7-abstract PubMed practice slice improved to 36/36 expected concepts in the first 10 answers and 7/7 good rows. The expanded 23-abstract approved suite is 7/23 strict top 10, 77/106 expected concepts in the first 10, 23/23 top-on-target, and 0 wrong-first rows. Work the EGFR/progression-free-survival/regimen, status-migrainosus aura-variant, hypocomplementemia/Complement 3, and remaining secondary-concept misses against the expanded lane.</p>
+          <p class="muted">The 7-abstract PubMed practice slice improved to 36/36 expected concepts in the first 10 answers and 7/7 good rows. The expanded 23-abstract approved suite now rebuilds deterministically and currently measures 7/23 strict top 10, 78/106 expected concepts in the first 10, 20/23 top-on-target, and 3 wrong-first rows. Triage the lupus-like nephropathy, sepsis/ARDS molecular-phenotype, and cystic-fibrosis modulator wrong-first rows before returning to EGFR/progression-free-survival/regimen, hypocomplementemia/Complement 3, and remaining secondary-concept misses.</p>
         </div>
         <div class="open-item">
           <h3>The 168-example full benchmark needs to become the stable baseline.</h3>

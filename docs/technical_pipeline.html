@@ -212,7 +212,7 @@ build/pubmed_bulk_recent_1323_1322_concept_documents.jsonl</code></pre>
 <p>extension ids</p>
 <ul><li><code>extension_concept_documents.jsonl</code>: search documents that can be embedded</li><li><code>extension_concept_evidence.jsonl</code>: provenance-bearing evidence records</li><li><code>extension_concept_registry.jsonl</code>: release/governance registry for local</li></ul>
 <p>Before alias promotion, extension concepts should be evaluated in the search UI and by Codex/LLM judging. Human feedback is useful, but human approval is not a hard gate for creating a local <code>NEW#######</code> CUI. Promotion means the record can be shipped as a UMLS Semantic Evidence Index extension record. It does not mean it has become an official UMLS CUI.</p>
-<p>The broader <code>NEW#######</code> iteration loop is codified in <code>docs/new_umls_iteration_loop.html</code>.</p>
+<p>The broader <code>NEW#######</code> and search-quality iteration loop is now codified in <code>docs/search_quality_iterations.html</code>; <code>docs/new_umls_iteration_loop.html</code> is retained only as a compatibility pointer.</p>
 <h3>5. Embed Documents</h3>
 <p>Quality-bearing embeddings use SapBERT with CLS pooling:</p>
 <pre><code class="language-text">provider: sapbert

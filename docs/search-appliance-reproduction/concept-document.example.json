@@ -1,0 +1,20 @@
+{
+  "doc_id": "C0018801:pubmed_clinical_context",
+  "cui": "C0018801",
+  "view": "pubmed_clinical_context",
+  "text": "CUI: C0018801\nEvidence view: pubmed_clinical_context\nUMLS labels:\n- Heart failure\n- Cardiac failure\n- Heart insufficiency\nReal-world evidence:\n- Heart failure is a clinical syndrome associated with impaired cardiac function. (weight 1.5)\n- Treatment depends on the underlying cause and clinical presentation.",
+  "evidence_count": 2,
+  "sources": [
+    "pubmed"
+  ],
+  "labels": [
+    "Heart failure",
+    "Cardiac failure",
+    "Heart insufficiency"
+  ],
+  "metadata": {
+    "document_builder": "cui-view-evidence-v1",
+    "max_items_per_doc": 100,
+    "total_weight": 2.5
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "refresh_interval": "30s"
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "kind": {
+        "type": "keyword"
+      },
+      "edge_id": {
+        "type": "keyword"
+      },
+      "source_cui": {
+        "type": "keyword"
+      },
+      "target_cui": {
+        "type": "keyword"
+      },
+      "relation": {
+        "type": "keyword"
+      },
+      "rela": {
+        "type": "keyword"
+      },
+      "relation_group": {
+        "type": "keyword"
+      },
+      "relationship_type": {
+        "type": "keyword"
+      },
+      "category": {
+        "type": "keyword"
+      },
+      "rui": {
+        "type": "keyword"
+      },
+      "sab": {
+        "type": "keyword"
+      },
+      "source_class": {
+        "type": "keyword"
+      },
+      "direction": {
+        "type": "keyword"
+      },
+      "label": {
+        "type": "text",
+        "index": false
+      },
+      "source_label": {
+        "type": "text",
+        "index": false
+      },
+      "source_semantic_type": {
+        "type": "keyword"
+      },
+      "target_semantic_type": {
+        "type": "keyword"
+      },
+      "strength": {
+        "type": "float"
+      },
+      "confidence": {
+        "type": "float"
+      },
+      "rank": {
+        "type": "integer"
+      },
+      "context": {
+        "type": "object",
+        "enabled": false
+      }
+    }
+  }
+}

@@ -107,6 +107,24 @@ OPENAPI_SPEC = {
                     },
                     {"name": "include_related", "in": "query", "schema": {"type": "boolean"}},
                     {
+                        "name": "descendants",
+                        "in": "query",
+                        "schema": {"type": "boolean", "default": False},
+                        "description": (
+                            "Opt in to cycle-safe UMLS descendant expansion from resolved query concepts."
+                        ),
+                    },
+                    {
+                        "name": "descendant_depth",
+                        "in": "query",
+                        "schema": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1},
+                    },
+                    {
+                        "name": "descendant_limit",
+                        "in": "query",
+                        "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 40},
+                    },
+                    {
                         "name": "molecular_associations",
                         "in": "query",
                         "schema": {"type": "boolean"},
@@ -490,6 +508,7 @@ def make_handler(
     full_progress_plan_path: Path,
     judgments_path: Path,
     product_html_path: Path | None = None,
+    evaluation_flow_html_path: Path | None = None,
     *,
     plan_status_func: Callable[[dict], dict],
     resolve_path_func: Callable[[str], Path],
@@ -544,6 +563,17 @@ def make_handler(
                     self.send_error_json("not_found", "not found", status=404)
                     return
                 self.send_html(html_path.read_text(encoding="utf-8"))
+                return
+            if parsed.path in {
+                "/evaluation-flow",
+                "/evaluation-flow/",
+                "/evaluation-flow.html",
+                "/developer-flow",
+            }:
+                if not evaluation_flow_html_path or not evaluation_flow_html_path.exists():
+                    self.send_error_json("not_found", "evaluation flow page has not been installed", status=404)
+                    return
+                self.send_html(evaluation_flow_html_path.read_text(encoding="utf-8"))
                 return
             if parsed.path == "/api/health":
                 self.send_json(
@@ -793,6 +823,35 @@ def make_handler(
                     "include_molecular_associations",
                     default=bool(profile_defaults.get("include_molecular_associations", False)),
                 )
+                include_descendants = parse_bool_param(
+                    params,
+                    "descendants",
+                    "include_descendants",
+                    "expand_descendants",
+                    default=False,
+                )
+                descendant_depth, error = parse_bounded_int_param(
+                    params,
+                    "descendant_depth",
+                    "descendants_depth",
+                    default=1,
+                    minimum=1,
+                    maximum=3,
+                )
+                if error:
+                    self.send_error_json("invalid_parameter", error, status=400)
+                    return
+                descendant_limit, error = parse_bounded_int_param(
+                    params,
+                    "descendant_limit",
+                    "descendants_limit",
+                    default=40,
+                    minimum=1,
+                    maximum=100,
+                )
+                if error:
+                    self.send_error_json("invalid_parameter", error, status=400)
+                    return
                 debug = parse_bool_param(params, "debug", default=bool(profile_defaults.get("debug", False)))
                 semantic_bucket_keys = parse_multi_param(
                     params,
@@ -841,6 +900,9 @@ def make_handler(
                                 include_linked_concepts=include_linked,
                                 include_evidence_items=include_evidence_items,
                                 include_molecular_associations=include_molecular_associations,
+                                include_descendants=include_descendants,
+                                descendant_depth=descendant_depth or 1,
+                                descendant_limit=descendant_limit or 40,
                                 semantic_bucket_keys=semantic_bucket_keys,
                                 search_mode=search_mode,
                                 search_scope=search_scope,

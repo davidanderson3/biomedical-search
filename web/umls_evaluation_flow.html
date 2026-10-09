@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UMLS Evaluation Flow</title>
+  <style>
+    :root {
+      --ink:#17211d; --muted:#68736d; --paper:#f4f1e9; --panel:#fffdf8;
+      --line:#d9d3c7; --green:#145c45; --green-soft:#deece4;
+      --orange:#b66325; --orange-soft:#f6e4d1; --blue:#315d7c;
+      --blue-soft:#dfeaf1; --red:#a43f35; --red-soft:#f5dfdc;
+      --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      --sans:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    *{box-sizing:border-box} body{margin:0;color:var(--ink);background:var(--paper);font-family:var(--sans);line-height:1.45}
+    button,input,textarea{font:inherit} a{color:inherit}.shell{width:min(1180px,calc(100% - 40px));margin:0 auto}
+    header{border-bottom:1px solid var(--line)}.topbar{min-height:62px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:750}.mark{padding:5px 6px;border:1px solid var(--green);border-radius:7px;color:var(--green);background:var(--green-soft);font:11px var(--mono)}
+    .topbar a{color:var(--muted);font-size:14px;text-decoration:none}
+    .hero{padding:44px 0 30px}.eyebrow{color:var(--green);font:700 12px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+    h1{margin:10px 0 12px;max-width:900px;font-size:clamp(42px,6vw,68px);line-height:1;letter-spacing:-.05em}.hero p{max-width:900px;margin:0;color:#48544e;font:clamp(14px,1.7vw,18px) var(--mono)}
+    .flow{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--panel)}
+    .step{min-height:135px;padding:20px;border-right:1px solid var(--line)}.step:last-child{border-right:0}.step-no{font:11px var(--mono);color:var(--muted)}
+    .step h2{margin:20px 0 12px;font-size:19px;letter-spacing:-.03em}.step code{display:inline-block;padding:4px 7px;border-radius:5px;font:10px var(--mono)}
+    .input code{color:var(--blue);background:var(--blue-soft)}.system code,.output code{color:var(--green);background:var(--green-soft)}.evaluate code{color:var(--orange);background:var(--orange-soft)}
+    .loop{margin:18px 0 64px;padding:16px 20px;border:1px solid var(--line);border-radius:11px;background:var(--panel);color:#46524c}.loop strong{color:var(--orange)}
+    .input-section{margin-bottom:28px}.input-section h2{margin:0 0 12px;font-size:24px;letter-spacing:-.03em}.input-grid{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}
+    .input-item{padding:15px;border-right:1px solid var(--line)}.input-item:last-child{border-right:0}.input-item strong{display:block;margin-bottom:5px;font:700 11px var(--mono);color:var(--green)}.input-item span{color:var(--muted);font-size:13px}
+    .input-item:nth-child(-n+3){border-bottom:1px solid var(--line)}.input-item:nth-child(3n){border-right:0}
+    .feedback{display:grid;grid-template-columns:150px 1fr 1fr;margin:18px 0 64px;border:1px solid var(--line);border-radius:11px;background:var(--panel)}.feedback div{padding:15px 20px;border-right:1px solid var(--line)}.feedback div:last-child{border-right:0}.feedback strong{display:block;margin-bottom:3px;color:var(--orange)}.feedback span{color:var(--muted);font-size:13px}
+    .section-head{margin-bottom:20px}.section-head span{color:var(--green);font:700 11px var(--mono);text-transform:uppercase;letter-spacing:.1em}.section-head h2{margin:7px 0 4px;font-size:35px;letter-spacing:-.04em}.section-head p{margin:0;color:var(--muted)}
+    .trace{display:grid;grid-template-columns:330px 1fr;margin-bottom:68px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--panel)}
+    .controls{padding:24px;border-right:1px solid var(--line);background:#faf7f0}.results{min-height:430px;padding:24px}
+    label{display:block;margin:14px 0 6px;font-size:13px;font-weight:700}input[type=text],textarea{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:8px;background:white;color:var(--ink);outline:none}
+    input:focus,textarea:focus{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}textarea{min-height:70px;resize:vertical;font:12px var(--mono)}
+    .run{width:100%;margin-top:15px;padding:11px;border:0;border-radius:8px;color:white;background:var(--green);font-weight:750;cursor:pointer}.run:disabled{opacity:.55}
+    .empty{min-height:380px;display:grid;place-items:center;color:var(--muted);text-align:center}.results-head{padding-bottom:14px;border-bottom:1px solid var(--line)}.results-head h3{margin:4px 0 0;font-size:21px}.badge{padding:4px 7px;border-radius:5px;background:var(--green-soft);color:var(--green);font:700 10px var(--mono);text-transform:uppercase}
+    .output-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:16px 0}.output-card{padding:13px;border:1px solid var(--line);border-radius:9px;min-height:105px}.output-card h4{margin:0 0 8px;font:700 10px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.output-card strong{display:block;margin-bottom:7px;font-size:17px}.output-values{display:grid;gap:4px;color:var(--muted);font-size:12px}.output-value code{color:var(--green);font:10px var(--mono)}
+    .candidate-title{margin:20px 0 8px;font:700 10px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.hit-list{display:grid;gap:7px}.hit{display:grid;grid-template-columns:27px 1fr auto;gap:9px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:8px}.rank,.score{color:var(--muted);font:10px var(--mono)}.name{font-weight:700}.meta{color:var(--muted);font:10px var(--mono)}
+    .comparison{margin-top:15px;padding-top:14px;border-top:1px solid var(--line)}.tokens{display:flex;flex-wrap:wrap;gap:6px}.token{padding:4px 7px;border-radius:5px;font:10px var(--mono)}.found{color:var(--green);background:var(--green-soft)}.missed{color:var(--red);background:var(--red-soft)}.note{margin-top:9px;color:var(--muted);font-size:12px}.error{padding:12px;border-radius:8px;color:var(--red);background:var(--red-soft)}
+    .rule-section{margin-bottom:68px}.rule-example{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}.rule-part{padding:20px;border-right:1px solid var(--line)}.rule-part:last-child{border-right:0}.rule-part h3{margin:0 0 10px;font:700 11px var(--mono);color:var(--green);text-transform:uppercase;letter-spacing:.08em}.rule-part p{margin:0;color:var(--muted);font-size:14px}.rule-part code{display:inline-block;margin-bottom:9px;padding:4px 7px;border-radius:5px;color:var(--blue);background:var(--blue-soft);font:11px var(--mono)}
+    footer{padding:24px 0 38px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+    @media(max-width:980px){.input-grid,.flow{grid-template-columns:1fr 1fr}.input-item,.input-item:nth-child(-n+3),.step{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.input-item:nth-child(even),.step:nth-child(even){border-right:0}.input-item:last-child,.step:last-child{border-bottom:0}.feedback,.rule-example{grid-template-columns:1fr}.feedback div,.rule-part{border-right:0;border-bottom:1px solid var(--line)}.feedback div:last-child,.rule-part:last-child{border-bottom:0}.trace{grid-template-columns:1fr}.controls{border-right:0;border-bottom:1px solid var(--line)}}
+    @media(max-width:620px){.shell{width:calc(100% - 24px)}.hero{padding-top:48px}h1{font-size:47px}.input-grid,.flow{grid-template-columns:1fr}.input-item,.input-item:nth-child(-n+3),.step{min-height:0;border-right:0}.output-grid{grid-template-columns:1fr}.hit{grid-template-columns:25px 1fr}.score{grid-column:2}}
+  </style>
+</head>
+<body>
+  <header><div class="shell topbar"><div class="brand"><span class="mark">CUI</span>UMLS Evaluation</div><a href="/">Search ↗</a></div></header>
+  <main class="shell">
+    <section class="hero">
+      <div class="eyebrow">System flow</div>
+      <h1>Evaluate UMLS for text mapping</h1>
+      <p>Measure whether UMLS returns the correct concepts and codes and the exact position of concepts in text.</p>
+    </section>
+
+    <section class="input-section" aria-labelledby="inputs-heading">
+      <h2 id="inputs-heading">Inputs</h2>
+      <div class="input-grid">
+        <div class="input-item"><strong>MRCONSO</strong><span>Names, synonyms, source vocabularies, codes</span></div>
+        <div class="input-item"><strong>MRDEF</strong><span>Concept definitions</span></div>
+        <div class="input-item"><strong>MRREL</strong><span>Relationships and hierarchy</span></div>
+        <div class="input-item"><strong>MRSTY</strong><span>Semantic types</span></div>
+        <div class="input-item"><strong>HEURISTIC RULESET</strong><span>Normalization, exclusions, expansion, ranking</span></div>
+        <div class="input-item"><strong>TEST CASES</strong><span>Text + expected span, CUI, SAB, CODE</span></div>
+      </div>
+    </section>
+
+    <section class="flow" aria-label="Application flow">
+      <article class="step input"><span class="step-no">01</span><h2>Build index</h2><code>names · definitions · relations</code></article>
+      <article class="step system"><span class="step-no">02</span><h2>Find mentions</h2><code>text · start · end</code></article>
+      <article class="step system"><span class="step-no">03</span><h2>Map concepts</h2><code>CUI · label · TUI</code></article>
+      <article class="step output"><span class="step-no">04</span><h2>Map source codes</h2><code>SAB · CODE</code></article>
+      <article class="step evaluate"><span class="step-no">05</span><h2>Compare to gold</h2><code>precision · recall · rank</code></article>
+    </section>
+
+    <div class="feedback">
+      <div><strong>Feedback</strong><span>Evaluation errors</span></div>
+      <div><strong>Matching errors</strong><span>Update heuristic rules, retrieval, expansion, or ranking</span></div>
+      <div><strong>Terminology gaps</strong><span>Add missing names, definitions, relationships, or codes</span></div>
+    </div>
+
+    <section>
+      <div class="section-head"><span>API trace</span><h2>Test case</h2></div>
+      <div class="trace">
+        <form class="controls" id="traceForm">
+          <label for="queryInput">Text</label>
+          <textarea id="queryInput">Patient has diabetes mellitus and takes metformin.</textarea>
+          <label for="expectedInput">Expected CUIs</label>
+          <textarea id="expectedInput" spellcheck="false">C0011849 C0025598</textarea>
+          <button class="run" id="runButton" type="submit">Run</button>
+        </form>
+        <div class="results" id="results" aria-live="polite"><div class="empty">Run test</div></div>
+      </div>
+    </section>
+
+    <section class="rule-section" id="heuristic-rule-example">
+      <div class="section-head"><span>Heuristic rule example</span><h2>Prefer complete terms</h2></div>
+      <div class="rule-example">
+        <div class="rule-part"><h3>Observed</h3><code>heart failure with reduced ejection fraction</code><p>The standalone concept <strong>Reduced</strong> ranked 6.</p></div>
+        <div class="rule-part"><h3>Rule</h3><p>Penalize a candidate whose label is only a modifier—such as reduced, elevated, low, high, mild, or severe—when the query contains other specific terms.</p></div>
+        <div class="rule-part"><h3>Result</h3><p><strong>Reduced</strong> moved to rank 35. Complete heart-failure and ejection-fraction concepts remained highly ranked.</p></div>
+      </div>
+    </section>
+  </main>
+  <footer><div class="shell">UMLS Evaluation · <a href="/review">Review workbench</a> · <a href="/api/openapi.json">API</a></div></footer>
+
+  <script>
+    const esc=value=>String(value??"").replace(/[&<>'"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[ch]));
+    const cuis=value=>[...new Set(String(value||"").toUpperCase().split(/[\s,;|]+/).filter(x=>/^C\d{7}$/.test(x)))];
+    document.getElementById("traceForm").addEventListener("submit",async event=>{
+      event.preventDefault();
+      const text=document.getElementById("queryInput").value.trim();
+      const expected=cuis(document.getElementById("expectedInput").value);
+      const button=document.getElementById("runButton");
+      const output=document.getElementById("results");
+      if(!text)return;
+      button.disabled=true;button.textContent="Running…";output.innerHTML='<div class="empty">Processing text…</div>';
+      try{
+        const params=new URLSearchParams({q:text,k:"10",profile:"review",linked:"1"});
+        const response=await fetch(`/api/search?${params}`);const data=await response.json();
+        if(!response.ok)throw new Error(data.message||data.error||`HTTP ${response.status}`);
+        const hits=data.hits||[];const mentions=data.mentions||[];const mapped=mentions.filter(m=>m.cui);const observed=[...new Set(mapped.map(m=>String(m.cui)))];
+        const found=expected.filter(c=>observed.includes(c));const missed=expected.filter(c=>!observed.includes(c));
+        const spanRows=mentions.map(mention=>`<div class="output-value"><code>[${mention.start}, ${mention.end})</code> ${esc(mention.normalized_text||mention.text||"")}</div>`).join("");
+        const conceptRows=mapped.map(mention=>`<div class="output-value"><code>${esc(mention.cui)}</code> ${esc(mention.name||mention.label||mention.normalized_text||"")}</div>`).join("");
+        const rows=hits.map((hit,index)=>`<div class="hit"><span class="rank">${index+1}</span><div><div class="name">${esc(hit.name||hit.cui)}</div><div class="meta">${esc(hit.cui)} · ${esc(hit.match_type||"candidate")}</div></div><span class="score">${Number(hit.rank_score??hit.score??0).toFixed(3)}</span></div>`).join("");
+        output.innerHTML=`
+          <div class="results-head"><span class="badge">Observed output</span><h3>${esc(text)}</h3></div>
+          <div class="output-grid">
+            <div class="output-card"><h4>Text spans</h4><strong>${mentions.length}</strong><div class="output-values">${spanRows||"No mentions"}</div></div>
+            <div class="output-card"><h4>Mapped concepts</h4><strong>${mapped.length}</strong><div class="output-values">${conceptRows||"No CUIs"}</div></div>
+          </div>
+          <div class="candidate-title">Ranked candidates</div>
+          <div class="hit-list">${rows||'<div class="error">No concepts returned.</div>'}</div>
+          <div class="comparison"><div class="tokens">${found.map(c=>`<span class="token found">found ${esc(c)}</span>`).join("")}${missed.map(c=>`<span class="token missed">missed ${esc(c)}</span>`).join("")}</div></div>`;
+      }catch(error){output.innerHTML=`<div class="error">${esc(error.message)}</div>`}
+      finally{button.disabled=false;button.textContent="Run"}
+    });
+  </script>
+</body>
+</html>

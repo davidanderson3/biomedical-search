@@ -62,8 +62,8 @@ img { max-width: 100%; height: auto; }
 <p>without first moving the affected row into a new dev iteration and replacing the held-out row.</p>
 <ul><li>Do not score fetched abstracts with topic-level expected CUIs.</li><li>Every scored abstract must have an approved per-PMID row in</li><li>Keep <code>dev</code> and <code>heldout</code> outputs separate.</li><li>Use <code>dev</code> for diagnosis and iteration.</li><li>Use <code>heldout</code> for periodic checks; do not tune from row-level held-out misses</li></ul>
 <h2>Seed Set</h2>
-<p>The current seed curation has 13 approved abstracts:</p>
-<ul><li>Dev: 7 abstracts.</li><li>Held-out: 6 abstracts.</li><li>Source curation: <code>config/pubmed_literature_abstract_curation.tsv</code>.</li></ul>
+<p>The current seed curation has 23 approved abstracts:</p>
+<ul><li>Dev: 12 abstracts.</li><li>Held-out: 11 abstracts.</li><li>Source curation: <code>config/pubmed_literature_abstract_curation.tsv</code>.</li><li>Approved PMIDs are pinned in <code>config/pubmed_paragraph_topics.tsv</code> so strict rebuilds do not depend on changing PubMed topic-search order.</li></ul>
 <p>Generate the strict scored files:</p>
 <pre><code class="language-bash">python3 scripts/fetch_pubmed_paragraph_queries.py \
   --topics config/pubmed_paragraph_topics.tsv \
@@ -94,9 +94,11 @@ img { max-width: 100%; height: auto; }
 <p>Run artifact: <code>build/search_quality_experiments/runs/20260610T172821Z_pubmed-long-document-focused-slice/paragraph_quality_report.md</code>.</p>
 <p>The first baseline confirms the target failure mode: the top result is usually on topic, but secondary concepts still fall out of the first result page.</p>
 <h2>Current Seed Results</h2>
-<p>Run on 2026-06-09 against the live Elasticsearch-backed API on port <code>8767</code>:</p>
+<p>Restored 23-row approved run on 2026-06-25 against the live Elasticsearch-backed API on port <code>8766</code>:</p>
+<table><thead><tr><th>Rows</th><th>Overall</th><th>Strict@10</th><th>Recall@10</th><th>Recall@20</th><th>Top On Target</th><th>Verdicts</th></tr></thead><tbody><tr><td>23 approved</td><td>48.9</td><td>7/23</td><td>78/106</td><td>82/106</td><td>20/23</td><td>7 good, 13 mixed, 3 poor</td></tr></tbody></table>
+<p>The current restored result confirms the same target failure mode at larger scale: main topics are often useful, but secondary literature concepts still fall out of the first page, and three approved rows need first-answer triage.</p>
+<p>Historical seed split run on 2026-06-09 against the live Elasticsearch-backed API on port <code>8767</code>:</p>
 <table><thead><tr><th>Split</th><th>Rows</th><th>Overall</th><th>Strict@10</th><th>Recall@10</th><th>Top On Target</th><th>Verdicts</th></tr></thead><tbody><tr><td>Dev</td><td>7</td><td>39.3</td><td>1/7</td><td>26/36</td><td>6/7</td><td>1 good, 6 mixed</td></tr><tr><td>Held-out</td><td>6</td><td>40.2</td><td>1/6</td><td>17/24</td><td>6/6</td><td>2 good, 4 mixed</td></tr></tbody></table>
-<p>The seed result confirms the original assessment: the system usually finds the main abstract topic but is still incomplete on secondary literature concepts.</p>
 <h2>Scaling To 50-100 Abstracts</h2>
 <p>Use <code>config/pubmed_literature_candidate_topics.tsv</code> to fetch a review queue of about 100 candidate abstracts:</p>
 <pre><code class="language-bash">python3 scripts/fetch_pubmed_paragraph_queries.py \

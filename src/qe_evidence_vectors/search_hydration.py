@@ -1667,6 +1667,8 @@ class SearchHydrationMixin:
         search_mode: str = "balanced",
         search_scope: str = "umls_evidence",
         return_code_sabs: object = None,
+        descendant_hits: list[dict] | None = None,
+        descendant_metadata: dict | None = None,
         debug: bool = False,
     ) -> dict:
         semantic_bucket_keys = normalize_semantic_bucket_filter(semantic_bucket_keys)
@@ -1681,6 +1683,13 @@ class SearchHydrationMixin:
         candidates = list(resolution.get("candidates") or [])
         candidate_limit = len(candidates) if semantic_bucket_keys else top_k
         hits = [self.hit_from_candidate(candidate) for candidate in candidates[:candidate_limit]]
+        seen_cuis = {str(hit.get("cui") or "") for hit in hits}
+        for descendant in descendant_hits or []:
+            cui = str(descendant.get("cui") or "")
+            if not cui or cui in seen_cuis:
+                continue
+            seen_cuis.add(cui)
+            hits.append(descendant)
         hits = self.filter_hits_by_semantic_buckets(
             hits,
             semantic_bucket_keys,
@@ -1693,6 +1702,24 @@ class SearchHydrationMixin:
         hits = self.apply_source_code_selection(hits, sabs=return_code_sabs)
         for hit in hits:
             hit["score"] = round(float(hit["score"]), 6)
+            if str(hit.get("match_type") or "") == "umls_descendant":
+                component = min(
+                    max(float(hit.get("descendant_expansion_component") or 0.0), 0.0),
+                    0.28,
+                )
+                depth = max(1, int((hit.get("descendant_expansion") or {}).get("depth") or 1))
+                hit["rank_score"] = round(0.68 - (0.08 * (depth - 1)), 6)
+                hit["score_breakdown"] = {
+                    "rank_score": hit["rank_score"],
+                    "retrieval_score": hit["score"],
+                    "lexical_component": 0.0,
+                    "vector_component": 0.0,
+                    "descendant_expansion_component": round(component, 6),
+                    "assertion": {"status": "current"},
+                    "retrieval_kind": "umls_descendant",
+                }
+                hit["assertion"] = {"status": "current"}
+                continue
             hit["rank_score"] = hit["score"]
             exact_code_component = (
                 hit["score"]
@@ -1756,6 +1783,7 @@ class SearchHydrationMixin:
             "semantic_bucket_filter": list(semantic_bucket_keys),
             "input_type": resolution.get("input_type") or "",
             "resolution": response_resolution,
+            "descendant_expansion": dict(descendant_metadata or {"enabled": False}),
             "hits": hits,
             **self.result_score_filter_metadata(
                 search_mode=search_mode,

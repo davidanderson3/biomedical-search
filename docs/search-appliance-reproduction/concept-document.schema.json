@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/umls-search/concept-document.schema.json",
+  "title": "UMLS search concept document",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "doc_id",
+    "cui",
+    "view",
+    "text",
+    "evidence_count",
+    "sources",
+    "labels",
+    "metadata"
+  ],
+  "properties": {
+    "doc_id": {
+      "type": "string",
+      "minLength": 3,
+      "description": "Stable key formed as <cui>:<view>."
+    },
+    "cui": {
+      "type": "string",
+      "minLength": 1,
+      "description": "UMLS CUI or governed local concept identifier."
+    },
+    "view": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_.-]*$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Exact canonical text passed to SapBERT."
+    },
+    "evidence_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sources": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "document_builder": {
+          "type": "string"
+        },
+        "max_items_per_doc": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "total_weight": {
+          "type": "number"
+        },
+        "document_text_hash": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        }
+      }
+    }
+  }
+}

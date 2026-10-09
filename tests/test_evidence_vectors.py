@@ -2117,6 +2117,189 @@ def test_umls_api_comparison_exact_phrase_supplements_are_configured() -> None:
     } <= configured
 
 
+def test_radiology_note_supplements_recover_ct_angiogram_and_acute_segmental_pe() -> None:
+    rows, missing = read_active_label_supplement_rows(
+        ROOT / "config" / "active_label_supplement.tsv"
+    )
+    assert missing == []
+    configured = {
+        (str(row.get("cui") or "").strip().upper(), normalized_key(str(row.get("label") or "")))
+        for row in rows
+    }
+    assert {
+        ("C1536105", "ct angiogram"),
+        ("C2882221", "acute segmental pulmonary embolism"),
+    } <= configured
+
+    index = SearchIndex(
+        vector_paths=[],
+        doc_paths=[],
+        evidence_paths=[],
+        provenance_index_path=None,
+        provider="hashing",
+        model=None,
+        dim=16,
+        local_files_only=True,
+        max_seq_length=None,
+        device="cpu",
+        active_label_supplement_path=ROOT / "config" / "active_label_supplement.tsv",
+    )
+
+    result = index.search(
+        (
+            "CT Angiogram Chest, Impression: Acute segmental pulmonary embolism "
+            "in the right lower lobe with right heart strain."
+        ),
+        top_k=10,
+        include_related=False,
+    )
+    by_cui = {hit["cui"]: hit for hit in result["hits"]}
+
+    assert "C1536105" in by_cui
+    assert "C2882221" in by_cui
+    assert "active_label_supplement" in by_cui["C1536105"]["sources"]
+    assert "active_label_supplement" in by_cui["C2882221"]["sources"]
+
+
+def test_therapy_note_supplements_recover_hip_fracture_rehab_terms() -> None:
+    rows, missing = read_active_label_supplement_rows(
+        ROOT / "config" / "active_label_supplement.tsv"
+    )
+    assert missing == []
+    configured = {
+        (str(row.get("cui") or "").strip().upper(), normalized_key(str(row.get("label") or "")))
+        for row in rows
+    }
+    assert {
+        ("C0019557", "displaced hip fracture"),
+        ("C1318464", "occupational therapy evaluation"),
+        ("C0949766", "physical therapy"),
+    } <= configured
+
+    index = SearchIndex(
+        vector_paths=[],
+        doc_paths=[],
+        evidence_paths=[],
+        provenance_index_path=None,
+        provider="hashing",
+        model=None,
+        dim=16,
+        local_files_only=True,
+        max_seq_length=None,
+        device="cpu",
+        active_label_supplement_path=ROOT / "config" / "active_label_supplement.tsv",
+    )
+
+    result = index.search(
+        (
+            "Occupational Therapy Evaluation: Patient is post op day one after total hip "
+            "arthroplasty for displaced hip fracture. Requires rolling walker and moderate "
+            "assist for transfers; physical therapy will continue gait training."
+        ),
+        top_k=10,
+        include_related=False,
+    )
+    by_cui = {hit["cui"]: hit for hit in result["hits"]}
+
+    assert "C0019557" in by_cui
+    assert "C1318464" in by_cui
+    assert "C0949766" in by_cui
+    assert "active_label_supplement" in by_cui["C0019557"]["sources"]
+    assert "active_label_supplement" in by_cui["C1318464"]["sources"]
+    assert "active_label_supplement" in by_cui["C0949766"]["sources"]
+
+
+def test_note_format_explicit_alias_supplements_recover_remaining_secondary_terms() -> None:
+    rows, missing = read_active_label_supplement_rows(
+        ROOT / "config" / "active_label_supplement.tsv"
+    )
+    assert missing == []
+    configured = {
+        (str(row.get("cui") or "").strip().upper(), normalized_key(str(row.get("label") or "")))
+        for row in rows
+    }
+    assert {
+        ("C0851238", "left breast lumpectomy"),
+        ("C0523807", "o2 sat"),
+        ("C0392201", "glucose"),
+        ("C0043016", "front wheeled walker"),
+        ("C0019018", "a1c"),
+        ("C0948008", "acute ischemic stroke"),
+        ("C0007202", "cardiopulmonary bypass"),
+        ("C0376261", "lactate decreased"),
+        ("C0030605", "aptt"),
+    } <= configured
+
+    index = SearchIndex(
+        vector_paths=[],
+        doc_paths=[],
+        evidence_paths=[],
+        provenance_index_path=None,
+        provider="hashing",
+        model=None,
+        dim=16,
+        local_files_only=True,
+        max_seq_length=None,
+        device="cpu",
+        active_label_supplement_path=ROOT / "config" / "active_label_supplement.tsv",
+    )
+
+    cases = [
+        (
+            "Surgical Pathology Final Diagnosis: Left breast lumpectomy shows invasive "
+            "ductal carcinoma, grade 2, estrogen receptor positive.",
+            {"C0851238"},
+        ),
+        (
+            "Nursing note: Patient on 2 L nasal cannula after COPD exacerbation. "
+            "O2 sat 88 percent with ambulation, improved after rest and albuterol.",
+            {"C0523807"},
+        ),
+        (
+            "Lab flowsheet: Glucose 612 mg/dL, serum ketones positive, anion gap 24, "
+            "and diabetic ketoacidosis after insulin infusion started.",
+            {"C0392201"},
+        ),
+        (
+            "Physical Therapy Treatment Note: Patient s/p acute ischemic stroke with "
+            "aphasia and right facial droop. Ambulated with front wheeled walker.",
+            {"C0948008", "C0043016"},
+        ),
+        (
+            "Prior authorization draft: Requesting semaglutide for type 2 diabetes "
+            "with chronic kidney disease and A1c 9.4 percent despite metformin.",
+            {"C0019018"},
+        ),
+        (
+            "MRI Brain Impression: Acute ischemic stroke in the left MCA territory "
+            "with aphasia; neurology recommended mechanical thrombectomy evaluation.",
+            {"C0948008"},
+        ),
+        (
+            "Brief Op Note: Coronary artery bypass graft x3 performed for severe "
+            "coronary artery disease using cardiopulmonary bypass.",
+            {"C0007202"},
+        ),
+        (
+            "Nursing ICU note: Patient with sepsis and septic shock remains on "
+            "norepinephrine. Lactate decreased after fluids; blood cultures pending.",
+            {"C0376261"},
+        ),
+        (
+            "MAR anticoagulation note: Unfractionated heparin infusion increased for "
+            "deep vein thrombosis after aPTT returned subtherapeutic.",
+            {"C0030605"},
+        ),
+    ]
+
+    for query, expected_cuis in cases:
+        result = index.search(query, top_k=10, include_related=False)
+        by_cui = {hit["cui"]: hit for hit in result["hits"]}
+        assert expected_cuis <= set(by_cui), query
+        for cui in expected_cuis:
+            assert "active_label_supplement" in by_cui[cui]["sources"]
+
+
 def test_consumer_lay_language_supplements_are_configured_and_context_gated() -> None:
     rows, missing = read_active_label_supplement_rows(
         ROOT / "config" / "active_label_supplement.tsv"
@@ -15221,6 +15404,181 @@ def test_paragraph_evaluator_counts_configured_sglt2_inhibitor_alternative() -> 
     assert row["missing_at_10"] == ""
     assert row["accepted_alternatives_at_10"] == "C3273807=C3542461"
     assert row["verdict"] == "good"
+
+
+def test_paragraph_evaluator_counts_configured_lab_review_measurement_alternatives() -> None:
+    alternatives = read_acceptable_alternatives(Path("config/search_quality_acceptable_cui_alternatives.tsv"))
+    spec = QuerySpec(
+        query_id="clinical_text_variety_17_lab_anemia",
+        query=(
+            "Lab review / hematology: Hemoglobin 7.4 g/dL with ferritin 8 ng/mL and "
+            "microcytosis. Assessment says iron deficiency anemia likely from chronic "
+            "blood loss; packed red blood cell transfusion ordered before endoscopy."
+        ),
+        expected_cuis=["C0162316", "C0019046", "C0015879", "C0005841"],
+    )
+
+    row = judge_paragraph_quality(
+        spec,
+        [
+            {
+                "cui": "C0162316",
+                "name": "Iron deficiency anemia",
+                "semantic_group": "DISO",
+                "rank_score": 2.0,
+            },
+            {
+                "cui": "C0199962",
+                "name": "Transfusion of packed red blood cells",
+                "semantic_group": "PROC",
+                "rank_score": 1.9,
+            },
+            {
+                "cui": "C0518015",
+                "name": "Hemoglobin measurement",
+                "semantic_group": "OBS",
+                "rank_score": 1.4,
+            },
+            {
+                "cui": "C0373607",
+                "name": "Ferritin measurement",
+                "semantic_group": "OBS",
+                "rank_score": 1.0,
+            },
+        ],
+        acceptable_alternatives=alternatives,
+    )
+
+    assert row["found_at_10"] == 4
+    assert row["missing_at_10"] == ""
+    assert row["accepted_alternatives_at_10"] == (
+        "C0005841=C0199962|C0015879=C0373607|C0019046=C0518015"
+    )
+    assert row["verdict"] == "good"
+
+
+def test_paragraph_evaluator_counts_configured_note_format_equivalence_replay() -> None:
+    alternatives = read_acceptable_alternatives(Path("config/search_quality_acceptable_cui_alternatives.tsv"))
+    cases = [
+        (
+            QuerySpec(
+                query_id="clinical_text_variety_20_home_health_hf",
+                query=(
+                    "Home health visit: Weight up 4 pounds in three days with bilateral leg edema "
+                    "and orthopnea. Patient has heart failure with reduced ejection fraction and "
+                    "missed two doses of furosemide."
+                ),
+                expected_cuis=["C3839346", "C0016860", "C0013604", "C0085619"],
+            ),
+            [
+                {"cui": "C0016860", "name": "furosemide", "semantic_group": "CHEM", "rank_score": 2.0},
+                {
+                    "cui": "C3839346",
+                    "name": "Heart failure with reduced ejection fraction",
+                    "semantic_group": "DISO",
+                    "rank_score": 1.9,
+                },
+                {"cui": "C0235886", "name": "Leg edema", "semantic_group": "DISO", "rank_score": 1.7},
+                {"cui": "C0085619", "name": "Orthopnea", "semantic_group": "DISO", "rank_score": 1.0},
+            ],
+            "C0013604=C0235886",
+        ),
+        (
+            QuerySpec(
+                query_id="clinical_text_variety_22_consult_endocarditis",
+                query=(
+                    "Infectious Disease consult: Persistent Staphylococcus aureus bacteremia "
+                    "with new systolic murmur is concerning for infective endocarditis. "
+                    "Repeat blood cultures ordered, vancomycin continued, and transthoracic "
+                    "echocardiogram requested."
+                ),
+                expected_cuis=[
+                    "C0038172",
+                    "C1142423",
+                    "C1541923",
+                    "C0200949",
+                    "C0042313",
+                    "C0013516",
+                ],
+            ),
+            [
+                {
+                    "cui": "C1142423",
+                    "name": "staphylococcus aureus bacteremia",
+                    "semantic_group": "DISO",
+                    "rank_score": 2.3,
+                },
+                {
+                    "cui": "C1318973",
+                    "name": "Staphylococcus aureus infection",
+                    "semantic_group": "DISO",
+                    "rank_score": 2.1,
+                },
+                {"cui": "C0042313", "name": "vancomycin", "semantic_group": "CHEM", "rank_score": 2.0},
+                {
+                    "cui": "C1541923",
+                    "name": "Infective endocarditis",
+                    "semantic_group": "DISO",
+                    "rank_score": 1.9,
+                },
+                {"cui": "C0200949", "name": "Blood culture", "semantic_group": "OBS", "rank_score": 1.5},
+                {
+                    "cui": "C0430462",
+                    "name": "Transthoracic echocardiography",
+                    "semantic_group": "PROC",
+                    "rank_score": 1.3,
+                },
+                {
+                    "cui": "C0038172",
+                    "name": "Staphylococcus aureus",
+                    "semantic_group": "LIVB",
+                    "rank_score": 1.2,
+                },
+            ],
+            "C0013516=C0430462|C0038172=C1318973",
+        ),
+        (
+            QuerySpec(
+                query_id="clinical_text_variety_24_discharge_af_stroke",
+                query=(
+                    "Discharge Summary - Problems: Acute ischemic stroke attributed to atrial "
+                    "fibrillation. Started apixaban after repeat head CT showed no hemorrhage; "
+                    "outpatient anticoagulation follow-up arranged and aspirin stopped."
+                ),
+                expected_cuis=["C0948008", "C0004238", "C1831808", "C2919015"],
+            ),
+            [
+                {
+                    "cui": "C0004238",
+                    "name": "Atrial Fibrillation",
+                    "semantic_group": "DISO",
+                    "rank_score": 2.1,
+                },
+                {
+                    "cui": "C5392833",
+                    "name": "Acute Ischemic Stroke",
+                    "semantic_group": "DISO",
+                    "rank_score": 1.9,
+                },
+                {"cui": "C1831808", "name": "apixaban", "semantic_group": "CHEM", "rank_score": 1.5},
+                {
+                    "cui": "C0003281",
+                    "name": "Anticoagulation Therapy",
+                    "semantic_group": "PROC",
+                    "rank_score": 1.1,
+                },
+            ],
+            "C0948008=C5392833|C2919015=C0003281",
+        ),
+    ]
+
+    for spec, hits, accepted in cases:
+        row = judge_paragraph_quality(spec, hits, acceptable_alternatives=alternatives)
+
+        assert row["found_at_10"] == len(spec.expected_cuis)
+        assert row["missing_at_10"] == ""
+        assert row["accepted_alternatives_at_10"] == accepted
+        assert row["verdict"] == "good"
 
 
 def test_paragraph_evaluator_flags_configured_false_positives() -> None:

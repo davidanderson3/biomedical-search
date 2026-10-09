@@ -127,6 +127,7 @@ DEFAULT_PERMITTED_SOURCE_VECTORS = (
 )
 DEFAULT_HTML = ROOT / "docs" / "search_quality_server.html"
 DEFAULT_PRODUCT_HTML = ROOT / "web" / "search_quality_product.html"
+DEFAULT_EVALUATION_FLOW_HTML = ROOT / "web" / "umls_evaluation_flow.html"
 DEFAULT_PROGRESS_HTML = ROOT / "docs" / "scaling_progress.html"
 DEFAULT_SOURCE_DASHBOARD_HTML = ROOT / "docs" / "source_evidence_dashboard.html"
 DEFAULT_PROGRESS_PLAN = ROOT / "config" / "scaling_chunk_001_gap_topics.plan.json"
@@ -242,6 +243,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_PRODUCT_HTML,
         help="Product search HTML served at /.",
+    )
+    parser.add_argument(
+        "--evaluation-flow-html",
+        type=Path,
+        default=DEFAULT_EVALUATION_FLOW_HTML,
+        help="Developer-facing UMLS evaluation and improvement flow page.",
     )
     parser.add_argument("--progress-html", type=Path, default=DEFAULT_PROGRESS_HTML)
     parser.add_argument("--source-dashboard-html", type=Path, default=DEFAULT_SOURCE_DASHBOARD_HTML)
@@ -567,6 +574,8 @@ def main() -> None:
             raise SystemExit(f"missing hashing IDF file: {args.idf_path}")
     if not args.product_html.exists():
         raise SystemExit(f"missing product HTML file: {args.product_html}")
+    if not args.evaluation_flow_html.exists():
+        raise SystemExit(f"missing evaluation flow HTML file: {args.evaluation_flow_html}")
     if not args.public_ui_only:
         if not args.html.exists():
             raise SystemExit(f"missing HTML file: {args.html}")
@@ -662,7 +671,8 @@ def main() -> None:
             args.progress_plan,
             args.full_progress_plan,
             judgments_path,
-            product_html_path=args.product_html,
+        product_html_path=args.product_html,
+        evaluation_flow_html_path=args.evaluation_flow_html,
             plan_status_func=plan_status,
             resolve_path_func=resolve_path,
             expose_builder_tools=not args.public_ui_only,
